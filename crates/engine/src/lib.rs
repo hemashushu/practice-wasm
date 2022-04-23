@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 pub mod leb128decoder;
+pub mod ast;
 
 #[cfg(test)]
 mod tests {
