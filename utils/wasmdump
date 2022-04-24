@@ -1,0 +1,28 @@
+#!/bin/zx
+
+// 运行此脚本需要先安装：
+//
+// - rust
+// - [wasm-tools](https://github.com/bytecodealliance/wasm-tools) `$ cargo install wasm-tools`
+// - zx (https://github.com/google/zx)
+
+let args = process.argv;
+
+if (args.length != 4) {
+    console.log(
+`Usage:
+    ./dump-wasm path-to-source.wasm
+`);
+    process.exit(1);
+}
+
+import 'path';
+
+let filePath = path.resolve(args[3]);
+
+if (!filePath.endsWith('.wasm')) {
+    console.log('Only *.wasm file is supported.');
+    process.exit(1);
+}
+
+await $`wasm-tools dump ${filePath}`

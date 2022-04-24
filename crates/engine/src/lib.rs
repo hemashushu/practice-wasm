@@ -5,7 +5,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 pub mod leb128decoder;
+pub mod types;
+pub mod instruction;
 pub mod ast;
+pub mod binary_parser;
 
 #[cfg(test)]
 mod tests {

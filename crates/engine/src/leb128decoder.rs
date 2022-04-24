@@ -64,7 +64,7 @@
 // 对于无符号数，第 10 个字节剩余高端必须是 `0000 000`；对于有符号数，剩余高端必须是 `0000 000` 或者 `0111 111`
 
 /// leb128 解码的错误
-pub enum Error {
+pub enum DecodeError {
     Incorrect(&'static str),
     Overflow,
 }
@@ -72,8 +72,8 @@ pub enum Error {
 const CONTINUE_BIT: u8 = 0b1000_0000;
 const SIGN_BIT: u8 = 0b0100_0000;
 
-const INT64_LAST_BYTE_INDEX: i32 = 9;
-const INT32_LAST_BYTE_INDEX: i32 = 4;
+const INT64_LAST_BYTE_INDEX: usize = 9;
+const INT32_LAST_BYTE_INDEX: usize = 4;
 
 /// 解码无符号 64 位整型
 /// 返回解码后的 u64 数值以及该数值在 leb128 编码中实际有效的字节数
@@ -91,9 +91,9 @@ const INT32_LAST_BYTE_INDEX: i32 = 4;
 ///     _ => panic!("decode u64 failed"),
 /// }
 /// ```
-pub fn decode_u64(data: &[u8]) -> Result<(u64, i32), Error> {
+pub fn decode_u64(data: &[u8]) -> Result<(u64, usize), DecodeError> {
     let mut result: u64 = 0;
-    let mut index: i32 = 0;
+    let mut index: usize = 0;
     let mut remains = data;
 
     loop {
@@ -105,13 +105,13 @@ pub fn decode_u64(data: &[u8]) -> Result<(u64, i32), Error> {
 
                 if byte & CONTINUE_BIT != 0 {
                     // 最后一个字节的索引 7 位置的比特值应该为 0
-                    return Err(Error::Overflow);
+                    return Err(DecodeError::Overflow);
                 }
 
                 if byte & 0b0111_1110 != 0 {
                     // 超出 64 位部分的比特值应该都为 0，否则视为溢出
                     // 最后一个字节有 64 - (9*7) = 1 位有效位
-                    return Err(Error::Overflow);
+                    return Err(DecodeError::Overflow);
                 }
             }
 
@@ -124,7 +124,7 @@ pub fn decode_u64(data: &[u8]) -> Result<(u64, i32), Error> {
             rest
         } else {
             // 字节序列不完整
-            return Err(Error::Incorrect("incomplete leb128 byte sequence"));
+            return Err(DecodeError::Incorrect("incomplete leb128 byte sequence"));
         }
     }
 }
@@ -145,9 +145,9 @@ pub fn decode_u64(data: &[u8]) -> Result<(u64, i32), Error> {
 ///     _ => panic!("decode i64 failed"),
 /// }
 /// ```
-pub fn decode_i64(data: &[u8]) -> Result<(i64, i32), Error> {
+pub fn decode_i64(data: &[u8]) -> Result<(i64, usize), DecodeError> {
     let mut result: i64 = 0;
-    let mut index: i32 = 0;
+    let mut index: usize = 0;
     let mut remains = data;
 
     loop {
@@ -159,7 +159,7 @@ pub fn decode_i64(data: &[u8]) -> Result<(i64, i32), Error> {
 
                 if byte & CONTINUE_BIT != 0 {
                     // 最后一个字节的索引 7 位置的比特值应该为 0
-                    return Err(Error::Overflow);
+                    return Err(DecodeError::Overflow);
                 }
 
                 // 检查符号位
@@ -167,13 +167,13 @@ pub fn decode_i64(data: &[u8]) -> Result<(i64, i32), Error> {
                     // 当前为正数，则超出 64 部分的比特值应该都为 0，否则视为溢出
                     // 最后一个字节有 64 - (9*7) = 1 位有效位
                     if byte & 0b0011_1110 != 0 {
-                        return Err(Error::Overflow);
+                        return Err(DecodeError::Overflow);
                     }
                 } else {
                     // 当前为负数，则超出 64 部分的比特值应该都为 1，否则视为错误
                     // 最后一个字节有 64 - (9*7) = 1 位有效位
                     if byte & 0b0011_1110 != 0b0011_1110 {
-                        return Err(Error::Incorrect("invalid negative"));
+                        return Err(DecodeError::Incorrect("invalid negative"));
                     }
                 }
             }
@@ -194,16 +194,16 @@ pub fn decode_i64(data: &[u8]) -> Result<(i64, i32), Error> {
             rest
         } else {
             // 字节序列不完整
-            return Err(Error::Incorrect("incomplete leb128 byte sequence"));
+            return Err(DecodeError::Incorrect("incomplete leb128 byte sequence"));
         }
     }
 }
 
 /// 解码无符号 32 位整型
 /// 返回解码后的 u32 数值以及该数值在 leb128 编码中实际有效的字节数
-pub fn decode_u32(data: &[u8]) -> Result<(u32, i32), Error> {
+pub fn decode_u32(data: &[u8]) -> Result<(u32, usize), DecodeError> {
     let mut result: u32 = 0;
-    let mut index: i32 = 0;
+    let mut index: usize = 0;
     let mut remains = data;
 
     loop {
@@ -215,13 +215,13 @@ pub fn decode_u32(data: &[u8]) -> Result<(u32, i32), Error> {
 
                 if byte & CONTINUE_BIT != 0 {
                     // 最后一个字节的索引 7 位置的比特值应该为 0
-                    return Err(Error::Overflow);
+                    return Err(DecodeError::Overflow);
                 }
 
                 if byte & 0b0111_0000 != 0 {
                     // 超出 32 位部分的比特值应该都为 0，否则视为溢出
                     // 最后一个字节有 32 - (4*7) = 4 位有效位
-                    return Err(Error::Overflow);
+                    return Err(DecodeError::Overflow);
                 }
             }
 
@@ -234,16 +234,16 @@ pub fn decode_u32(data: &[u8]) -> Result<(u32, i32), Error> {
             rest
         } else {
             // 字节序列不完整
-            return Err(Error::Incorrect("incomplete leb128 byte sequence"));
+            return Err(DecodeError::Incorrect("incomplete leb128 byte sequence"));
         }
     }
 }
 
 /// 解码有符号 32 位整型
 /// 返回解码后的 i32 数值以及该数值在 leb128 编码中实际有效的字节数
-pub fn decode_i32(data: &[u8]) -> Result<(i32, i32), Error> {
+pub fn decode_i32(data: &[u8]) -> Result<(i32, usize), DecodeError> {
     let mut result: i32 = 0;
-    let mut index: i32 = 0;
+    let mut index: usize = 0;
     let mut remains = data;
 
     loop {
@@ -255,7 +255,7 @@ pub fn decode_i32(data: &[u8]) -> Result<(i32, i32), Error> {
 
                 if byte & CONTINUE_BIT != 0 {
                     // 最后一个字节的索引 7 位置的比特值应该为 0
-                    return Err(Error::Overflow);
+                    return Err(DecodeError::Overflow);
                 }
 
                 // 检查符号位
@@ -263,13 +263,13 @@ pub fn decode_i32(data: &[u8]) -> Result<(i32, i32), Error> {
                     // 当前为正数，则超出 32 部分的比特值应该都为 0，否则视为溢出
                     // 最后一个字节有 32 - (4*7) = 4 位有效位
                     if byte & 0b0011_0000 != 0 {
-                        return Err(Error::Overflow);
+                        return Err(DecodeError::Overflow);
                     }
                 } else {
                     // 当前为负数，则超出 32 部分的比特值应该都为 1，否则视为错误
                     // 最后一个字节有 32 - (4*7) = 4 位有效位
                     if byte & 0b0011_0000 != 0b0011_0000 {
-                        return Err(Error::Incorrect("invalid negative"));
+                        return Err(DecodeError::Incorrect("invalid negative"));
                     }
                 }
             }
@@ -290,14 +290,14 @@ pub fn decode_i32(data: &[u8]) -> Result<(i32, i32), Error> {
             rest
         } else {
             // 字节序列不完整
-            return Err(Error::Incorrect("incomplete leb128 byte sequence"));
+            return Err(DecodeError::Incorrect("incomplete leb128 byte sequence"));
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::leb128decoder::Error;
+    use crate::leb128decoder::DecodeError;
 
     use super::{decode_i32, decode_i64, decode_u32, decode_u64};
 
@@ -368,7 +368,7 @@ mod test {
         let d5: [u8; 4] = [0b1010_1111, 0b1101_1010, 0b1100_0011, 0b1111_1100];
         match decode_u64(&d5) {
             Err(e) => {
-                assert!(matches!(e, Error::Incorrect(_)));
+                assert!(matches!(e, DecodeError::Incorrect(_)));
             }
             _ => {
                 panic!("decode u64 failed")
@@ -379,7 +379,7 @@ mod test {
         let d6: [u8; 10] = [0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9];
         match decode_u64(&d6) {
             Err(e) => {
-                assert!(matches!(e, Error::Overflow));
+                assert!(matches!(e, DecodeError::Overflow));
             }
             _ => {
                 panic!("decode u64 failed")
@@ -401,7 +401,7 @@ mod test {
         ];
         match decode_u64(&d7) {
             Err(e) => {
-                assert!(matches!(e, Error::Overflow));
+                assert!(matches!(e, DecodeError::Overflow));
             }
             _ => {
                 panic!("decode u64 failed")
@@ -480,7 +480,7 @@ mod test {
         let d5: [u8; 4] = [0b1010_1111, 0b1101_1010, 0b1100_0011, 0b1111_1100];
         match decode_i64(&d5) {
             Err(e) => {
-                assert!(matches!(e, Error::Incorrect(_)));
+                assert!(matches!(e, DecodeError::Incorrect(_)));
             }
             _ => {
                 panic!("decode i64 failed")
@@ -491,7 +491,7 @@ mod test {
         let d6: [u8; 10] = [0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9];
         match decode_i64(&d6) {
             Err(e) => {
-                assert!(matches!(e, Error::Overflow));
+                assert!(matches!(e, DecodeError::Overflow));
             }
             _ => {
                 panic!("decode i64 failed")
@@ -513,7 +513,7 @@ mod test {
         ];
         match decode_i64(&d6) {
             Err(e) => {
-                assert!(matches!(e, Error::Overflow));
+                assert!(matches!(e, DecodeError::Overflow));
             }
             _ => {
                 panic!("decode i64 failed")
@@ -535,7 +535,7 @@ mod test {
         ];
         match decode_i64(&d7) {
             Err(e) => {
-                assert!(matches!(e, Error::Incorrect(_)));
+                assert!(matches!(e, DecodeError::Incorrect(_)));
             }
             _ => {
                 panic!("decode i64 failed")
@@ -599,7 +599,7 @@ mod test {
         let d5: [u8; 4] = [0b1010_1111, 0b1101_1010, 0b1100_0011, 0b1111_1100];
         match decode_u32(&d5) {
             Err(e) => {
-                assert!(matches!(e, Error::Incorrect(_)));
+                assert!(matches!(e, DecodeError::Incorrect(_)));
             }
             _ => {
                 panic!("decode u32 failed")
@@ -610,7 +610,7 @@ mod test {
         let d6: [u8; 5] = [0xf0, 0xf1, 0xf2, 0xf3, 0xf4];
         match decode_u32(&d6) {
             Err(e) => {
-                assert!(matches!(e, Error::Overflow));
+                assert!(matches!(e, DecodeError::Overflow));
             }
             _ => {
                 panic!("decode u32 failed")
@@ -621,7 +621,7 @@ mod test {
         let d7: [u8; 5] = [0xf0, 0xf1, 0xf2, 0xf3, 0b0001_0000];
         match decode_u32(&d7) {
             Err(e) => {
-                assert!(matches!(e, Error::Overflow));
+                assert!(matches!(e, DecodeError::Overflow));
             }
             _ => {
                 panic!("decode u32 failed")
@@ -689,7 +689,7 @@ mod test {
         let d5: [u8; 4] = [0b1010_1111, 0b1101_1010, 0b1100_0011, 0b1111_1100];
         match decode_i32(&d5) {
             Err(e) => {
-                assert!(matches!(e, Error::Incorrect(_)));
+                assert!(matches!(e, DecodeError::Incorrect(_)));
             }
             _ => {
                 panic!("decode i32 failed")
@@ -700,7 +700,7 @@ mod test {
         let d6: [u8; 5] = [0xf0, 0xf1, 0xf2, 0xf3, 0xf4];
         match decode_i32(&d6) {
             Err(e) => {
-                assert!(matches!(e, Error::Overflow));
+                assert!(matches!(e, DecodeError::Overflow));
             }
             _ => {
                 panic!("decode i32 failed")
@@ -711,7 +711,7 @@ mod test {
         let d6: [u8; 5] = [0xf0, 0xf1, 0xf2, 0xf3, 0b0001_0000];
         match decode_i32(&d6) {
             Err(e) => {
-                assert!(matches!(e, Error::Overflow));
+                assert!(matches!(e, DecodeError::Overflow));
             }
             _ => {
                 panic!("decode i32 failed")
@@ -722,7 +722,7 @@ mod test {
         let d7: [u8; 5] = [0xf0, 0xf1, 0xf2, 0xf3, 0b0101_0000];
         match decode_i32(&d7) {
             Err(e) => {
-                assert!(matches!(e, Error::Incorrect(_)));
+                assert!(matches!(e, DecodeError::Incorrect(_)));
             }
             _ => {
                 panic!("decode i32 failed")

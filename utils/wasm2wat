@@ -1,0 +1,33 @@
+#!/bin/zx
+
+// 运行此脚本需要先安装：
+//
+// - rust
+// - [wasm-tools](https://github.com/bytecodealliance/wasm-tools) `$ cargo install wasm-tools`
+// - zx (https://github.com/google/zx)
+
+let args = process.argv;
+
+if (args.length != 4) {
+    console.log(
+`Usage:
+    ./wat2wasm path-to-source.wat
+`);
+    process.exit(1);
+}
+
+import 'path';
+
+let filePath = path.resolve(args[3]);
+
+if (!filePath.endsWith('.wasm')) {
+    console.log('Only *.wasm file is supported.');
+    process.exit(1);
+}
+
+let pos = filePath.lastIndexOf('.');
+let outputFile = filePath.substring(0, pos) + '.wat';
+
+await $`wasm-tools print ${filePath} > ${outputFile}`
+
+console.log(`output: ${outputFile}`);

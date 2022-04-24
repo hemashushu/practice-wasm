@@ -1,0 +1,33 @@
+#!/bin/zx
+
+// 运行此脚本需要先安装：
+//
+// - nodejs
+// - zx (https://github.com/google/zx)
+// - clang
+
+let args = process.argv;
+
+if (args.length != 4) {
+    console.log(
+`Usage:
+    ./c2wasm path-to-source.c
+`);
+    process.exit(1);
+}
+
+import 'path';
+
+let filePath = path.resolve(args[3]);
+
+if (!filePath.endsWith('.c')) {
+    console.log('Only *.c file is supported.');
+    process.exit(1);
+}
+
+let pos = filePath.lastIndexOf('.');
+let outputFile = filePath.substring(0, pos) + '.wasm';
+
+await $`clang --target=wasm32 -c --no-standard-libraries "${filePath}" -o "${outputFile}"`
+
+console.log(`output: ${outputFile}`);

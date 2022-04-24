@@ -4,7 +4,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-/// 模块结构
+use crate::types::ValueType;
+
+/// # 模块结构
+///
+/// 二进制和文本格式的 WebAssembly 共用同一个 Module 结构
+///
+/// 结构的详细文档参阅：
+/// <https://webassembly.github.io/spec/core/binary/modules.html>
+///
 pub struct Module {
     /// 自定义项目列表，（section id 0）
     pub custom_items: Vec<CustomItem>,
@@ -43,33 +51,6 @@ pub struct Module {
     /// 内存的初始化数据，（section id 11）
     pub data_items: Vec<DataItem>,
 }
-
-/// # 数据类型
-///
-/// <https://webassembly.github.io/spec/core/syntax/types.html>
-///
-/// WebAssembly 只支持 4 种基本数据类型
-/// i32, i64, f32, f64
-#[derive(Debug, PartialEq, Clone)]
-pub enum ValueType {
-    I32,
-    I64,
-    F32,
-    F64,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Value {
-    I32(i32),
-    I64(i64),
-    F32(f32),
-    F64(f64),
-}
-
-// WebAssembly 的索引使用 u32 类型。
-// https://webassembly.github.io/spec/core/syntax/modules.html#indices
-//
-// 这里为了简单起见就不单独定义它们了，而直接使用 u32。
 
 /// # 自定义项
 ///
@@ -177,7 +158,7 @@ pub struct ImportItem {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ImportDescriptor {
-    FunctionType(FunctionType),
+    FunctionTypeIndex(u32),
     TableType(TableType),
     MemoryType(MemoryType),
     GlobalType(GlobalType),
@@ -503,7 +484,7 @@ pub struct ElementItem {
 ///
 /// 表达式是一系列指令的罗列，比如：
 ///
-/// ```
+/// ```wat
 /// ...
 /// block
 /// i32.const 10
@@ -512,7 +493,7 @@ pub struct ElementItem {
 ///
 /// 指令序列可以折叠，方法是在先在指令前后加上括号：
 ///
-/// ```
+/// ```wat
 /// ...
 /// (block)
 /// (i32.const 10)
@@ -522,7 +503,7 @@ pub struct ElementItem {
 /// 然后将部分指令放置在其他允许折叠的指令（比如二元运算指令、块结构指令等），于是
 /// 上面的代码可以进一步可以写成：
 ///
-/// ```
+/// ```wat
 /// ...
 /// (block
 ///     (i32.const 10)
@@ -532,7 +513,7 @@ pub struct ElementItem {
 /// 下面一则来自官方文档的示例：
 /// <https://webassembly.github.io/spec/core/text/instructions.html#folded-instructions>
 ///
-/// ```
+/// ```wat
 /// ...
 /// (local.get $x) (i32.const 2) i32.add (i32.const 3) i32.mul
 ///
