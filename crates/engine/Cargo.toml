@@ -1,5 +1,5 @@
 [package]
-name = "engine"
+name = "uavm-engine"
 version = "0.1.0"
 edition = "2021"
 
