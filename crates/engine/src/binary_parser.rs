@@ -4,12 +4,57 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::vec;
+
 use crate::{ast::Module, leb128decoder};
 
 pub fn parse(source: &[u8]) -> Result<Module, ParseError> {
-    todo!()
+    parse_module(source)
 }
 
+fn parse_module(source: &[u8]) -> Result<Module, ParseError> {
+    /// 二进制模块以一个 4 个字节的幻数 `0x00 0x61 0x73 0x6d` 开始。
+    /// 转成 ascii 则是 `0x00` 和 `asm`
+    const MAGIC_NUMBER: u32 = 0x6d736100;
+
+    /// 二进制格式的版本号，占用了 4 个字节
+    /// 当前解析器只支持版本 1（little endian）
+    const VERSION: u32 = 0x00000001;
+
+    let mut remains = source;
+    let (mag, post_magic_number) = read_fixed_u32(remains)?;
+    if mag != MAGIC_NUMBER {
+        return Err(ParseError::Unsupported);
+    }
+    remains = post_magic_number;
+
+    let (ver, post_version) = read_fixed_u32(remains)?;
+    if ver != VERSION {
+        return Err(ParseError::Unsupported);
+    }
+    remains = post_version;
+
+    parse_sections(remains)
+}
+
+fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
+    Ok(Module {
+        code_items: vec![],
+        custom_items: vec![],
+        data_items: vec![],
+        element_items: vec![],
+        export_items: vec![],
+        function_list: vec![],
+        function_types: vec![],
+        global_items: vec![],
+        import_items: vec![],
+        memory_blocks: vec![],
+        start_function_index: None,
+        tables: vec![],
+    })
+}
+
+#[derive(Debug)]
 pub enum ParseError {
     Something(&'static str),
 
@@ -135,12 +180,8 @@ fn read_string(source: &[u8]) -> Result<(String, &[u8]), ParseError> {
     let mut remains = source;
     let (bytes, remains) = read_byte_vec(remains)?;
     match String::from_utf8(bytes.into()) {
-        Ok(s) => {
-            Ok((s, remains))
-        },
-        _=>{
-            Err(ParseError::DecodingError)
-        }
+        Ok(s) => Ok((s, remains)),
+        _ => Err(ParseError::DecodingError),
     }
 }
 
@@ -149,9 +190,46 @@ fn read_string(source: &[u8]) -> Result<(String, &[u8]), ParseError> {
 /// 但该索引值只能是 0 的场合
 fn consume_byte_zero(source: &[u8]) -> Result<&[u8], ParseError> {
     let (byte, remains) = read_byte(source)?;
-    if (byte != 0) {
+    if byte != 0 {
         Err(ParseError::Unsupported)
-    }else {
+    } else {
         Ok(remains)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{env, fs};
+
+    use super::parse;
+
+    // 辅助方法
+
+    fn get_test_resource_file_binary(filename: &str) -> Vec<u8> {
+        let mut path_buf = env::current_dir().expect("failed to get current directory");
+
+        // 使用 `cargo test` 测试时，
+        // `env::current_dir()` 函数获得的当前目录为
+        // `./xiaoxuan-vm/crates/engine`；
+        //
+        // 但如果使用 vscode 的源码编辑框里面的 `debug` 按钮开始调试，
+        // `env::current_dir()` 函数获得的当前目录为
+        // `./xiaoxuan-vm`。
+        //
+        // 这里需要处理这种情况。
+
+        if path_buf.ends_with("engine") {
+            path_buf.pop();
+            path_buf.pop();
+        }
+        let fullname_buf = path_buf.join("test/resources/parser").join(filename);
+        let fullname = fullname_buf.to_str().unwrap();
+        fs::read(fullname).expect(&format!("failed to read the specified file: {}", fullname))
+    }
+
+    #[test]
+    fn test_parse_module() {
+        let source = get_test_resource_file_binary("test-section-class.wasm");
+        let mod0 = parse(&source).unwrap();
     }
 }

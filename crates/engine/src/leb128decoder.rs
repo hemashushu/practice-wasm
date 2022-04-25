@@ -64,6 +64,7 @@
 // 对于无符号数，第 10 个字节剩余高端必须是 `0000 000`；对于有符号数，剩余高端必须是 `0000 000` 或者 `0111 111`
 
 /// leb128 解码的错误
+#[derive(Debug)]
 pub enum DecodeError {
     Incorrect(&'static str),
     Overflow,
@@ -81,7 +82,7 @@ const INT32_LAST_BYTE_INDEX: usize = 4;
 /// # 示例
 ///
 /// ```
-/// use engine::leb128decoder::decode_u64;
+/// use anvm_engine::leb128decoder::decode_u64;
 /// let data: [u8; 4] = [0b1010_1111, 0b0101_1010, 0b1100_0011, 0b0011_1100];
 /// match decode_u64(&data) {
 ///     Ok((value, length)) => {
@@ -135,7 +136,7 @@ pub fn decode_u64(data: &[u8]) -> Result<(u64, usize), DecodeError> {
 /// # 示例
 ///
 /// ```
-/// use engine::leb128decoder::decode_i64;
+/// use anvm_engine::leb128decoder::decode_i64;
 /// let d1: [u8; 4] = [0b1010_1111, 0b0101_1010, 0b0100_0011, 0b0011_1100];
 /// match decode_i64(&d1) {
 ///     Ok((value, length)) => {
