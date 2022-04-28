@@ -4,7 +4,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::types::ValueType;
+use std::rc::Rc;
+
+use crate::{instruction::Instruction, types::ValueType};
 
 /// # 模块结构
 ///
@@ -13,6 +15,7 @@ use crate::types::ValueType;
 /// 结构的详细文档参阅：
 /// <https://webassembly.github.io/spec/core/binary/modules.html>
 ///
+#[derive(Debug)]
 pub struct Module {
     /// 自定义项目列表，（section id 0）
     pub custom_items: Vec<CustomItem>,
@@ -28,7 +31,7 @@ pub struct Module {
     pub function_list: Vec<u32>,
 
     /// 表格列表，表格用于储存元素，表格和元素合在一起实现函数间接调用，目前只支持声明或导入 1 项表格，（section id 4）
-    pub tables: Vec<TableType>,
+    pub table_types: Vec<TableType>,
 
     /// 内存块描述列表，目前只支持声明或导入 1 项内存块，（section id 5）
     pub memory_blocks: Vec<MemoryType>,
@@ -59,13 +62,14 @@ pub struct Module {
 ///
 /// ## 二进制格式
 ///
-/// custom_section = 0x00:byte + byte_count:u32 + name:string + byte{*}
+/// custom_section = 0x00:byte + content_length:u32 + name:string + byte{*}
 ///
 /// - `0x00:byte` 是段 id，数据类型是 byte；
-/// - `byte_count:u32` 是该段的内容正文长度，即该段当中除了 `段 id` 以及 `byte_count` 这两项之外的所有
+/// - `content_length:u32` 是该段的内容正文长度，即该段当中除了 `段 id` 以及 `content_length` 这两项之外的所有
 ///   数据的字节数，数据类型是 u32；
 /// - `{*}` 表示重复 0 次或多次，`{+}` 表示重复 1 次或多次，`{?}` 表示重复 0 次或 1 次。
 ///
+#[derive(Debug)]
 pub struct CustomItem {
     pub name: String,
     pub data: Vec<u8>,
@@ -77,14 +81,14 @@ pub struct CustomItem {
 ///
 /// ## 二进制格式
 ///
-/// type_section = 0x01:byte + byte_count:u32 + function_type_items_count:u32 + function_type_item{+}
+/// type_section = 0x01:byte + content_length:u32 + function_type_items_count:u32 + function_type{+}
 /// 其中 0x01 是段 id
 ///
 /// > 注，为了简化起见，以下使用 `<...>` 代表 `items_count:u32 + item{*}` 这种结构
 ///
 /// 上面的二进制格式简写为：
-/// type_section = 0x01:byte + byte_count:u32 + <function_type_item>
-/// function_type_item = 0x60 + <value_type> + <value_type>
+/// type_section = 0x01:byte + content_length:u32 + <function_type>
+/// function_type = 0x60 + <value_type> + <value_type>
 ///                      ^       ^                 ^
 ///                      |       |--- 参数类型列表   |--- 返回值类型列表
 ///                      |
@@ -116,7 +120,7 @@ pub struct FunctionType {
 ///
 /// ## 二进制格式
 ///
-/// import_section = 0x02 + byte_count:u32 + <import_item>
+/// import_section = 0x02 + content_length:u32 + <import_item>
 /// import_item = module_name:string + member_name:string + import_descriptor
 /// import_description = tag:byte + (function_type_index | table_type | memory_type | global_type)
 ///
@@ -152,7 +156,7 @@ pub struct FunctionType {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ImportItem {
     pub module_name: String,
-    pub member_name: String,
+    pub name: String,
     pub import_descriptor: ImportDescriptor,
 }
 
@@ -170,7 +174,7 @@ pub enum ImportDescriptor {
 ///
 /// ## 二进制格式
 ///
-/// function_section = 0x03 + byte_count:u32 + <function_type_index>
+/// function_section = 0x03 + content_length:u32 + <function_type_index>
 ///
 /// 函数列表仅列出该函数的类型的索引，比如 function_types 里有 2 条记录：
 ///
@@ -220,7 +224,7 @@ const _FUNCTION_LIST_SECTION_ID: u8 = 3; // 无用的语句，仅为了书写文
 ///
 /// ## 二进制格式
 ///
-/// table_section = 0x04 + byte_count:u32 + <table_type> // 目前一个模块仅支持声明一个表项
+/// table_section = 0x04 + content_length:u32 + <table_type> // 目前一个模块仅支持声明一个表项
 /// table_type = 0x70 + limits
 ///              ^
 ///              |--- 0x70 表示该表项存储的是 funcref
@@ -251,6 +255,8 @@ pub struct TableType {
 /// Limit 用于表示内存块和表的最小值（min）和最大值（max），
 /// 其中 max 值可以省略，当省略 max 值时（此时 max 的值为 0）表示不限制上限
 ///
+/// min 和 max 都是闭区间，比如 (1,10) 表示从 1 到 10，包括 1 和 10。
+///
 /// ## 二进制格式
 ///
 /// limits = tag:byte + min:u32 + max:u32
@@ -266,7 +272,7 @@ pub struct TableType {
 ///
 #[derive(Debug, PartialEq, Clone)]
 pub enum Limit {
-    Range { min: u32, max: u32 },
+    Range(u32, u32),
     AtLeast(u32),
 }
 
@@ -276,7 +282,7 @@ pub enum Limit {
 ///
 /// ## 二进制格式
 ///
-/// memory_section = 0x05 + byte_count:u32 + <memory_type> // 目前一个模块仅支持声明一个内存块
+/// memory_section = 0x05 + content_length:u32 + <memory_type> // 目前一个模块仅支持声明一个内存块
 /// memory_type = limits
 ///
 /// ## 文本格式
@@ -308,7 +314,7 @@ pub struct MemoryType {
 ///
 /// ## 二进制格式
 ///
-/// global_section = 0x06 + byte_count:u32 + <global_item>
+/// global_section = 0x06 + content_length:u32 + <global_item>
 /// global_item = global_type + initialize_expression
 /// global_type = val_type:byte + mut:byte
 /// mut = (0|1)                             // 0 表示不可变，1 表示可变
@@ -348,9 +354,9 @@ pub struct GlobalType {
 ///
 /// ## 二进制格式
 ///
-/// export_section = 0x07 + byte_count:u32 + <export_item>
+/// export_section = 0x07 + content_length:u32 + <export_item>
 /// export_item = name:string + export_descriptor
-/// export_descriptor = tag:byte + (function_idx | table_idx | memory_block_idx | global_item_idx)
+/// export_descriptor = tag:byte + (function_index | table_index | memory_block_index | global_item_index)
 ///
 /// ## 文本格式
 ///
@@ -368,6 +374,7 @@ pub struct GlobalType {
 /// (func $m (export "m") ...)
 /// (func $g (export "g1") ...)
 ///
+#[derive(Debug, PartialEq, Clone)]
 pub struct ExportItem {
     /// 导出项的名称
     /// 导出项不需要指定当前模块的名称（注：导入时则需同时指出导入模块和导入项的名称）
@@ -377,6 +384,7 @@ pub struct ExportItem {
     pub export_descriptor: ExportDescriptor,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum ExportDescriptor {
     /// 函数索引
     FunctionIndex(u32),
@@ -397,7 +405,7 @@ pub enum ExportDescriptor {
 ///
 /// ## 二进制格式
 ///
-/// start_section: 0x08 + byte_count:u32 + function_index
+/// start_section: 0x08 + content_length:u32 + function_index
 ///
 /// ## 文本格式
 ///
@@ -413,8 +421,8 @@ const _START_SECTION_ID: u8 = 8; // 无用的语句，仅为了书写文档注�
 ///
 /// ## 二进制格式
 ///
-/// element_section = 0x09 + byte_count:u32 + <element_item>
-/// element_item = table_idx:u32 + offset_expression + <function_index>
+/// element_section = 0x09 + content_length:u32 + <element_item>
+/// element_item = table_index:u32 + offset_expression + <function_index>
 /// offset_expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
 ///
 /// 元素段里的每个项目的内容由 3 部分组成：
@@ -430,6 +438,7 @@ const _START_SECTION_ID: u8 = 8; // 无用的语句，仅为了书写文档注�
 ///
 /// (table funcref (elem $f1 $f2))          ;; 元素项的偏移值会自动从 0 开始计算
 ///
+#[derive(Debug, PartialEq, Clone)]
 pub struct ElementItem {
     /// 表索引，目前恒等于 0
     pub table_index: u32,
@@ -449,12 +458,12 @@ pub struct ElementItem {
 ///
 /// ## 二进制格式
 ///
-/// code_section = 0x0a + byte_count:u32 + <code_item>
-/// code_item = byte_count:u32 + <local_item> + expression
-/// local_item = local_variable_count:u32 + value_type:byte
+/// code_section = 0x0a + content_length:u32 + <code_item>
+/// code_item = code_length:u32 + <local_group> + expression
+/// local_group = local_variable_count:u32 + value_type:byte
 /// expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
 ///
-/// code_item 开头的 byte_count 表示该项目的内容总大小，包括表达式结尾的 0x0B。
+/// code_length 表示该项目的内容总大小，包括表达式结尾的 0x0B。
 ///
 /// 示例：
 ///
@@ -523,17 +532,19 @@ pub struct ElementItem {
 /// )
 /// ```
 ///
+#[derive(Debug, PartialEq, Clone)]
 pub struct CodeItem {
     /// 局部变量组列表，连续多个相同类型的局部变量被分为一组
-    pub local_items: Vec<LocalItem>,
+    pub local_groups: Vec<LocalGroup>,
 
     /// 指令/字节码
-    pub expression: Vec<Instruction>,
+    pub expression: Rc<Vec<Instruction>>,
 }
 
 /// 局部变量信息组
-pub struct LocalItem {
-    pub count: u32,            // 变量的数量
+#[derive(Debug, PartialEq, Clone)]
+pub struct LocalGroup {
+    pub variable_count: u32,            // 变量的数量
     pub value_type: ValueType, // 数据类型
 }
 
@@ -543,7 +554,7 @@ pub struct LocalItem {
 ///
 /// ## 二进制格式
 ///
-/// data_section = 0x0b + byte_count:u32 + <data_item>
+/// data_section = 0x0b + content_length:u32 + <data_item>
 /// data_item = memory_block_index:u32 + offset_expression + data:byte{*}
 /// offset_expression = = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
 ///
@@ -569,6 +580,7 @@ pub struct LocalItem {
 /// - 十六进制 byte: "\de\ad\be\ef\00"
 /// - Unicode code point: "\u{1234}\u{5678}"
 ///
+#[derive(Debug, PartialEq, Clone)]
 pub struct DataItem {
     /// 内存块索引，目前恒等于 0
     pub memory_index: u32,
@@ -579,5 +591,3 @@ pub struct DataItem {
     /// 内容
     pub data: Vec<u8>,
 }
-
-pub type Instruction = u8;

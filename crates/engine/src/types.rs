@@ -30,4 +30,4 @@ pub enum Value {
 /// https://webassembly.github.io/spec/core/syntax/modules.html#indices
 ///
 /// 这里为了简单起见就不单独定义它们了，而直接使用 u32。
-type Index = u32; // 无用的语句，仅为了书写文档注释
+type _Index = u32; // 无用的语句，仅为了书写文档注释

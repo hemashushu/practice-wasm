@@ -4,50 +4,232 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::rc::Rc;
+
 use crate::types::ValueType;
+
+/// # WebAssembly 指令的指令码
+
+pub const UNREACHABLE: u8 = 0x00;
+pub const NOP: u8 = 0x01;
+pub const BLOCK: u8 = 0x02;
+pub const LOOP: u8 = 0x03;
+pub const IF: u8 = 0x04;
+pub const ELSE: u8 = 0x05;
+pub const END: u8 = 0x0B;
+pub const BR: u8 = 0x0C;
+pub const BR_IF: u8 = 0x0D;
+pub const BR_TABLE: u8 = 0x0E;
+pub const RETURN: u8 = 0x0F;
+pub const CALL: u8 = 0x10;
+pub const CALL_INDIRECT: u8 = 0x11;
+pub const DROP: u8 = 0x1A;
+pub const SELECT: u8 = 0x1B;
+pub const LOCAL_GET: u8 = 0x20;
+pub const LOCAL_SET: u8 = 0x21;
+pub const LOCAL_TEE: u8 = 0x22;
+pub const GLOBAL_GET: u8 = 0x23;
+pub const GLOBAL_SET: u8 = 0x24;
+pub const I32_LOAD: u8 = 0x28;
+pub const I64_LOAD: u8 = 0x29;
+pub const F32_LOAD: u8 = 0x2A;
+pub const F64_LOAD: u8 = 0x2B;
+pub const I32_LOAD8_S: u8 = 0x2C;
+pub const I32_LOAD8_U: u8 = 0x2D;
+pub const I32_LOAD16_S: u8 = 0x2E;
+pub const I32_LOAD16_U: u8 = 0x2F;
+pub const I64_LOAD8_S: u8 = 0x30;
+pub const I64_LOAD8_U: u8 = 0x31;
+pub const I64_LOAD16_S: u8 = 0x32;
+pub const I64_LOAD16_U: u8 = 0x33;
+pub const I64_LOAD32_S: u8 = 0x34;
+pub const I64_LOAD32_U: u8 = 0x35;
+pub const I32_STORE: u8 = 0x36;
+pub const I64_STORE: u8 = 0x37;
+pub const F32_STORE: u8 = 0x38;
+pub const F64_STORE: u8 = 0x39;
+pub const I32_STORE8: u8 = 0x3A;
+pub const I32_STORE16: u8 = 0x3B;
+pub const I64_STORE8: u8 = 0x3C;
+pub const I64_STORE16: u8 = 0x3D;
+pub const I64_STORE32: u8 = 0x3E;
+pub const MEMORY_SIZE: u8 = 0x3F;
+pub const MEMORY_GROW: u8 = 0x40;
+pub const I32_CONST: u8 = 0x41;
+pub const I64_CONST: u8 = 0x42;
+pub const F32_CONST: u8 = 0x43;
+pub const F64_CONST: u8 = 0x44;
+pub const I32_EQZ: u8 = 0x45;
+pub const I32_EQ: u8 = 0x46;
+pub const I32_NE: u8 = 0x47;
+pub const I32_LT_S: u8 = 0x48;
+pub const I32_LT_U: u8 = 0x49;
+pub const I32_GT_S: u8 = 0x4A;
+pub const I32_GT_U: u8 = 0x4B;
+pub const I32_LE_S: u8 = 0x4C;
+pub const I32_LE_U: u8 = 0x4D;
+pub const I32_GE_S: u8 = 0x4E;
+pub const I32_GE_U: u8 = 0x4F;
+pub const I64_EQZ: u8 = 0x50;
+pub const I64_EQ: u8 = 0x51;
+pub const I64_NE: u8 = 0x52;
+pub const I64_LT_S: u8 = 0x53;
+pub const I64_LT_U: u8 = 0x54;
+pub const I64_GT_S: u8 = 0x55;
+pub const I64_GT_U: u8 = 0x56;
+pub const I64_LE_S: u8 = 0x57;
+pub const I64_LE_U: u8 = 0x58;
+pub const I64_GE_S: u8 = 0x59;
+pub const I64_GE_U: u8 = 0x5A;
+pub const F32_EQ: u8 = 0x5B;
+pub const F32_NE: u8 = 0x5C;
+pub const F32_LT: u8 = 0x5D;
+pub const F32_GT: u8 = 0x5E;
+pub const F32_LE: u8 = 0x5F;
+pub const F32_GE: u8 = 0x60;
+pub const F64_EQ: u8 = 0x61;
+pub const F64_NE: u8 = 0x62;
+pub const F64_LT: u8 = 0x63;
+pub const F64_GT: u8 = 0x64;
+pub const F64_LE: u8 = 0x65;
+pub const F64_GE: u8 = 0x66;
+pub const I32_CLZ: u8 = 0x67;
+pub const I32_CTZ: u8 = 0x68;
+pub const I32_POP_CNT: u8 = 0x69;
+pub const I32_ADD: u8 = 0x6A;
+pub const I32_SUB: u8 = 0x6B;
+pub const I32_MUL: u8 = 0x6C;
+pub const I32_DIV_S: u8 = 0x6D;
+pub const I32_DIV_U: u8 = 0x6E;
+pub const I32_REM_S: u8 = 0x6F;
+pub const I32_REM_U: u8 = 0x70;
+pub const I32_AND: u8 = 0x71;
+pub const I32_OR: u8 = 0x72;
+pub const I32_XOR: u8 = 0x73;
+pub const I32_SHL: u8 = 0x74;
+pub const I32_SHR_S: u8 = 0x75;
+pub const I32_SHR_U: u8 = 0x76;
+pub const I32_ROTL: u8 = 0x77;
+pub const I32_ROTR: u8 = 0x78;
+pub const I64_CLZ: u8 = 0x79;
+pub const I64_CTZ: u8 = 0x7A;
+pub const I64_POP_CNT: u8 = 0x7B;
+pub const I64_ADD: u8 = 0x7C;
+pub const I64_SUB: u8 = 0x7D;
+pub const I64_MUL: u8 = 0x7E;
+pub const I64_DIV_S: u8 = 0x7F;
+pub const I64_DIV_U: u8 = 0x80;
+pub const I64_REM_S: u8 = 0x81;
+pub const I64_REM_U: u8 = 0x82;
+pub const I64_AND: u8 = 0x83;
+pub const I64_OR: u8 = 0x84;
+pub const I64_XOR: u8 = 0x85;
+pub const I64_SHL: u8 = 0x86;
+pub const I64_SHR_S: u8 = 0x87;
+pub const I64_SHR_U: u8 = 0x88;
+pub const I64_ROTL: u8 = 0x89;
+pub const I64_ROTR: u8 = 0x8A;
+pub const F32_ABS: u8 = 0x8B;
+pub const F32_NEG: u8 = 0x8C;
+pub const F32_CEIL: u8 = 0x8D;
+pub const F32_FLOOR: u8 = 0x8E;
+pub const F32_TRUNC: u8 = 0x8F;
+pub const F32_NEAREST: u8 = 0x90;
+pub const F32_SQRT: u8 = 0x91;
+pub const F32_ADD: u8 = 0x92;
+pub const F32_SUB: u8 = 0x93;
+pub const F32_MUL: u8 = 0x94;
+pub const F32_DIV: u8 = 0x95;
+pub const F32_MIN: u8 = 0x96;
+pub const F32_MAX: u8 = 0x97;
+pub const F32_COPY_SIGN: u8 = 0x98;
+pub const F64_ABS: u8 = 0x99;
+pub const F64_NEG: u8 = 0x9A;
+pub const F64_CEIL: u8 = 0x9B;
+pub const F64_FLOOR: u8 = 0x9C;
+pub const F64_TRUNC: u8 = 0x9D;
+pub const F64_NEAREST: u8 = 0x9E;
+pub const F64_SQRT: u8 = 0x9F;
+pub const F64_ADD: u8 = 0xA0;
+pub const F64_SUB: u8 = 0xA1;
+pub const F64_MUL: u8 = 0xA2;
+pub const F64_DIV: u8 = 0xA3;
+pub const F64_MIN: u8 = 0xA4;
+pub const F64_MAX: u8 = 0xA5;
+pub const F64_COPY_SIGN: u8 = 0xA6;
+pub const I32_WRAP_I64: u8 = 0xA7;
+pub const I32_TRUNC_F32_S: u8 = 0xA8;
+pub const I32_TRUNC_F32_U: u8 = 0xA9;
+pub const I32_TRUNC_F64_S: u8 = 0xAA;
+pub const I32_TRUNC_F64_U: u8 = 0xAB;
+pub const I64_EXTEND_I32_S: u8 = 0xAC;
+pub const I64_EXTEND_I32_U: u8 = 0xAD;
+pub const I64_TRUNC_F32_S: u8 = 0xAE;
+pub const I64_TRUNC_F32_U: u8 = 0xAF;
+pub const I64_TRUNC_F64_S: u8 = 0xB0;
+pub const I64_TRUNC_F64_U: u8 = 0xB1;
+pub const F32_CONVERT_I32_S: u8 = 0xB2;
+pub const F32_CONVERT_I32_U: u8 = 0xB3;
+pub const F32_CONVERT_I64_S: u8 = 0xB4;
+pub const F32_CONVERT_I64_U: u8 = 0xB5;
+pub const F32_DEMOTE_F64: u8 = 0xB6;
+pub const F64_CONVERT_I32_S: u8 = 0xB7;
+pub const F64_CONVERT_I32_U: u8 = 0xB8;
+pub const F64_CONVERT_I64_S: u8 = 0xB9;
+pub const F64_CONVERT_I64_U: u8 = 0xBA;
+pub const F64_PROMOTE_F32: u8 = 0xBB;
+pub const I32_REINTERPRET_F32: u8 = 0xBC;
+pub const I64_REINTERPRET_F64: u8 = 0xBD;
+pub const F32_REINTERPRET_I32: u8 = 0xBE;
+pub const F64_REINTERPRET_I64: u8 = 0xBF;
+pub const I32_EXTEND8_S: u8 = 0xC0;
+pub const I32_EXTEND16_S: u8 = 0xC1;
+pub const I64_EXTEND8_S: u8 = 0xC2;
+pub const I64_EXTEND16_S: u8 = 0xC3;
+pub const I64_EXTEND32_S: u8 = 0xC4;
+pub const TRUNC_SAT: u8 = 0xFC;
 
 /// # WebAssembly 指令
 ///
 /// <https://webassembly.github.io/spec/core/syntax/instructions.html>
+#[derive(Debug, PartialEq, Clone)]
 pub enum Instruction {
-    // 控制指令
     Unreachable,
     Nop,
     Block {
         result: Option<ValueType>,
-        body: Vec<Instruction>,
+        body: Rc<Vec<Instruction>>,
     },
     Loop {
         result: Option<ValueType>,
-        body: Vec<Instruction>,
+        body: Rc<Vec<Instruction>>,
     },
     If {
         result: Option<ValueType>,
-        then_body: Vec<Instruction>,
-        else_body: Vec<Instruction>,
+        consequet_body: Rc<Vec<Instruction>>,
+        alternate_body: Rc<Vec<Instruction>>,
     },
+    Else,
+    End,
     Br(u32),
     BrIf(u32),
     BrTable {
-        labels: Vec<u32>,
-        default_label: u32,
+        relative_depths: Vec<u32>,
+        default_relative_depth: u32,
     },
     Return,
     Call(u32),
-    CallIndirect(u32), // 参数 0：目标函数的类型索引；参数 1：表索引，因为只能是 0，所以省略了此参数
+    CallIndirect(u32),
 
-    // 参数（操作数，parametric）指令
     Drop,
     Select,
 
-    // 变量指令
     LocalGet(u32),
     LocalSet(u32),
     LocalTee(u32),
     GlobalGet(u32),
     GlobalSet(u32),
 
-    // 内存指令
     I32Load(MemoryArg),
     I64Load(MemoryArg),
     F32Load(MemoryArg),
@@ -71,16 +253,14 @@ pub enum Instruction {
     I64Store8(MemoryArg),
     I64Store16(MemoryArg),
     I64Store32(MemoryArg),
-    MemoryArgorySize, // 参数 0：目标内存块的索引，因为只能是 0，所以省略了此参数
-    MemoryArgoryGrow, // 参数 0：目标内存块的索引，因为只能是 0，所以省略了此参数
+    MemorySize,
+    MemoryGrow,
 
-    // 数值指令
     I32Const(i32),
     I64Const(i64),
     F32Const(f32),
     F64Const(f64),
 
-    // 数值指令——比较 i32
     I32Eqz,
     I32Eq,
     I32Ne,
@@ -93,7 +273,6 @@ pub enum Instruction {
     I32GeS,
     I32GeU,
 
-    // 数值指令——比较 i64
     I64Eqz,
     I64Eq,
     I64Ne,
@@ -106,7 +285,6 @@ pub enum Instruction {
     I64GeS,
     I64GeU,
 
-    // 数值指令——比较 f32
     F32Eq,
     F32Ne,
     F32Lt,
@@ -114,7 +292,6 @@ pub enum Instruction {
     F32Le,
     F32Ge,
 
-    // 数值指令——比较 f64
     F64Eq,
     F64Ne,
     F64Lt,
@@ -122,12 +299,10 @@ pub enum Instruction {
     F64Le,
     F64Ge,
 
-    // 数值指令——一元运算 i32
     I32Clz,
     I32Ctz,
-    I32Popcnt,
+    I32PopCnt,
 
-    // 数值指令——二元运算 i32
     I32Add,
     I32Sub,
     I32Mul,
@@ -144,12 +319,10 @@ pub enum Instruction {
     I32Rotl,
     I32Rotr,
 
-    // 数值指令——一元运算 i64
     I64Clz,
     I64Ctz,
-    I64Popcnt,
+    I64PopCnt,
 
-    // 数值指令——二元运算 i64
     I64Add,
     I64Sub,
     I64Mul,
@@ -166,7 +339,6 @@ pub enum Instruction {
     I64Rotl,
     I64Rotr,
 
-    // 数值指令——一元运算 f32
     F32Abs,
     F32Neg,
     F32Ceil,
@@ -175,16 +347,14 @@ pub enum Instruction {
     F32Nearest,
     F32Sqrt,
 
-    // 数值指令——二元运算 f32
     F32Add,
     F32Sub,
     F32Mul,
     F32Div,
     F32Min,
     F32Max,
-    F32Copysign,
+    F32CopySign,
 
-    // 数值指令——一元运算 f64
     F64Abs,
     F64Neg,
     F64Ceil,
@@ -193,16 +363,14 @@ pub enum Instruction {
     F64Nearest,
     F64Sqrt,
 
-    // 数值指令——二元运算 f64
     F64Add,
     F64Sub,
     F64Mul,
     F64Div,
     F64Min,
     F64Max,
-    F64Copysign,
+    F64CopySign,
 
-    // 转换指令
     I32WrapI64,
     I32TruncF32S,
     I32TruncF32U,
@@ -235,9 +403,10 @@ pub enum Instruction {
     I64Extend16S,
     I64Extend32S,
 
-    TruncSat(u32), // 参数 0：饱和截断的类型
+    TruncSat(u8),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct MemoryArg {
     pub align: u32,
     pub offset: u32,
