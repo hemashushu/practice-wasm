@@ -1467,7 +1467,7 @@ mod tests {
         //
         // 这里需要处理这种情况。
 
-        if path_buf.ends_with("engine") {
+        if path_buf.ends_with("parser") {
             path_buf.pop();
             path_buf.pop();
         }
