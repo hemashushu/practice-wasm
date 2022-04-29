@@ -18,6 +18,11 @@ pub enum ValueType {
     F64,
 }
 
+/// # 虚拟机内部运算使用的基本数据类型
+///
+/// 部分指令明确表明需要将整数解析为无符号整数（unsigned int）进行运算，
+/// 比如 `lt_u` 和 `gt_u` 等，而 `Value` 仅包含了有符号的整数，
+/// 所以进行无符号运算时，需要先转换在运算。
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Value {
     I32(i32),
