@@ -15,7 +15,7 @@ use crate::{instruction::Instruction, types::ValueType};
 /// 结构的详细文档参阅：
 /// <https://webassembly.github.io/spec/core/binary/modules.html>
 ///
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Module {
     /// 自定义项目列表，（section id 0）
     pub custom_items: Vec<CustomItem>,
@@ -69,7 +69,7 @@ pub struct Module {
 ///   数据的字节数，数据类型是 u32；
 /// - `{*}` 表示重复 0 次或多次，`{+}` 表示重复 1 次或多次，`{?}` 表示重复 0 次或 1 次。
 ///
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct CustomItem {
     pub name: String,
     pub data: Vec<u8>,
@@ -544,7 +544,7 @@ pub struct CodeItem {
 /// 局部变量信息组
 #[derive(Debug, PartialEq, Clone)]
 pub struct LocalGroup {
-    pub variable_count: u32,            // 变量的数量
+    pub variable_count: u32,   // 变量的数量
     pub value_type: ValueType, // 数据类型
 }
 

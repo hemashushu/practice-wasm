@@ -85,15 +85,18 @@ pub fn parse(source: &[u8]) -> Result<Module, ParseError> {
 /// module = magic_number:u32 + version:u32 + <section>
 fn parse_module(source: &[u8]) -> Result<Module, ParseError> {
     let mut remains = source;
-    let (mag, post_magic_number) = read_fixed_u32(remains)?;
-    if mag != MAGIC_NUMBER {
-        return Err(ParseError::Unsupported);
+    let (magic_number, post_magic_number) = read_fixed_u32(remains)?;
+    if magic_number != MAGIC_NUMBER {
+        return Err(ParseError::SyntaxError("invalid magic number".to_string()));
     }
     remains = post_magic_number;
 
-    let (ver, post_version) = read_fixed_u32(remains)?;
-    if ver != VERSION {
-        return Err(ParseError::Unsupported);
+    let (version, post_version) = read_fixed_u32(remains)?;
+    if version != VERSION {
+        return Err(ParseError::Unsupported(format!(
+            "unsupported version: {}",
+            version
+        )));
     }
     remains = post_version;
 
@@ -189,7 +192,12 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
                     module.data_items = data_items;
                     post_section
                 }
-                _ => return Err(ParseError::Unsupported),
+                _ => {
+                    return Err(ParseError::SyntaxError(format!(
+                        "invalid section id: {}",
+                        section_id
+                    )))
+                }
             }
         } else {
             break;
@@ -238,7 +246,9 @@ fn parse_function_type_section(source: &[u8]) -> Result<(Vec<FunctionType>, &[u8
 fn continue_parse_function_type(source: &[u8]) -> Result<(FunctionType, &[u8]), ParseError> {
     let (tag, post_tag) = read_byte(source)?;
     if tag != FUNCTION_TYPE_TAG {
-        return Err(ParseError::Unsupported);
+        return Err(ParseError::Unsupported(
+            "only type of function is supported".to_string(),
+        ));
     }
 
     let (param_types, post_param_types) = continue_parse_value_types(post_tag)?;
@@ -276,7 +286,10 @@ fn continue_parse_value_type(source: &[u8]) -> Result<(ValueType, &[u8]), ParseE
         VALUE_TYPE_TAG_F32 => ValueType::F32,
         VALUE_TYPE_TAG_F64 => ValueType::F64,
         _ => {
-            return Err(ParseError::SyntaxError);
+            return Err(ParseError::Unsupported(format!(
+                "unsupported value type: {}",
+                tag
+            )));
         }
     };
 
@@ -335,7 +348,10 @@ fn continue_parse_import_item(source: &[u8]) -> Result<(ImportItem, &[u8]), Pars
             ImportDescriptor::GlobalType(global_type)
         }
         _ => {
-            return Err(ParseError::Unsupported);
+            return Err(ParseError::Unsupported(format!(
+                "unsupported import kind: {}",
+                tag
+            )));
         }
     };
 
@@ -354,7 +370,9 @@ fn continue_parse_import_item(source: &[u8]) -> Result<(ImportItem, &[u8]), Pars
 fn continue_parse_table_type(source: &[u8]) -> Result<(TableType, &[u8]), ParseError> {
     let (tag, post_tag) = read_byte(source)?;
     if tag != TABLE_TYPE_TAG_FUNC_REF {
-        Err(ParseError::Unsupported)
+        Err(ParseError::Unsupported(
+            "only function reference is supported in the table".to_string(),
+        ))
     } else {
         let (limit, post_limit) = continue_parse_limit(post_tag)?;
         Ok((TableType { limit: limit }, post_limit))
@@ -371,23 +389,26 @@ fn continue_parse_memory_type(source: &[u8]) -> Result<(MemoryType, &[u8]), Pars
 /// mut = (0|1)                             // 0 表示不可变，1 表示可变
 fn continue_parse_global_type(source: &[u8]) -> Result<(GlobalType, &[u8]), ParseError> {
     let (value_type, post_value_type) = continue_parse_value_type(source)?;
-    let (mut_tag, post_mut_tag) = read_byte(post_value_type)?;
-    match mut_tag {
+    let (tag, post_tag) = read_byte(post_value_type)?;
+    match tag {
         GLOBAL_VARIABLE_TAG_IMMUTABLE => Ok((
             GlobalType {
                 value_type: value_type,
                 mutable: false,
             },
-            post_mut_tag,
+            post_tag,
         )),
         GLOBAL_VARIABLE_TAG_MUTABLE => Ok((
             GlobalType {
                 value_type: value_type,
                 mutable: true,
             },
-            post_mut_tag,
+            post_tag,
         )),
-        _ => Err(ParseError::SyntaxError),
+        _ => Err(ParseError::SyntaxError(format!(
+            "invalid global mutable tag: {}",
+            tag
+        ))),
     }
 }
 
@@ -407,7 +428,10 @@ fn continue_parse_limit(source: &[u8]) -> Result<(Limit, &[u8]), ParseError> {
             Ok((Limit::Range(min, max), post_max))
         }
         0 => Ok((Limit::AtLeast(min), post_min)),
-        _ => Err(ParseError::SyntaxError),
+        _ => Err(ParseError::SyntaxError(format!(
+            "invalid limit tag: {}",
+            tag
+        ))),
     }
 }
 
@@ -431,7 +455,9 @@ fn parse_table_section(source: &[u8]) -> Result<(Vec<TableType>, &[u8]), ParseEr
     let (item_count, post_item_count) = read_u32(post_section_length)?;
 
     if item_count > 1 {
-        return Err(ParseError::Unsupported);
+        return Err(ParseError::Unsupported(
+            "only one table is supported".to_string(),
+        ));
     }
 
     let mut remains = post_item_count;
@@ -455,7 +481,9 @@ fn parse_memory_section(source: &[u8]) -> Result<(Vec<MemoryType>, &[u8]), Parse
     let (item_count, post_item_count) = read_u32(post_section_length)?;
 
     if item_count > 1 {
-        return Err(ParseError::Unsupported);
+        return Err(ParseError::Unsupported(
+            "only one memory block is supported".to_string(),
+        ));
     }
 
     let mut remains = post_item_count;
@@ -994,7 +1022,10 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
             Instruction::TruncSat(sub_opcode)
         }
         _ => {
-            return Err(ParseError::Unsupported);
+            return Err(ParseError::Unsupported(format!(
+                "unsupported instruction opcode: {}",
+                opcode
+            )));
         }
     };
 
@@ -1012,11 +1043,36 @@ fn get_value_type_by_block_type(block_type: i32) -> Result<Option<ValueType>, Pa
         BLOCK_TYPE_F32 => Ok(Some(ValueType::F32)),
         BLOCK_TYPE_F64 => Ok(Some(ValueType::F64)),
         BLOCK_TYPE_EMPTY => Ok(None),
-        _ => Err(ParseError::Unsupported),
+        _ => Err(ParseError::Unsupported(format!(
+            "unsupported block type: {}",
+            block_type
+        ))),
     }
 }
 
+/// 解析内存数据加载和存储指令的参数
+///
+/// 参数有两个：
+///
+/// 第一个是 `align`，即对齐方式，数据类型是整数，单位是 `字节`，
+/// 二进制格式里 `align` 存储的是 2 的对数，比如：
+/// 1 表示对齐 2^1 个字节，
+/// 2 表示对齐 2^2 个字节。
+///
+/// 注意文本格式里就是字节数，比如文本格式的 8 对应二进制格式的 3 (2^3)。
+///
+/// 第二个是 `offset`，即偏移值，单位是 `字节`。
+///
+/// 二进制格式：
+///
 /// memory_load_and_store_argument = align:u32 + offset:u32
+///
+/// 文本格式：
+/// (i32.load offset=200 align=8) ;; 注意先写 offset 后写 align
+///
+/// 在文本格式里缺省 `align` 值时，
+/// 对于 i32.load/i32.store，默认对齐 4 个字节
+/// 对于 i64.load/i64.store，默认对齐 8 个字节
 fn continue_parse_memory_load_and_store_argument(
     source: &[u8],
 ) -> Result<(MemoryArg, &[u8]), ParseError> {
@@ -1061,7 +1117,10 @@ fn continue_parse_export_item(source: &[u8]) -> Result<(ExportItem, &[u8]), Pars
         EXPORT_TAG_MEM => ExportDescriptor::MemoryBlockIndex(index),
         EXPORT_TAG_GLOBAL => ExportDescriptor::GlobalItemIndex(index),
         _ => {
-            return Err(ParseError::Unsupported);
+            return Err(ParseError::Unsupported(format!(
+                "unsupported export kind: {}",
+                tag
+            )));
         }
     };
 
@@ -1078,12 +1137,9 @@ fn continue_parse_export_item(source: &[u8]) -> Result<(ExportItem, &[u8]), Pars
 ///
 /// start_section: 0x08 + content_length:u32 + function_index
 fn parse_start_function_section(source: &[u8]) -> Result<(u32, &[u8]), ParseError> {
-    let (section_length, post_section_length) = read_u32(source)?;
+    let (_, post_section_length) = read_u32(source)?;
     let (function_index, post_function_index) = read_u32(post_section_length)?;
-    Ok((
-        function_index as u32,
-        &post_function_index[section_length as usize..],
-    ))
+    Ok((function_index as u32, post_function_index))
 }
 
 /// # 解析元素段
@@ -1226,11 +1282,11 @@ pub enum ParseError {
     //Something(&'static str),
     /// 语法错误
     /// 比如不符合规范的数值
-    SyntaxError,
+    SyntaxError(String), //&'static str),
 
     /// 不支持的功能
     /// 比如读取索引值为非 0 的内存块或者表
-    Unsupported,
+    Unsupported(String), //&'static str),
 
     /// leb128 编码或者 UTF-8 编码错误
     DecodingError,
@@ -1365,7 +1421,7 @@ fn read_string(source: &[u8]) -> Result<(String, &[u8]), ParseError> {
 fn consume_zero(source: &[u8]) -> Result<&[u8], ParseError> {
     let (number, remains) = read_u32(source)?;
     if number != 0 {
-        Err(ParseError::Unsupported)
+        Err(ParseError::Unsupported("expected number zero".to_string()))
     } else {
         Ok(remains)
     }
@@ -1373,9 +1429,20 @@ fn consume_zero(source: &[u8]) -> Result<&[u8], ParseError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs};
+    use std::{env, fs, rc::Rc};
+
+    use crate::{
+        ast::{
+            CodeItem, DataItem, ElementItem, ExportDescriptor, ExportItem, FunctionType,
+            GlobalItem, GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType,
+            Module, TableType,
+        },
+        instruction::{Instruction, MemoryArg},
+        types::ValueType,
+    };
 
     use super::parse;
+    use pretty_assertions::{assert_eq, assert_ne};
 
     // 辅助方法
 
@@ -1403,12 +1470,254 @@ mod tests {
 
     #[test]
     fn test_parse_module_sections() {
-        // let s0 = get_test_resource_file_binary("test-section-simple.wasm");
-        // let m0 = parse(&s0).unwrap();
-        // println!("{:#?}", m0);
+        // 测试 test-section-1.wasm
+        let s0 = get_test_resource_file_binary("test-section-1.wasm");
+        let m0 = parse(&s0).unwrap();
+        let e0 = Module {
+            custom_items: vec![],
 
-        let s1 = get_test_resource_file_binary("test-section-class.wasm");
+            function_types: vec![FunctionType {
+                params: vec![],
+                results: vec![ValueType::I32],
+            }],
+            import_items: vec![ImportItem {
+                module_name: "env".to_string(),
+                name: "__linear_memory".to_string(),
+                import_descriptor: ImportDescriptor::MemoryType(MemoryType {
+                    limit: Limit::AtLeast(0),
+                }),
+            }],
+            function_list: vec![0],
+            table_types: vec![],
+            memory_blocks: vec![],
+            global_items: vec![],
+            export_items: vec![],
+            start_function_index: None,
+            element_items: vec![],
+            code_items: vec![CodeItem {
+                local_groups: vec![LocalGroup {
+                    variable_count: 1,
+                    value_type: ValueType::I32,
+                }],
+                expression: Rc::new(vec![
+                    Instruction::I32Const(100),
+                    Instruction::LocalSet(0),
+                    Instruction::LocalGet(0),
+                    Instruction::Return,
+                    Instruction::End,
+                ]),
+            }],
+            data_items: vec![],
+        };
+        assert_eq!(e0, m0);
+
+        // 测试 test-section-2.wasm
+        let s1 = get_test_resource_file_binary("test-section-2.wasm");
         let m1 = parse(&s1).unwrap();
-        println!("{:#?}", m1);
+        let e1 = Module {
+            custom_items: vec![],
+
+            function_types: vec![
+                FunctionType {
+                    params: vec![ValueType::I32, ValueType::I32],
+                    results: vec![ValueType::I32],
+                },
+                FunctionType {
+                    params: vec![ValueType::I32],
+                    results: vec![ValueType::I32],
+                },
+                FunctionType {
+                    params: vec![],
+                    results: vec![],
+                },
+            ],
+            import_items: vec![],
+            function_list: vec![0, 0, 1, 2],
+            table_types: vec![],
+            memory_blocks: vec![MemoryType {
+                limit: Limit::AtLeast(16),
+            }],
+            global_items: vec![
+                GlobalItem {
+                    global_type: GlobalType {
+                        mutable: true,
+                        value_type: ValueType::I32,
+                    },
+                    init_expression: vec![Instruction::I32Const(1048576), Instruction::End],
+                },
+                GlobalItem {
+                    global_type: GlobalType {
+                        mutable: false,
+                        value_type: ValueType::I32,
+                    },
+                    init_expression: vec![Instruction::I32Const(1048576), Instruction::End],
+                },
+                GlobalItem {
+                    global_type: GlobalType {
+                        mutable: false,
+                        value_type: ValueType::I32,
+                    },
+                    init_expression: vec![Instruction::I32Const(1048576), Instruction::End],
+                },
+            ],
+            export_items: vec![
+                ExportItem {
+                    name: "memory".to_string(),
+                    export_descriptor: ExportDescriptor::MemoryBlockIndex(0),
+                },
+                ExportItem {
+                    name: "add".to_string(),
+                    export_descriptor: ExportDescriptor::FunctionIndex(0),
+                },
+                ExportItem {
+                    name: "sub".to_string(),
+                    export_descriptor: ExportDescriptor::FunctionIndex(1),
+                },
+                ExportItem {
+                    name: "inc".to_string(),
+                    export_descriptor: ExportDescriptor::FunctionIndex(2),
+                },
+                ExportItem {
+                    name: "show".to_string(),
+                    export_descriptor: ExportDescriptor::FunctionIndex(3),
+                },
+                ExportItem {
+                    name: "__data_end".to_string(),
+                    export_descriptor: ExportDescriptor::GlobalItemIndex(1),
+                },
+                ExportItem {
+                    name: "__heap_base".to_string(),
+                    export_descriptor: ExportDescriptor::GlobalItemIndex(2),
+                },
+            ],
+            start_function_index: None,
+            element_items: vec![],
+            code_items: vec![
+                CodeItem {
+                    local_groups: vec![],
+                    expression: Rc::new(vec![
+                        Instruction::LocalGet(1),
+                        Instruction::LocalGet(0),
+                        Instruction::I32Add,
+                        Instruction::End,
+                    ]),
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    expression: Rc::new(vec![
+                        Instruction::LocalGet(0),
+                        Instruction::LocalGet(1),
+                        Instruction::I32Sub,
+                        Instruction::End,
+                    ]),
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    expression: Rc::new(vec![
+                        Instruction::LocalGet(0),
+                        Instruction::I32Const(1),
+                        Instruction::I32Add,
+                        Instruction::End,
+                    ]),
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    expression: Rc::new(vec![Instruction::End]),
+                },
+            ],
+            data_items: vec![],
+        };
+        assert_eq!(e1, m1);
+
+        // 测试 test-section-3.wasm
+        let s2 = get_test_resource_file_binary("test-section-3.wasm");
+        let m2 = parse(&s2).unwrap();
+        let e2 = Module {
+            custom_items: vec![],
+
+            function_types: vec![
+                FunctionType {
+                    params: vec![],
+                    results: vec![ValueType::I32],
+                },
+                FunctionType {
+                    params: vec![],
+                    results: vec![],
+                },
+            ],
+            import_items: vec![
+                ImportItem {
+                    module_name: "env".to_string(),
+                    name: "putc".to_string(),
+                    import_descriptor: ImportDescriptor::FunctionTypeIndex(0),
+                },
+                ImportItem {
+                    module_name: "env".to_string(),
+                    name: "print".to_string(),
+                    import_descriptor: ImportDescriptor::FunctionTypeIndex(0),
+                },
+            ],
+            function_list: vec![1, 1],
+            table_types: vec![TableType {
+                limit: Limit::Range(2, 4),
+            }],
+            memory_blocks: vec![MemoryType {
+                limit: Limit::Range(1, 8),
+            }],
+            global_items: vec![],
+            export_items: vec![],
+            start_function_index: Some(3),
+            element_items: vec![
+                ElementItem {
+                    table_index: 0,
+                    offset_expression: vec![Instruction::I32Const(1), Instruction::End],
+                    function_indices: vec![2],
+                },
+                ElementItem {
+                    table_index: 0,
+                    offset_expression: vec![Instruction::I32Const(3), Instruction::End],
+                    function_indices: vec![3],
+                },
+            ],
+            code_items: vec![
+                CodeItem {
+                    local_groups: vec![],
+                    expression: Rc::new(vec![
+                        Instruction::I32Load(MemoryArg {
+                            align: 2,
+                            offset: 100,
+                        }),
+                        Instruction::End,
+                    ]),
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    expression: Rc::new(vec![
+                        Instruction::I32Load(MemoryArg {
+                            align: 3,
+                            offset: 200,
+                        }),
+                        Instruction::I64Load(MemoryArg {
+                            align: 3,
+                            offset: 400,
+                        }),
+                        Instruction::End,
+                    ]),
+                },
+            ],
+            data_items: vec![
+                DataItem {
+                    memory_index: 0,
+                    offset_expression: vec![Instruction::I32Const(100), Instruction::End],
+                    data: vec![104, 101, 108, 108, 111],
+                },
+                DataItem {
+                    memory_index: 0,
+                    offset_expression: vec![Instruction::I32Const(200), Instruction::End],
+                    data: vec![80, 96, 112],
+                },
+            ],
+        };
+        assert_eq!(e2, m2);
     }
 }
