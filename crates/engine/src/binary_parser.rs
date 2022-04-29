@@ -852,12 +852,12 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
         instruction::MEMORY_SIZE => {
             // memory.size = opcode_memory.size + memory_block_index:u32
             remains = consume_zero(remains)?;
-            Instruction::MemorySize
+            Instruction::MemorySize(0)
         }
         instruction::MEMORY_GROW => {
             // memory.grow = opcode_memory.grow + memory_block_index:u32
             remains = consume_zero(remains)?;
-            Instruction::MemoryGrow
+            Instruction::MemoryGrow(0)
         }
 
         // 常量指令
@@ -1016,8 +1016,16 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
         instruction::I64_EXTEND16_S => Instruction::I64Extend16S,
         instruction::I64_EXTEND32_S => Instruction::I64Extend32S,
         instruction::TRUNC_SAT => {
-            // trunc_sat = opcode_trunc_sat_part1:byte + opcode_trunc_sat_part2:byte
+            // trunc_sat = opcode_trunc_sat:byte + opcode_trunc_sat_sub_opcode:byte
             let (sub_opcode, post_sub_opcode) = read_byte(remains)?;
+
+            if sub_opcode > instruction::I64_TRUNC_SAT_F64_U {
+                return Err(ParseError::Unsupported(format!(
+                    "unsupported trunc_sat sub-opcode: {}",
+                    sub_opcode
+                )));
+            }
+
             remains = post_sub_opcode;
             Instruction::TruncSat(sub_opcode)
         }
@@ -1429,7 +1437,7 @@ fn consume_zero(source: &[u8]) -> Result<&[u8], ParseError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs, rc::Rc};
+    use std::{env, fs, rc::Rc, time::Instant};
 
     use crate::{
         ast::{
@@ -1437,7 +1445,7 @@ mod tests {
             GlobalItem, GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType,
             Module, TableType,
         },
-        instruction::{Instruction, MemoryArg},
+        instruction::{self, Instruction, MemoryArg},
         types::ValueType,
     };
 
@@ -1719,5 +1727,272 @@ mod tests {
             ],
         };
         assert_eq!(e2, m2);
+    }
+
+    #[test]
+    fn test_parse_instruction_const() {
+        let s0 = get_test_resource_file_binary("test-instruction-const.wasm");
+        let m0 = parse(&s0).unwrap();
+        assert_eq!(
+            m0.code_items[0],
+            CodeItem {
+                local_groups: vec![],
+                expression: Rc::new(vec![
+                    Instruction::F32Const(12.3),
+                    Instruction::F32Const(45.6),
+                    Instruction::F32Add,
+                    Instruction::TruncSat(instruction::I32_TRUNC_SAT_F32_S),
+                    Instruction::Drop,
+                    Instruction::End
+                ])
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_instruction_variable() {
+        let s0 = get_test_resource_file_binary("test-instruction-variable.wasm");
+        let m0 = parse(&s0).unwrap();
+
+        assert_eq!(
+            m0.global_items,
+            vec![
+                GlobalItem {
+                    global_type: GlobalType {
+                        value_type: ValueType::I32,
+                        mutable: true
+                    },
+                    init_expression: vec![Instruction::I32Const(1), Instruction::End]
+                },
+                GlobalItem {
+                    global_type: GlobalType {
+                        value_type: ValueType::I32,
+                        mutable: true
+                    },
+                    init_expression: vec![Instruction::I32Const(2), Instruction::End]
+                }
+            ]
+        );
+
+        assert_eq!(
+            m0.function_types,
+            vec![FunctionType {
+                params: vec![ValueType::I32, ValueType::I32],
+                results: vec![]
+            }]
+        );
+
+        assert_eq!(
+            m0.code_items[0],
+            CodeItem {
+                local_groups: vec![
+                    LocalGroup {
+                        value_type: ValueType::I32,
+                        variable_count: 2
+                    },
+                    LocalGroup {
+                        value_type: ValueType::I64,
+                        variable_count: 2
+                    },
+                ],
+                expression: Rc::new(vec![
+                    Instruction::GlobalGet(0),
+                    Instruction::GlobalSet(1),
+                    Instruction::LocalGet(0),
+                    Instruction::LocalSet(1),
+                    Instruction::End
+                ])
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_instruction_memory() {
+        let s0 = get_test_resource_file_binary("test-instruction-memory.wasm");
+        let m0 = parse(&s0).unwrap();
+
+        assert_eq!(
+            m0.memory_blocks,
+            vec![MemoryType {
+                limit: Limit::Range(1, 8)
+            }]
+        );
+
+        assert_eq!(
+            m0.data_items,
+            vec![DataItem {
+                memory_index: 0,
+                offset_expression: vec![Instruction::I32Const(100), Instruction::End],
+                data: vec!['h' as u8, 'e' as u8, 'l' as u8, 'l' as u8, 'o' as u8]
+            }]
+        );
+
+        assert_eq!(
+            m0.code_items[0],
+            CodeItem {
+                local_groups: vec![],
+                expression: Rc::new(vec![
+                    Instruction::I32Const(1),
+                    Instruction::I32Const(2),
+                    Instruction::I32Load(MemoryArg {
+                        align: 2,
+                        offset: 100
+                    }),
+                    Instruction::I32Store(MemoryArg {
+                        align: 2,
+                        offset: 100
+                    }),
+                    Instruction::MemorySize(0),
+                    Instruction::Drop,
+                    Instruction::I32Const(4),
+                    Instruction::MemoryGrow(0),
+                    Instruction::Drop,
+                    Instruction::End
+                ])
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_instruction_flow_control() {
+        let s0 = get_test_resource_file_binary("test-instruction-flow-control.wasm");
+        let m0 = parse(&s0).unwrap();
+
+        assert_eq!(
+            m0.code_items[0],
+            CodeItem {
+                local_groups: vec![],
+                expression: Rc::new(vec![
+                    Instruction::Block {
+                        result: Some(ValueType::I32),
+                        body: Rc::new(vec![
+                            Instruction::I32Const(1),
+                            Instruction::Loop {
+                                result: Some(ValueType::I32),
+                                body: Rc::new(vec![
+                                    Instruction::I32Const(2),
+                                    Instruction::If {
+                                        result: Some(ValueType::I32),
+                                        consequet_body: Rc::new(vec![
+                                            Instruction::I32Const(3),
+                                            Instruction::Else
+                                        ]),
+                                        alternate_body: Rc::new(vec![
+                                            Instruction::I32Const(4),
+                                            Instruction::End
+                                        ])
+                                    },
+                                    Instruction::End
+                                ])
+                            },
+                            Instruction::End
+                        ])
+                    },
+                    Instruction::Drop,
+                    Instruction::End
+                ])
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_instruction_call() {
+        let s0 = get_test_resource_file_binary("test-instruction-call.wasm");
+        let m0 = parse(&s0).unwrap();
+
+        assert_eq!(
+            m0.function_types,
+            vec![FunctionType {
+                params: vec![],
+                results: vec![]
+            }]
+        );
+
+        assert_eq!(m0.function_list, vec![0, 0]);
+
+        assert_eq!(
+            m0.table_types,
+            vec![TableType {
+                limit: Limit::Range(3, 3)
+            }]
+        );
+
+        assert_eq!(
+            m0.element_items,
+            vec![ElementItem {
+                table_index: 0,
+                offset_expression: vec![Instruction::I32Const(0), Instruction::End],
+                function_indices: vec![1, 1, 1]
+            }]
+        );
+
+        assert_eq!(
+            m0.code_items,
+            vec![
+                CodeItem {
+                    local_groups: vec![],
+                    expression: Rc::new(vec![
+                        Instruction::Call(1),
+                        Instruction::I32Const(2),
+                        Instruction::CallIndirect(0),
+                        Instruction::End
+                    ])
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    expression: Rc::new(vec![Instruction::I32Const(100), Instruction::End])
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_instruction_branch() {
+        let s0 = get_test_resource_file_binary("test-instruction-branch.wasm");
+        let m0 = parse(&s0).unwrap();
+        assert_eq!(
+            m0.code_items[0],
+            CodeItem {
+                local_groups: vec![],
+                expression: Rc::new(vec![
+                    Instruction::Block {
+                        result: None,
+                        body: Rc::new(vec![
+                            Instruction::I32Const(100),
+                            Instruction::Br(0),
+                            Instruction::I32Const(101),
+                            Instruction::End
+                        ])
+                    },
+                    Instruction::Loop {
+                        result: None,
+                        body: Rc::new(vec![
+                            Instruction::I32Const(200),
+                            Instruction::Br(0),
+                            Instruction::I32Const(201),
+                            Instruction::End
+                        ])
+                    },
+                    Instruction::I32Const(300),
+                    Instruction::I32Eqz,
+                    Instruction::If {
+                        result: None,
+                        consequet_body: Rc::new(vec![
+                            Instruction::I32Const(400),
+                            Instruction::Br(0),
+                            Instruction::I32Const(401),
+                            Instruction::Else
+                        ]),
+                        alternate_body: Rc::new(vec![
+                            Instruction::I32Const(500),
+                            Instruction::Br(0),
+                            Instruction::I32Const(501),
+                            Instruction::End
+                        ]),
+                    },
+                    Instruction::End
+                ])
+            }
+        );
     }
 }

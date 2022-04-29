@@ -189,6 +189,18 @@ pub const I64_EXTEND16_S: u8 = 0xC3;
 pub const I64_EXTEND32_S: u8 = 0xC4;
 pub const TRUNC_SAT: u8 = 0xFC;
 
+// `饱和截断` 次操作码
+// `饱和截断` 指令由一个主操作码 `0xFC` 和一个次操作码（byte 类型）组成
+
+pub const I32_TRUNC_SAT_F32_S: u8 = 0;
+pub const I32_TRUNC_SAT_F32_U: u8 = 1;
+pub const I32_TRUNC_SAT_F64_S: u8 = 2;
+pub const I32_TRUNC_SAT_F64_U: u8 = 3;
+pub const I64_TRUNC_SAT_F32_S: u8 = 4;
+pub const I64_TRUNC_SAT_F32_U: u8 = 5;
+pub const I64_TRUNC_SAT_F64_S: u8 = 6;
+pub const I64_TRUNC_SAT_F64_U: u8 = 7;
+
 /// # WebAssembly 指令
 ///
 /// <https://webassembly.github.io/spec/core/syntax/instructions.html>
@@ -211,15 +223,15 @@ pub enum Instruction {
     },
     Else,
     End,
-    Br(u32),
-    BrIf(u32),
+    Br(u32),        // relative deepth
+    BrIf(u32),      // relative deepth
     BrTable {
         relative_depths: Vec<u32>,
         default_relative_depth: u32,
     },
     Return,
-    Call(u32),
-    CallIndirect(u32),
+    Call(u32),          // function index
+    CallIndirect(u32),  // function index
 
     Drop,
     Select,
@@ -253,8 +265,8 @@ pub enum Instruction {
     I64Store8(MemoryArg),
     I64Store16(MemoryArg),
     I64Store32(MemoryArg),
-    MemorySize,
-    MemoryGrow,
+    MemorySize(u32), // memory block index
+    MemoryGrow(u32), // memory block index
 
     I32Const(i32),
     I64Const(i64),
