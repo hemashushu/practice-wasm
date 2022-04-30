@@ -1467,11 +1467,13 @@ mod tests {
         //
         // 这里需要处理这种情况。
 
-        if path_buf.ends_with("parser") {
-            path_buf.pop();
-            path_buf.pop();
+        if !path_buf.ends_with("parser") {
+            // path_buf.pop();
+            // path_buf.pop();
+            path_buf.push("crates");
+            path_buf.push("parser");
         }
-        let fullname_buf = path_buf.join("test/resources/parser").join(filename);
+        let fullname_buf = path_buf.join("resources").join(filename);
         let fullname = fullname_buf.to_str().unwrap();
         fs::read(fullname).expect(&format!("failed to read the specified file: {}", fullname))
     }

@@ -5,5 +5,5 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 pub mod instance;
-pub mod operand_stack;
-pub mod control_stack;
+pub mod vm_operand_stack;
+pub mod vm_control_stack;

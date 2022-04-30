@@ -6,6 +6,11 @@
 
 use anvm_parser::types::Value;
 
+/// 模块的接口
+///
+/// 在运行 WebAssembly 应用程序时，一个 Wasm 模块对应一个 Module 实例，
+/// 模块之间的链接和调用的实现基于 Module/Function/Table/Memory/Global 等接口，
+/// 注意本地函数（native function）也将会存储在一个拥有 Module 接口的模块当中。
 pub trait Module {
     fn get_export(&self, name: &str) -> Option<Export>;
     fn eval_func(&self, args: &[Value]) -> Result<Vec<Value>, EngineError>;
