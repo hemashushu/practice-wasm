@@ -276,6 +276,22 @@ pub enum Limit {
     AtLeast(u32),
 }
 
+impl Limit {
+    pub fn new(min: u32, option_max: Option<u32>) -> Self {
+        match option_max {
+            Some(max) => Limit::Range(min, max),
+            None => Limit::AtLeast(min),
+        }
+    }
+
+    pub fn get_min(&self) -> u32 {
+        match *self {
+            Limit::AtLeast(min) => min,
+            Limit::Range(min, _) => min
+        }
+    }
+}
+
 /// # 内存
 ///
 /// 内存项用于声明模块的内存块信息，内存块的初始化数据位于数据段里。

@@ -7,3 +7,6 @@
 pub mod instance;
 pub mod vm_operand_stack;
 pub mod vm_control_stack;
+pub mod vm_table;
+pub mod vm_memory;
+pub mod vm_global;

@@ -65,11 +65,9 @@ pub struct StackFrame {
 
     // 复制了一份当前过程的指令
     pub instructions: Rc<Vec<Instruction>>,
-    // instructions []binary.Instruction
 
     // base pointer 一个栈帧的开始的开始地址，对于函数调用来说，它是第 0 个实参的地址
     pub frame_pointer: usize,
-    //bp int // name: framePointer
 
     // operand pointer，用于表示（逻辑上）操作数栈的开始位置，
     // 这样便于调试时，快速列出局部变量和操作数这两种数据。
@@ -78,7 +76,6 @@ pub struct StackFrame {
     // program counter 程序计数器，即当前指令的地址 **在当前函数的指令序列** 里的索引（位置），
     // 初始值为 0
     pub program_counter: usize,
-    //pc int
 }
 
 #[derive(Debug, PartialEq, Clone)]

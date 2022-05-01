@@ -31,6 +31,17 @@ pub enum Value {
     F64(f64),
 }
 
+impl Value {
+    pub fn get_type(&self) -> ValueType {
+        match self {
+            Self::I32(_) => ValueType::I32,
+            Self::I64(_) => ValueType::I64,
+            Self::F32(_) => ValueType::F32,
+            Self::F64(_) => ValueType::F64,
+        }
+    }
+}
+
 /// WebAssembly 的索引使用 u32 类型。
 /// https://webassembly.github.io/spec/core/syntax/modules.html#indices
 ///
