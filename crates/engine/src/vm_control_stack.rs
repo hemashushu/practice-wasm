@@ -50,7 +50,7 @@ use anvm_parser::{ast::FunctionType, instruction::Instruction};
 pub struct ControlStack {
     // 这里的 `stack frame` 除了包括普通的 `call frame`，还包括
     // 函数内的诸如 block/loop/if 等控制块这种 `flow control frame`
-    pub frames: Vec<StackFrame>,
+    frames: Vec<StackFrame>,
 }
 
 // name: stackFrame

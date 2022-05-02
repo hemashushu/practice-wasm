@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::rc::Rc;
+use std::{rc::Rc, cell::RefCell};
 
 use anvm_parser::{types::Value, ast::{GlobalType, MemoryType, TableType, FunctionType}};
 
@@ -17,13 +17,14 @@ use anvm_parser::{types::Value, ast::{GlobalType, MemoryType, TableType, Functio
 /// 模块的实现思路受启发于张秀宏先生所著的《WebAssembly 原理与核心技术》，详细的原理
 /// 讲解可以参阅该本书。
 pub trait Module {
-    fn get_export(&self, name: &str) -> Option<Export>;
-    fn eval_func(&self, args: &[Value]) -> Result<Vec<Value>, EngineError>;
-    fn get_global_value(&self, name: &str) -> Option<Value>;
+    fn get_export(&self, name: &str) -> Result<Export, EngineError>;
+    fn eval_func(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError>;
+    fn get_global_value(&self, name: &str) -> Result<Value, EngineError>;
     fn set_global_value(&mut self, name: &str, value: Value) -> Result<(), EngineError>;
 }
 
 pub trait Function {
+    /// 从 vm 外部调用函数
     fn eval(&self, args: &[Value]) -> Result<Vec<Value>, EngineError>;
     fn get_function_type(&self) -> FunctionType;
 }
@@ -55,8 +56,8 @@ pub trait GlobalVariable {
 pub enum Export {
     Function(Rc<dyn Function>),
     Table(Rc<dyn Table>),
-    Memory(Rc<dyn Memory>),
-    GlobalVariable(Rc<dyn GlobalVariable>),
+    Memory(Rc<RefCell<dyn Memory>>),
+    GlobalVariable(Rc<RefCell<dyn GlobalVariable>>),
 }
 
 #[derive(Debug)]

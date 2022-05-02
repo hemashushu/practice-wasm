@@ -44,7 +44,7 @@ impl VMTable {
         let min = table_type.limit.get_min();
         VMTable {
             table_type: table_type,
-            elements: vec![None; min as usize] //Vec::<Option<Rc<dyn Function>>>::with_capacity(min as usize),
+            elements: vec![None; min as usize], //Vec::<Option<Rc<dyn Function>>>::with_capacity(min as usize),
         }
     }
 }
@@ -76,7 +76,10 @@ impl Table for VMTable {
             ));
         }
 
-        Ok(self.elements[index].clone())
+        match &self.elements[index] {
+            Some(r) => Ok(Some(Rc::clone(r))),
+            None => Ok(None),
+        }
     }
 
     fn set_element(&mut self, index: usize, func: Rc<dyn Function>) -> Result<(), EngineError> {

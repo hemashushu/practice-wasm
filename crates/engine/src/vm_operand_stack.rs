@@ -12,7 +12,7 @@ use anvm_parser::types::Value;
 /// 操作数栈除了用于实现数值运算（类似寄存器的任务），同时
 /// 也用于实现 `函数调用帧`（call frame）。
 pub struct OperandStack {
-    pub slots: Vec<Value>,
+    slots: Vec<Value>,
 }
 
 impl OperandStack {
@@ -21,7 +21,7 @@ impl OperandStack {
     /// 对于 bool 值的约定：
     /// 使用 i32 或者 i64 的 0 表示 false，
     /// 使用 1 表示 true。
-    fn push(&mut self, value: Value) {
+    pub fn push(&mut self, value: Value) {
         self.slots.push(value);
     }
 
@@ -30,7 +30,7 @@ impl OperandStack {
     /// 对于 bool 值的约定：
     /// 使用 i32 或者 i64 的 0 表示 false，
     /// 使用 1 表示 true。
-    fn pop(&mut self) -> Value {
+    pub fn pop(&mut self) -> Value {
         let option_value = self.slots.pop();
         if let Some(value) = option_value {
             value
@@ -40,7 +40,7 @@ impl OperandStack {
     }
 
     /// 查看最后一个操作数
-    fn peek(&self) -> Value {
+    pub fn peek(&self) -> Value {
         let option_value = self.slots.last();
         if let Some(value) = option_value {
             *value
@@ -52,29 +52,47 @@ impl OperandStack {
     /// 获取栈的总大小
     ///
     /// 相当于体系结构当中的 `stack pointer`
-    fn get_stack_size(&self) -> usize {
+    pub fn get_stack_size(&self) -> usize {
         self.slots.len()
     }
 
     /// 按索引来获取栈的操作数
     ///
     /// 用于读写函数调用的实参以及局部变量
-    fn get(&self, index: usize) -> Value {
+    pub fn get_value(&self, index: usize) -> Value {
         self.slots[index]
     }
 
     /// 按索引来设置栈的操作数
     ///
     /// 用于读写函数调用的实参以及局部变量
-    fn set(&mut self, index: usize, value: Value) {
+    pub fn set_value(&mut self, index: usize, value: Value) {
         self.slots[index] = value;
     }
 
-    fn push_values(&mut self, values: &[Value]) {
+    /// 将一组数值原样压入栈
+    /// 小索引端的数据先压入，即靠近栈底
+    /// 大索引端的数据后压入，即靠近栈顶
+    ///
+    ///                  |栈顶。|
+    /// [0, 1, 2] ---->  | 2   |
+    ///                  | 1   |
+    ///                  | 0   |
+    ///                  |栈底。|
+    pub fn push_values(&mut self, values: &[Value]) {
         self.slots.extend_from_slice(values)
     }
 
-    fn pop_values(&mut self, count: usize) -> Vec<Value> {
+    /// 将一组数值原样弹出栈
+    /// 靠近栈底的数据会放置在结果的小索引端
+    /// 靠近栈顶的数据会放置在结果的大索引端
+    ///
+    /// |栈顶。|
+    /// | 2   | ----> [0, 1, 2]
+    /// | 1   |
+    /// | 0   |
+    /// |栈底。|
+    pub fn pop_values(&mut self, count: usize) -> Vec<Value> {
         let index = self.slots.len() - count;
         let values: Vec<Value> = self.slots.drain(index..).collect();
         values
@@ -122,17 +140,17 @@ mod tests {
         s0.push(Value::I32(3));
 
         assert_eq!(s0.get_stack_size(), 3);
-        assert_eq!(s0.get(0), Value::I32(1));
-        assert_eq!(s0.get(1), Value::I32(2));
-        assert_eq!(s0.get(2), Value::I32(3));
+        assert_eq!(s0.get_value(0), Value::I32(1));
+        assert_eq!(s0.get_value(1), Value::I32(2));
+        assert_eq!(s0.get_value(2), Value::I32(3));
 
-        s0.set(0, Value::I64(11));
-        s0.set(2, Value::F64(3.3));
+        s0.set_value(0, Value::I64(11));
+        s0.set_value(2, Value::F64(3.3));
 
         assert_eq!(s0.get_stack_size(), 3);
-        assert_eq!(s0.get(0), Value::I64(11));
-        assert_eq!(s0.get(1), Value::I32(2));
-        assert_eq!(s0.get(2), Value::F64(3.3));
+        assert_eq!(s0.get_value(0), Value::I64(11));
+        assert_eq!(s0.get_value(1), Value::I32(2));
+        assert_eq!(s0.get_value(2), Value::F64(3.3));
 
         assert_eq!(s0.pop(), Value::F64(3.3));
         assert_eq!(s0.pop(), Value::I32(2));
@@ -152,11 +170,11 @@ mod tests {
         // 测试 push_values
         s0.push_values(&vec![Value::I32(11), Value::I32(22)]);
         assert_eq!(s0.get_stack_size(), 5);
-        assert_eq!(s0.get(0), Value::I32(1));
-        assert_eq!(s0.get(1), Value::I32(2));
-        assert_eq!(s0.get(2), Value::I32(3));
-        assert_eq!(s0.get(3), Value::I32(11));
-        assert_eq!(s0.get(4), Value::I32(22));
+        assert_eq!(s0.get_value(0), Value::I32(1));
+        assert_eq!(s0.get_value(1), Value::I32(2));
+        assert_eq!(s0.get_value(2), Value::I32(3));
+        assert_eq!(s0.get_value(3), Value::I32(11));
+        assert_eq!(s0.get_value(4), Value::I32(22));
 
         // 测试 pop_values
         assert_eq!(

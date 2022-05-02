@@ -18,9 +18,8 @@ const MAX_PAGES: u32 = 65536;
 /// 当前使用字节数组来充当内存
 ///
 pub struct VMMemory {
-    pub memory_type: MemoryType,
-    pub data: Vec<u8>,
-    // page_count: u32,
+    memory_type: MemoryType,
+    data: Vec<u8>,
 }
 
 impl VMMemory {

@@ -10,9 +10,9 @@ use crate::instance::{EngineError, GlobalVariable};
 
 pub struct VMGlobalVariable {
     /// GlobalType 记录变量的 `数据类型` 以及 `可变性`
-    pub global_type: GlobalType,
+    global_type: GlobalType,
 
-    pub value: Value,
+    value: Value,
 }
 
 impl VMGlobalVariable {
