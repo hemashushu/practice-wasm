@@ -16,6 +16,10 @@ pub struct OperandStack {
 }
 
 impl OperandStack {
+    pub fn new() -> Self {
+        OperandStack { slots: vec![] }
+    }
+
     /// 压入
     ///
     /// 对于 bool 值的约定：

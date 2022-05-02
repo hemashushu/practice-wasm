@@ -4,9 +4,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{rc::Rc, cell::RefCell};
+use std::{cell::RefCell, rc::Rc};
 
-use anvm_parser::{types::Value, ast::{GlobalType, MemoryType, TableType, FunctionType}};
+use anvm_parser::{
+    ast::{FunctionType, GlobalType, MemoryType, TableType},
+    types::Value,
+};
 
 /// 模块的接口
 ///
@@ -17,10 +20,17 @@ use anvm_parser::{types::Value, ast::{GlobalType, MemoryType, TableType, Functio
 /// 模块的实现思路受启发于张秀宏先生所著的《WebAssembly 原理与核心技术》，详细的原理
 /// 讲解可以参阅该本书。
 pub trait Module {
-    fn get_export(&self, name: &str) -> Result<Export, EngineError>;
-    fn eval_func(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError>;
-    fn get_global_value(&self, name: &str) -> Result<Value, EngineError>;
-    fn set_global_value(&mut self, name: &str, value: Value) -> Result<(), EngineError>;
+    fn get_name(&self) -> String;
+
+    fn get_export_table(&self, name: &str) -> Result<Rc<RefCell<dyn Table>>, EngineError>;
+    fn get_export_memory(&self, name: &str) -> Result<Rc<RefCell<dyn Memory>>, EngineError>;
+    fn get_export_function(&self, name: &str) -> Result<Rc<dyn Function>, EngineError>;
+    fn get_export_global_variable(
+        &self,
+        name: &str,
+    ) -> Result<Rc<RefCell<dyn GlobalVariable>>, EngineError>;
+
+    fn eval_function(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError>;
 }
 
 pub trait Function {
@@ -53,17 +63,10 @@ pub trait GlobalVariable {
     fn get_global_type(&self) -> GlobalType;
 }
 
-pub enum Export {
-    Function(Rc<dyn Function>),
-    Table(Rc<dyn Table>),
-    Memory(Rc<RefCell<dyn Memory>>),
-    GlobalVariable(Rc<RefCell<dyn GlobalVariable>>),
-}
-
 #[derive(Debug)]
 pub enum EngineError {
     OutOfRange(String),
     Overflow(String),
     ObjectNotFound(String),
-    InvalidOperation(String)
+    InvalidOperation(String),
 }

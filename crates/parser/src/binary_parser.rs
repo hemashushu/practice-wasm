@@ -450,6 +450,10 @@ fn parse_function_list_section(source: &[u8]) -> Result<(Vec<u32>, &[u8]), Parse
 /// table_type = 0x70 + limits
 ///              ^
 ///              |--- 0x70 表示该表项存储的是 funcref
+///
+/// 注意，如果一个模块已经导入了一张表，而在表段再次定义一个表，
+/// 则应该视为错误，因为目前 WebAssembly 只允许一张表，
+/// 但在语法解析阶段不抛出错误，留到运行再抛出。
 fn parse_table_section(source: &[u8]) -> Result<(Vec<TableType>, &[u8]), ParseError> {
     let (_section_length, post_section_length) = read_u32(source)?;
     let (item_count, post_item_count) = read_u32(post_section_length)?;
@@ -476,6 +480,11 @@ fn parse_table_section(source: &[u8]) -> Result<(Vec<TableType>, &[u8]), ParseEr
 ///
 /// memory_section = 0x05 + content_length:u32 + <memory_type> // 目前一个模块仅支持声明一个内存块
 /// memory_type = limits
+///
+/// 注意，如果一个模块已经导入了一个内存块，而在内存段再次定义一个内存块，
+/// 则应该视为错误，因为目前 WebAssembly 只允许一个内存块。
+///
+/// 但在语法解析阶段不抛出错误，留到运行再抛出。
 fn parse_memory_section(source: &[u8]) -> Result<(Vec<MemoryType>, &[u8]), ParseError> {
     let (_section_length, post_section_length) = read_u32(source)?;
     let (item_count, post_item_count) = read_u32(post_section_length)?;

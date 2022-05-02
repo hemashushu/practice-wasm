@@ -105,6 +105,10 @@ impl StackFrame {
 }
 
 impl ControlStack {
+    pub fn new() -> Self {
+        ControlStack { frames: vec![] }
+    }
+
     pub fn push_frame(&mut self, stack_frame: StackFrame) {
         self.frames.push(stack_frame)
     }

@@ -141,7 +141,7 @@ pub struct FunctionType {
 /// 除了支持导入函数，还支持导入表格、内存块、全局变量：
 ///
 /// (import "env" "t1" (table $t 1 8 funcref))  ;; 导入表格
-/// (import "env" "m1" (memory $m 4, 16))       ;; 导入内存块
+/// (import "env" "m1" (memory $m 4 16))        ;; 导入内存块
 /// (import "env" "g1" (global $g1 i32))        ;; 全局常量
 /// (import "env" "g2" (global $g1 (mut i32)))  ;; 全局变量
 ///

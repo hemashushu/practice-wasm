@@ -17,7 +17,7 @@ use anvm_parser::{
 
 use crate::{
     instance::{EngineError, Function},
-    interpreter,
+    ins_function,
     vm_module::VMModule,
 };
 
@@ -61,10 +61,10 @@ impl VMFunction {
         }
     }
 
-    pub fn new_external_function(function_type: FunctionType, r: Rc<dyn Function>) -> Self {
+    pub fn new_external_function(function_type: FunctionType, rc_function: Rc<dyn Function>) -> Self {
         VMFunction {
             function_type,
-            function_item: FunctionItem::External(r),
+            function_item: FunctionItem::External(rc_function),
         }
     }
 }
@@ -108,7 +108,7 @@ fn eval_internal_function(
     args: &[Value],
 ) -> Result<Vec<Value>, EngineError> {
     push_args(vm_module, function_type, args)?;
-    interpreter::call_internal_function(vm_module, function_type, local_groups, expression);
+    ins_function::call_internal_function(vm_module, function_type, local_groups, expression);
     vm_module.do_loop();
 
     Ok(pop_results(vm_module, function_type))

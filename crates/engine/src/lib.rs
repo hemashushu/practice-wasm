@@ -12,4 +12,4 @@ pub mod vm_table;
 pub mod vm_memory;
 pub mod vm_global_variable;
 pub mod vm_module;
-pub mod interpreter;
+pub mod ins_function;
