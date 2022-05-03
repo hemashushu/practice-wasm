@@ -61,7 +61,7 @@ pub struct VMStackFrame {
     pub frame_type: VMFrameType,
 
     // 函数签名、以及块类型
-    pub function_type: FunctionType,
+    pub function_type: Rc<FunctionType>,
 
     // 复制了一份当前过程的指令
     pub instructions: Rc<Vec<Instruction>>,
@@ -88,7 +88,7 @@ pub enum VMFrameType {
 impl VMStackFrame {
     pub fn new(
         frame_type: VMFrameType,
-        function_type: FunctionType,
+        function_type: Rc<FunctionType>,
         instructions: Rc<Vec<Instruction>>,
         frame_pointer: usize,
         local_variable_count: usize,
@@ -122,13 +122,26 @@ impl VMControlStack {
         }
     }
 
-    pub fn peek_frame(&self) -> &VMStackFrame {
-        let option_frame = self.frames.last();
-        if let Some(frame) = option_frame {
-            frame
-        } else {
+    // pub fn peek_frame(&self) -> &VMStackFrame {
+    //     let option_frame = self.frames.last();
+    //     if let Some(frame) = option_frame {
+    //         frame
+    //     } else {
+    //         panic!("control stack is empty")
+    //     }
+    // }
+
+    pub fn peek_frame(&mut self) -> &mut VMStackFrame {
+        if self.frames.len() == 0 {
             panic!("control stack is empty")
         }
+
+        let last_index = self.frames.len() - 1;
+        &mut self.frames[last_index]
+    }
+
+    pub fn get_instruction(&mut self) -> Instruction {
+        todo!()
     }
 
     pub fn get_frame_count(&self) -> usize {
@@ -180,11 +193,11 @@ mod tests {
 
     use super::{VMControlStack, VMFrameType, VMStackFrame};
 
-    fn new_void_function_type() -> FunctionType {
-        FunctionType {
+    fn new_void_function_type() -> Rc<FunctionType> {
+        Rc::new(FunctionType {
             params: vec![],
             results: vec![],
-        }
+        })
     }
 
     fn new_call_frame() -> VMStackFrame {

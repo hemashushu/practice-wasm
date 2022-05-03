@@ -13,17 +13,19 @@ use std::{
 
 use anvm_parser::{
     ast::{
-        self, ExportDescriptor, ExportItem, ImportDescriptor, ImportItem, Limit,
+        self, ExportDescriptor, ExportItem, FunctionType, ImportDescriptor, ImportItem, Limit,
         MemoryType, TableType,
     },
+    instruction::Instruction,
     types::Value,
 };
 
 use crate::{
     instance::{EngineError, Function, GlobalVariable, Memory, Module, Table},
-    vm_control_stack::VMControlStack,
+    vm_control_stack::{VMControlStack, VMFrameType, VMStackFrame},
     vm_function::VMFunction,
     vm_global_variable::VMGlobalVariable,
+    vm_instruction::exec_instruction,
     vm_memory::VMMemory,
     vm_operand_stack::VMOperandStack,
     vm_table::VMTable,
@@ -33,15 +35,32 @@ pub struct VMModule {
     pub operand_stack: VMOperandStack,
     pub control_stack: VMControlStack,
 
+    /// 目前 WebAssembly 只允许定义一张表
     pub table: Rc<RefCell<dyn Table>>,
+
+    /// 目前 WebAssembly 只允许定义一块内存
     pub memory: Rc<RefCell<dyn Memory>>,
+
+    /// 函数列表，包括导入的函数和模块内定义的函数
     pub functions: Vec<Rc<dyn Function>>,
+
+    /// 全局变量列表，包括导入的全局变量和模块内定义的全局变量
     pub global_variables: Vec<Rc<RefCell<dyn GlobalVariable>>>,
 
-    pub current_call_frame_base_pointer: u32,
+    /// 记录第一个局部变量（局部变量也包括函数参数）在栈中的位置，
+    /// 用于方便按索引访问栈中的局部变量。
+    ///
+    /// 注意，目前函数的局部变量是直接在操作数栈中开辟的，而没有另外再设一个
+    /// 局部变量表。
+    ///
+    /// 它的值等于从栈顶开始第一个 `函数调用帧`（`call frame`）的 `frame pointer`，
+    /// 对于函数内的流程控制所产生 `块结构控制帧`，不更新此成员的值。
+    /// 在 VMModule 记录此值，是为了避免每次访问局部变量时的重复计算。
+    pub current_call_frame_base_pointer: usize,
 
     name: String,
     export_items: Vec<ExportItem>,
+    start_function_index: Option<u32>,
 }
 
 impl Module for VMModule {
@@ -146,6 +165,7 @@ impl Module for VMModule {
         }
     }
 
+    /// 从 vm 外部（即宿主）或者其他模块调用函数
     fn eval_function(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError> {
         let rc_function = self.get_export_function(name)?;
         rc_function.as_ref().eval(args)
@@ -175,6 +195,7 @@ impl VMModule {
             current_call_frame_base_pointer: 0,
             name: name.to_string(),
             export_items,
+            start_function_index: ast_module.start_function_index,
         };
 
         let rc_module = Rc::new(RefCell::new(vm_module));
@@ -196,9 +217,129 @@ impl VMModule {
         Ok(rc_module)
     }
 
-    pub fn do_loop(&self) {
+    pub fn eval_function_by_index(
+        &self,
+        index: usize,
+        args: &[Value],
+    ) -> Result<Vec<Value>, EngineError> {
+        self.functions[index].as_ref().eval(args)
+    }
+
+    pub fn get_start_function_index(&self) -> Option<u32> {
+        self.start_function_index
+    }
+
+    pub fn enter_control_block(
+        &mut self,
+        frame_type: VMFrameType,
+        function_type: &Rc<FunctionType>,
+        instructions: &Rc<Vec<Instruction>>,
+        local_variable_count: usize,
+    ) {
+        let frame_pointer =
+            self.operand_stack.get_stack_size() - function_type.as_ref().params.len();
+
+        let stack_frame = VMStackFrame::new(
+            frame_type.clone(),
+            Rc::clone(function_type),
+            Rc::clone(instructions),
+            frame_pointer,
+            local_variable_count,
+        );
+
+        self.control_stack.push_frame(stack_frame);
+
+        if frame_type == VMFrameType::Call {
+            self.current_call_frame_base_pointer = frame_pointer;
+        }
+    }
+
+    /// 消掉当前控制栈帧
+    pub fn leave_control_block(&mut self) {
+        let stack_frame = self.control_stack.pop_frame();
+
+        // 做一些离开 `被调用者` 之后的清理工作
+
+        // 丢弃自当前函数调用帧以后产生的所有操作数槽（包括局部变量槽），
+        // 即丢弃 `被调用者` 产生的残留数据。
+
+        // 计算残留数据的大小，根据是除了返回值之外，其他的都属于残留数据
+        let result_count = stack_frame.function_type.as_ref().results.len();
+        let residue_count =
+            self.operand_stack.get_stack_size() - stack_frame.frame_pointer - result_count;
+
+        if residue_count > 0 {
+            // 先弹出有用的数据（即返回值）
+            let result_values = self.operand_stack.pop_values(result_count);
+            // 丢弃残留数据
+            self.operand_stack.pop_values(residue_count);
+            // 再压入有用的数据
+            self.operand_stack.push_values(&result_values);
+        }
+
+        // 如果当前栈帧是 `函数调用帧`，则还需要更新 current_call_frame_base_pointer 的值
+        if stack_frame.frame_type == VMFrameType::Call && self.control_stack.get_frame_count() > 0 {
+            let last_call_frame = self.control_stack.get_last_call_frame();
+            self.current_call_frame_base_pointer = last_call_frame.frame_pointer;
+        }
+    }
+
+    /// 重新执行一下当前控制块
+    /// 用于 loop 控制块
+    pub fn repeat_control_block(&mut self) {
+        let stack_frame = self.control_stack.peek_frame();
+        // 注意这里要弹出的操作数的数量是 “目标层参数所需的数量”，而不是 "当前函数的的返回值的数量"。
+        let target_block_arguments = self
+            .operand_stack
+            .pop_values(stack_frame.function_type.as_ref().params.len());
+
+        // 丢弃当前栈帧的残留的数据
+        // 即从 `frame pointer` 到栈顶的操作数
+        self.operand_stack
+            .pop_values(self.operand_stack.get_stack_size() - stack_frame.frame_pointer);
+
+        // 将实参重新压入操作数栈
+        self.operand_stack.push_values(&target_block_arguments);
+
+        // 重置 pc 值
+        stack_frame.program_counter = 0;
+    }
+
+    pub fn do_loop(&mut self) -> Result<(), EngineError> {
+        // 如果从 vm 外部调用 call 指令之后，控制栈
+        // 应该有 1 个栈帧，这时 start_depth 值为 1。
         //
-        todo!()
+        // 当一个函数调用外部的函数，然后外部的函数又再次调用当前 VMModule 的
+        // 其他函数时（注意，不同模块的两个函数暂时不支持相互循环调用），
+        // do_loop() 方法会再次被激活，此时的 start_depth 的值就不是 1。
+        //
+        // 所以这里的 start_depth 不能假设为 1，应该由
+        // get_frame_count() 方法获取。
+        let start_depth = self.control_stack.get_frame_count();
+        while self.control_stack.get_frame_count() >= start_depth {
+            let (program_counter, instructions) = {
+                let stack_frame = self.control_stack.peek_frame();
+                (
+                    stack_frame.program_counter,
+                    Rc::clone(&stack_frame.instructions),
+                )
+            };
+
+            if program_counter == instructions.len() {
+                self.leave_control_block();
+            } else {
+                {
+                    // 向前移动一个指令
+                    let stack_frame = self.control_stack.peek_frame();
+                    stack_frame.program_counter = program_counter + 1;
+                }
+
+                let instruction = &instructions.as_ref()[program_counter];
+                exec_instruction(self, &instruction)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -343,15 +484,17 @@ fn create_functions(
             if let Some(rc_module) = option_module {
                 let rc_function = rc_module.as_ref().borrow().get_export_function(name)?;
 
-                let function_type = &ast_module.function_types[*function_type_index as usize];
-                if function_type != &rc_function.as_ref().borrow().get_function_type() {
+                let rc_function_type = &ast_module.function_types[*function_type_index as usize];
+                if rc_function_type.as_ref()
+                    != rc_function.as_ref().borrow().get_function_type().as_ref()
+                {
                     return Err(EngineError::InvalidOperation(
                         "the type of the imported function does not match the declaration"
                             .to_string(),
                     ));
                 } else {
                     let function = VMFunction::new_external_function(
-                        function_type.clone(),
+                        Rc::clone(rc_function_type),
                         Rc::clone(&rc_function),
                     );
                     functions.push(Rc::new(function));
@@ -368,15 +511,15 @@ fn create_functions(
     // 再添加当前模块内定义的函数
 
     for (function_index, function_type_index) in ast_module.function_list.iter().enumerate() {
-        let function_type = ast_module.function_types[*function_type_index as usize].clone();
+        let rc_function_type = &ast_module.function_types[*function_type_index as usize];
         let code_item = &ast_module.code_items[function_index];
         let local_groups = code_item.local_groups.clone();
-        let expression = Rc::clone(&code_item.expression);
+        let rc_expression = Rc::clone(&code_item.expression);
 
         let function = VMFunction::new_internal_function(
-            function_type,
+            Rc::clone(rc_function_type),
             local_groups,
-            expression,
+            rc_expression,
             Weak::clone(&weak_module),
         );
         functions.push(Rc::new(function));
@@ -458,4 +601,55 @@ fn fill_memory_datas(
 ) -> Result<(), EngineError> {
     // todo
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{cell::RefCell, collections::HashMap, env, fs, rc::Rc};
+
+    use anvm_parser::{ast, binary_parser};
+
+    use crate::instance::Module;
+
+    use super::VMModule;
+
+    // 辅助方法
+    fn get_test_resource_file_binary(filename: &str) -> Vec<u8> {
+        let mut path_buf = env::current_dir().expect("failed to get current directory");
+
+        // 使用 `cargo test` 测试时，
+        // `env::current_dir()` 函数获得的当前目录为
+        // `./xiaoxuan-vm/crates/engine`；
+        //
+        // 但如果使用 vscode 的源码编辑框里面的 `debug` 按钮开始调试，
+        // `env::current_dir()` 函数获得的当前目录为
+        // `./xiaoxuan-vm`。
+        //
+        // 这里需要处理这种情况。
+
+        if !path_buf.ends_with("engine") {
+            path_buf.push("crates");
+            path_buf.push("engine");
+        }
+        let fullname_buf = path_buf.join("resources").join(filename);
+        let fullname = fullname_buf.to_str().unwrap();
+        fs::read(fullname).expect(&format!("failed to read the specified file: {}", fullname))
+    }
+
+    fn get_test_module_binary(filename: &str) -> ast::Module {
+        let bytes = get_test_resource_file_binary(filename);
+        binary_parser::parse(&bytes).unwrap()
+    }
+
+    #[test]
+    fn test_instruction_const() {
+        // 测试 test-section-1.wasm
+        let ast_module = get_test_module_binary("test-const.wasm");
+        let module_map = HashMap::<&str, Rc<RefCell<dyn Module>>>::new();
+        let rc_module = VMModule::new("test", ast_module, &module_map, None).unwrap();
+        let module = rc_module.as_ref().borrow();
+
+        let r0 = module.eval_function_by_index(0, &vec![]).unwrap();
+        println!("{:?}", r0);
+    }
 }

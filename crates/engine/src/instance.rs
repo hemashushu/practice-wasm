@@ -28,14 +28,20 @@ pub trait Module {
         name: &str,
     ) -> Result<Rc<RefCell<dyn GlobalVariable>>, EngineError>;
 
-    /// 从 vm 外部调用函数
+    /// 从 vm 外部（即宿主）或者其他模块调用函数
     fn eval_function(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError>;
+
+    // 获取内存快照
+    //fn dump_memory(&self, address:usize, length: usize) -> &[u8];
+
+    // 获取调用栈快照
+    //fn dump_stacks(&self, count: usize) -> Vec<StackFrame>;
 }
 
 pub trait Function {
-    /// 从 vm 外部调用函数
+    /// 从 vm 外部（即宿主）或者其他模块调用函数
     fn eval(&self, args: &[Value]) -> Result<Vec<Value>, EngineError>;
-    fn get_function_type(&self) -> FunctionType;
+    fn get_function_type(&self) -> Rc<FunctionType>;
 }
 
 pub trait Table {
@@ -67,11 +73,8 @@ pub trait Memory {
     fn write_bytes(&mut self, address: usize, data: &[u8]);
 
     fn read_i8(&self, address: usize) -> i8;
-    // fn read_u8(&self, address: usize) -> u8;
     fn read_i16(&self, address: usize) -> i16;
-    // fn read_u16(&self, address: usize) -> u16;
     fn read_i32(&self, address: usize) -> i32;
-    // fn read_u32(&self, address: usize) -> u32;
     fn read_i64(&self, address: usize) -> i64;
     fn read_f32(&self, address: usize) -> f32;
     fn read_f64(&self, address: usize) -> f64;

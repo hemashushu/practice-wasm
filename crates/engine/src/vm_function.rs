@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub struct VMFunction {
-    function_type: FunctionType,
+    function_type: Rc<FunctionType>,
     function_item: FunctionItem,
 }
 
@@ -46,7 +46,7 @@ pub enum FunctionItem {
 
 impl VMFunction {
     pub fn new_internal_function(
-        function_type: FunctionType,
+        function_type: Rc<FunctionType>,
         local_groups: Vec<LocalGroup>,
         expression: Rc<Vec<Instruction>>,
         vm_module: Weak<RefCell<VMModule>>,
@@ -62,7 +62,7 @@ impl VMFunction {
     }
 
     pub fn new_external_function(
-        function_type: FunctionType,
+        function_type: Rc<FunctionType>,
         rc_function: Rc<dyn Function>,
     ) -> Self {
         VMFunction {
@@ -73,7 +73,9 @@ impl VMFunction {
 }
 
 impl Function for VMFunction {
+    /// 从 vm 外部（即宿主）或者其他模块调用函数
     fn eval(&self, args: &[Value]) -> Result<Vec<Value>, EngineError> {
+        // 注意模块内的函数有可能是从外部导入的
         match &self.function_item {
             FunctionItem::Internal {
                 local_groups,
@@ -85,8 +87,10 @@ impl Function for VMFunction {
                     _ => panic!("failed to get the module instance"),
                 };
 
-                let mut vm = rc.borrow_mut();
-                eval_internal_function(&self.function_type, local_groups, expression, &mut vm, args)
+                // println!("{:?}", rc);
+                let mut m = rc.as_ref().borrow_mut();
+                eval_internal_function(&self.function_type, local_groups, expression, &mut m, args)
+                // Ok(vec![])
             }
             FunctionItem::External(r) => {
                 // 对于 `外部函数`，使用它自己的 eval() 方法求值，
@@ -96,24 +100,24 @@ impl Function for VMFunction {
         }
     }
 
-    fn get_function_type(&self) -> FunctionType {
-        self.function_type.clone()
+    fn get_function_type(&self) -> Rc<FunctionType> {
+        Rc::clone(&self.function_type)
     }
 }
 
-/// 从 vm 外部调用模块内部定义的函数
+/// 从 vm 外部（即宿主）或者其他模块调用 "（函数所在的）模块内部定义的" 函数
 fn eval_internal_function(
-    function_type: &FunctionType,
+    function_type: &Rc<FunctionType>,
     local_groups: &Vec<LocalGroup>,
-    expression: &Vec<Instruction>,
+    instructions: &Rc<Vec<Instruction>>,
     vm_module: &mut VMModule,
     args: &[Value],
 ) -> Result<Vec<Value>, EngineError> {
     push_args(vm_module, function_type, args)?;
-    ins_function::call_internal_function(vm_module, function_type, local_groups, expression);
-    vm_module.do_loop();
-
-    Ok(pop_results(vm_module, function_type))
+    ins_function::call_internal_function(vm_module, function_type, local_groups, instructions);
+    vm_module.do_loop()?;
+    let result_values = pop_results(vm_module, function_type);
+    Ok(result_values)
 }
 
 /// 从 vm 外部调用模块内部函数时，将入的实参压入操作数栈

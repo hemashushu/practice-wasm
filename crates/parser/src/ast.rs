@@ -22,7 +22,7 @@ pub struct Module {
 
     /// 类型列表，目前类型列表只支持列出函数类型（即函数签名），所以这里命名为 function_type，（section id 1）
     /// 需注意不同的函数可能有相同的签名，所以类型列表的数量并不等于函数的数量。
-    pub function_types: Vec<FunctionType>,
+    pub function_types: Vec<Rc<FunctionType>>,
 
     /// 导入项列表，（section id 2）
     pub import_items: Vec<ImportItem>,

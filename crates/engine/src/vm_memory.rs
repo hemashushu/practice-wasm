@@ -101,30 +101,15 @@ impl Memory for VMMemory {
         bytes[0] as i8
     }
 
-    // fn read_u8(&self, address: usize) -> u8 {
-    //     let bytes = self.read_bytes(address, 1);
-    //     bytes[0]
-    // }
-
     fn read_i16(&self, address: usize) -> i16 {
         let bytes = self.read_bytes(address, 2);
         i16::from_le_bytes(bytes.try_into().unwrap())
     }
 
-    // fn read_u16(&self, address: usize) -> u16 {
-    //     let bytes = self.read_bytes(address, 2);
-    //     u16::from_le_bytes(bytes.try_into().unwrap())
-    // }
-
     fn read_i32(&self, address: usize) -> i32 {
         let bytes = self.read_bytes(address, 4);
         i32::from_le_bytes(bytes.try_into().unwrap())
     }
-
-    // fn read_u32(&self, address: usize) -> u32 {
-    //     let bytes = self.read_bytes(address, 4);
-    //     u32::from_le_bytes(bytes.try_into().unwrap())
-    // }
 
     fn read_i64(&self, address: usize) -> i64 {
         let bytes = self.read_bytes(address, 8);

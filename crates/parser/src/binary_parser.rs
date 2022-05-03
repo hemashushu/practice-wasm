@@ -226,15 +226,17 @@ fn parse_custom_section(source: &[u8]) -> Result<&[u8], ParseError> {
 /// function_type = 0x60 + <value_type> + <value_type>
 ///                      ^
 ///                      |--- 目前 `类型项` 只支持函数类型， `0x60` 表示函数类型
-fn parse_function_type_section(source: &[u8]) -> Result<(Vec<FunctionType>, &[u8]), ParseError> {
+fn parse_function_type_section(
+    source: &[u8],
+) -> Result<(Vec<Rc<FunctionType>>, &[u8]), ParseError> {
     let (_section_length, post_section_length) = read_u32(source)?;
     let (item_count, post_item_count) = read_u32(post_section_length)?;
 
     let mut remains = post_item_count;
-    let mut function_types = Vec::<FunctionType>::with_capacity(item_count as usize);
+    let mut function_types = Vec::<Rc<FunctionType>>::with_capacity(item_count as usize);
     for _ in 0..item_count {
         let (function_type, post_function_type) = continue_parse_function_type(remains)?;
-        function_types.push(function_type);
+        function_types.push(Rc::new(function_type));
         remains = post_function_type;
     }
     Ok((function_types, remains))
@@ -1446,7 +1448,7 @@ mod tests {
 
         // 使用 `cargo test` 测试时，
         // `env::current_dir()` 函数获得的当前目录为
-        // `./xiaoxuan-vm/crates/engine`；
+        // `./xiaoxuan-vm/crates/parser`；
         //
         // 但如果使用 vscode 的源码编辑框里面的 `debug` 按钮开始调试，
         // `env::current_dir()` 函数获得的当前目录为
@@ -1473,10 +1475,10 @@ mod tests {
         let e0 = Module {
             custom_items: vec![],
 
-            function_types: vec![FunctionType {
+            function_types: vec![Rc::new(FunctionType {
                 params: vec![],
                 results: vec![ValueType::I32],
-            }],
+            })],
             import_items: vec![ImportItem {
                 module_name: "env".to_string(),
                 name: "__linear_memory".to_string(),
@@ -1515,18 +1517,18 @@ mod tests {
             custom_items: vec![],
 
             function_types: vec![
-                FunctionType {
+                Rc::new(FunctionType {
                     params: vec![ValueType::I32, ValueType::I32],
                     results: vec![ValueType::I32],
-                },
-                FunctionType {
+                }),
+                Rc::new(FunctionType {
                     params: vec![ValueType::I32],
                     results: vec![ValueType::I32],
-                },
-                FunctionType {
+                }),
+                Rc::new(FunctionType {
                     params: vec![],
                     results: vec![],
-                },
+                }),
             ],
             import_items: vec![],
             function_list: vec![0, 0, 1, 2],
@@ -1633,14 +1635,14 @@ mod tests {
             custom_items: vec![],
 
             function_types: vec![
-                FunctionType {
+                Rc::new(FunctionType {
                     params: vec![],
                     results: vec![ValueType::I32],
-                },
-                FunctionType {
+                }),
+                Rc::new(FunctionType {
                     params: vec![],
                     results: vec![],
-                },
+                }),
             ],
             import_items: vec![
                 ImportItem {
@@ -1765,10 +1767,10 @@ mod tests {
 
         assert_eq!(
             m0.function_types,
-            vec![FunctionType {
+            vec![Rc::new(FunctionType {
                 params: vec![ValueType::I32, ValueType::I32],
                 results: vec![]
-            }]
+            })]
         );
 
         assert_eq!(
@@ -1891,10 +1893,10 @@ mod tests {
 
         assert_eq!(
             m0.function_types,
-            vec![FunctionType {
+            vec![Rc::new(FunctionType {
                 params: vec![],
                 results: vec![]
-            }]
+            })]
         );
 
         assert_eq!(m0.function_list, vec![0, 0]);
