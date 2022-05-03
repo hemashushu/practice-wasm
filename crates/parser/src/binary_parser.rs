@@ -1324,7 +1324,7 @@ fn read_byte(source: &[u8]) -> Result<(u8, &[u8]), ParseError> {
     }
 }
 
-fn read_n_bytes(source: &[u8], length: usize) -> Result<(&[u8], &[u8]), ParseError> {
+fn read_bytes(source: &[u8], length: usize) -> Result<(&[u8], &[u8]), ParseError> {
     if length > source.len() {
         Err(ParseError::UnexpectedEnd)
     } else {
@@ -1332,32 +1332,10 @@ fn read_n_bytes(source: &[u8], length: usize) -> Result<(&[u8], &[u8]), ParseErr
     }
 }
 
-fn read_4_bytes(source: &[u8]) -> Result<([u8; 4], &[u8]), ParseError> {
-    let (bytes, remains) = read_n_bytes(source, 4)?;
-
-    let mut buf: [u8; 4] = [0; 4];
-    bytes
-        .iter()
-        .enumerate()
-        .for_each(|(index, value)| buf[index] = *value);
-    Ok((buf, remains))
-}
-
-fn read_8_bytes(source: &[u8]) -> Result<([u8; 8], &[u8]), ParseError> {
-    let (bytes, remains) = read_n_bytes(source, 8)?;
-
-    let mut buf: [u8; 8] = [0; 8];
-    bytes
-        .iter()
-        .enumerate()
-        .for_each(|(index, value)| buf[index] = *value);
-    Ok((buf, remains))
-}
-
 /// 读取固定长度（4 字节）u32
 fn read_fixed_u32(source: &[u8]) -> Result<(u32, &[u8]), ParseError> {
-    let (bytes, remains) = read_4_bytes(source)?;
-    Ok((u32::from_le_bytes(bytes), remains))
+    let (bytes, remains) = read_bytes(source, 4)?;
+    Ok((u32::from_le_bytes(bytes.try_into().unwrap()), remains))
 }
 
 /// 读取变长（leb128 编码的）u32
@@ -1386,14 +1364,14 @@ fn read_i64(source: &[u8]) -> Result<(i64, &[u8]), ParseError> {
 
 /// 读取固定长度的 f32
 fn read_f32(source: &[u8]) -> Result<(f32, &[u8]), ParseError> {
-    let (bytes, remains) = read_4_bytes(source)?;
-    Ok((f32::from_le_bytes(bytes), remains))
+    let (bytes, remains) = read_bytes(source, 4)?;
+    Ok((f32::from_le_bytes(bytes.try_into().unwrap()), remains))
 }
 
 /// 读取固定长度的 f64
 fn read_f64(source: &[u8]) -> Result<(f64, &[u8]), ParseError> {
-    let (bytes, remains) = read_8_bytes(source)?;
-    Ok((f64::from_le_bytes(bytes), remains))
+    let (bytes, remains) = read_bytes(source, 4)?;
+    Ok((f64::from_le_bytes(bytes.try_into().unwrap()), remains))
 }
 
 /// 读取如下结构的 u32 数组
@@ -1418,7 +1396,7 @@ fn read_u32_vec(source: &[u8]) -> Result<(Vec<u32>, &[u8]), ParseError> {
 /// `length:u32 + u8{*}`
 fn read_byte_vec(source: &[u8]) -> Result<(Vec<u8>, &[u8]), ParseError> {
     let (length, post_length) = read_u32(source)?;
-    let (bytes, post_bytes) = read_n_bytes(post_length, length as usize)?;
+    let (bytes, post_bytes) = read_bytes(post_length, length as usize)?;
     Ok((bytes.to_vec(), post_bytes))
 }
 
@@ -1446,7 +1424,7 @@ fn consume_zero(source: &[u8]) -> Result<&[u8], ParseError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs, rc::Rc, time::Instant};
+    use std::{env, fs, rc::Rc};
 
     use crate::{
         ast::{
@@ -1459,7 +1437,7 @@ mod tests {
     };
 
     use super::parse;
-    use pretty_assertions::{assert_eq, assert_ne};
+    use pretty_assertions::assert_eq;
 
     // 辅助方法
 

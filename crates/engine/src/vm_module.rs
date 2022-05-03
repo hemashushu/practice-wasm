@@ -13,24 +13,25 @@ use std::{
 
 use anvm_parser::{
     ast::{
-        self, ExportDescriptor, ExportItem, ImportDescriptor, ImportItem, Limit, MemoryType,
-        TableType,
+        self, ExportDescriptor, ExportItem, ImportDescriptor, ImportItem, Limit,
+        MemoryType, TableType,
     },
     types::Value,
 };
 
 use crate::{
     instance::{EngineError, Function, GlobalVariable, Memory, Module, Table},
-    vm_control_stack::ControlStack,
+    vm_control_stack::VMControlStack,
     vm_function::VMFunction,
+    vm_global_variable::VMGlobalVariable,
     vm_memory::VMMemory,
-    vm_operand_stack::OperandStack,
+    vm_operand_stack::VMOperandStack,
     vm_table::VMTable,
 };
 
 pub struct VMModule {
-    pub operand_stack: OperandStack,
-    pub control_stack: ControlStack,
+    pub operand_stack: VMOperandStack,
+    pub control_stack: VMControlStack,
 
     pub table: Rc<RefCell<dyn Table>>,
     pub memory: Rc<RefCell<dyn Memory>>,
@@ -59,7 +60,7 @@ impl Module for VMModule {
             export_descriptor: ExportDescriptor::TableIndex(index),
         }) = option_export_item
         {
-            // 目前只有一个表格可以导出
+            // 目前 WebAssembly 只支持一个表格
             if *index != 0 {
                 Err(EngineError::InvalidOperation(
                     "only table with index value 0 is allowed".to_string(),
@@ -86,7 +87,7 @@ impl Module for VMModule {
             export_descriptor: ExportDescriptor::MemoryBlockIndex(index),
         }) = option_export_item
         {
-            // 目前只有一个内存块可以导出
+            // 目前 WebAssembly 只支持一个内存块
             if *index != 0 {
                 Err(EngineError::InvalidOperation(
                     "only memory with index value 0 is allowed".to_string(),
@@ -158,11 +159,10 @@ impl VMModule {
         module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
         option_memory_data: Option<Vec<u8>>,
     ) -> Result<Rc<RefCell<VMModule>>, EngineError> {
-        let operand_stack = OperandStack::new();
-        let control_stack = ControlStack::new();
+        let operand_stack = VMOperandStack::new();
+        let control_stack = VMControlStack::new();
         let rc_table = create_table(&ast_module, module_map)?;
         let rc_memory = create_memory(&ast_module, module_map, option_memory_data)?;
-        let global_variables = create_global_variables(&ast_module, module_map)?;
         let export_items = ast_module.export_items.clone();
 
         let vm_module = VMModule {
@@ -170,23 +170,28 @@ impl VMModule {
             control_stack,
             table: Rc::clone(&rc_table),
             memory: Rc::clone(&rc_memory),
-            functions: vec![], // 因为 Function 有对 VMModule 的反向引用，所以先用一个空的函数列表构建 VMModule 实例。
-            global_variables,
+            functions: vec![], // 因为 Function 有对 VMModule 实例的反向引用，所以先用一个空的函数列表顶替。
+            global_variables: vec![], // 因为 Global 里面有指令表达式需要 VMModule 实例来执行，所以先用一个空的全局列表顶替。
             current_call_frame_base_pointer: 0,
             name: name.to_string(),
             export_items,
         };
 
         let rc_module = Rc::new(RefCell::new(vm_module));
-        let weak_module = Rc::downgrade(&rc_module);
-
-        // 替换 VMModule 实例的 functions 成员的值。
-        let functions = create_functions(&ast_module, module_map, weak_module)?;
-        rc_module.as_ref().borrow_mut().functions = functions;
 
         // 填充 table 和 memory 的初始值
         fill_table_elements(&ast_module, Rc::clone(&rc_module))?;
         fill_memory_datas(&ast_module, Rc::clone(&rc_module))?;
+
+        // 替换 VMModule 实例的 global_variables 成员的值。
+        let global_variables =
+            create_global_variables(&ast_module, module_map, Rc::clone(&rc_module))?;
+        rc_module.as_ref().borrow_mut().global_variables = global_variables;
+
+        // 替换 VMModule 实例的 functions 成员的值。
+        let weak_module = Rc::downgrade(&rc_module);
+        let functions = create_functions(&ast_module, module_map, weak_module)?;
+        rc_module.as_ref().borrow_mut().functions = functions;
 
         Ok(rc_module)
     }
@@ -197,7 +202,7 @@ impl VMModule {
     }
 }
 
-pub fn create_table(
+fn create_table(
     ast_module: &ast::Module,
     module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
 ) -> Result<Rc<RefCell<dyn Table>>, EngineError> {
@@ -249,7 +254,7 @@ pub fn create_table(
     }
 }
 
-pub fn create_memory(
+fn create_memory(
     ast_module: &ast::Module,
     module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
     option_memory_data: Option<Vec<u8>>,
@@ -307,7 +312,7 @@ pub fn create_memory(
     }
 }
 
-pub fn create_functions(
+fn create_functions(
     ast_module: &ast::Module,
     module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
     weak_module: Weak<RefCell<VMModule>>,
@@ -380,25 +385,77 @@ pub fn create_functions(
     Ok(functions)
 }
 
-pub fn create_global_variables(
+fn create_global_variables(
     ast_module: &ast::Module,
     module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
+    rc_module: Rc<RefCell<VMModule>>,
 ) -> Result<Vec<Rc<RefCell<dyn GlobalVariable>>>, EngineError> {
-    todo!()
+    let mut global_variables = Vec::<Rc<RefCell<dyn GlobalVariable>>>::new();
+
+    // 先导入全局变量（假如存在的话）
+
+    let import_items = ast_module
+        .import_items
+        .iter()
+        .filter(|item| matches!(item.import_descriptor, ImportDescriptor::GlobalType(_)))
+        .collect::<Vec<&ImportItem>>();
+
+    for import_item in import_items {
+        if let ImportItem {
+            module_name,
+            name,
+            import_descriptor: ImportDescriptor::GlobalType(global_type),
+        } = import_item
+        {
+            let option_module = module_map.get(module_name.as_str());
+            if let Some(rc_module) = option_module {
+                let rc_global_variable = rc_module
+                    .as_ref()
+                    .borrow()
+                    .get_export_global_variable(name)?;
+
+                if global_type != &rc_global_variable.as_ref().borrow().get_global_type() {
+                    return Err(EngineError::InvalidOperation(
+                        "the type of the imported global variable does not match the declaration"
+                            .to_string(),
+                    ));
+                } else {
+                    global_variables.push(Rc::clone(&rc_global_variable));
+                }
+            } else {
+                return Err(EngineError::ObjectNotFound(format!(
+                    "cannot found the specified module \"{}\"",
+                    module_name
+                )));
+            }
+        }
+    }
+
+    // 再添加当前模块内定义的全局变量
+
+    for global_item in &ast_module.global_items {
+        let expression = &global_item.init_expression;
+        let value = Value::I32(0); // todo:: 执行指令
+        let global_variable = VMGlobalVariable::new(global_item.global_type.clone(), value);
+
+        global_variables.push(Rc::new(RefCell::new(global_variable)));
+    }
+
+    Ok(global_variables)
 }
 
 fn fill_table_elements(
     ast_module: &ast::Module,
     rc_module: Rc<RefCell<VMModule>>,
 ) -> Result<(), EngineError> {
-    //
-    todo!()
+    // todo
+    Ok(())
 }
 
 fn fill_memory_datas(
     ast_module: &ast::Module,
     rc_module: Rc<RefCell<VMModule>>,
 ) -> Result<(), EngineError> {
-    //
-    todo!()
+    // todo
+    Ok(())
 }

@@ -11,13 +11,13 @@ use anvm_parser::types::Value;
 /// 当前使用数组来实现操作数栈，
 /// 操作数栈除了用于实现数值运算（类似寄存器的任务），同时
 /// 也用于实现 `函数调用帧`（call frame）。
-pub struct OperandStack {
+pub struct VMOperandStack {
     slots: Vec<Value>,
 }
 
-impl OperandStack {
+impl VMOperandStack {
     pub fn new() -> Self {
-        OperandStack { slots: vec![] }
+        VMOperandStack { slots: vec![] }
     }
 
     /// 压入
@@ -78,11 +78,13 @@ impl OperandStack {
     /// 小索引端的数据先压入，即靠近栈底
     /// 大索引端的数据后压入，即靠近栈顶
     ///
+    /// ```diagram
     ///                  |栈顶。|
     /// [0, 1, 2] ---->  | 2   |
     ///                  | 1   |
     ///                  | 0   |
     ///                  |栈底。|
+    /// ```
     pub fn push_values(&mut self, values: &[Value]) {
         self.slots.extend_from_slice(values)
     }
@@ -91,11 +93,13 @@ impl OperandStack {
     /// 靠近栈底的数据会放置在结果的小索引端
     /// 靠近栈顶的数据会放置在结果的大索引端
     ///
+    /// ```diagram
     /// |栈顶。|
     /// | 2   | ----> [0, 1, 2]
     /// | 1   |
     /// | 0   |
     /// |栈底。|
+    /// ```
     pub fn pop_values(&mut self, count: usize) -> Vec<Value> {
         let index = self.slots.len() - count;
         let values: Vec<Value> = self.slots.drain(index..).collect();
@@ -107,11 +111,11 @@ impl OperandStack {
 mod tests {
     use anvm_parser::types::Value;
 
-    use super::OperandStack;
+    use super::VMOperandStack;
 
     #[test]
     fn test_push_pop_and_peek() {
-        let mut s0 = OperandStack { slots: vec![] };
+        let mut s0 = VMOperandStack { slots: vec![] };
 
         // 测试 push
         s0.push(Value::I32(1));
@@ -137,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_get_and_set() {
-        let mut s0 = OperandStack { slots: vec![] };
+        let mut s0 = VMOperandStack { slots: vec![] };
 
         s0.push(Value::I32(1));
         s0.push(Value::I32(2));
@@ -164,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_push_and_pop_values() {
-        let mut s0 = OperandStack { slots: vec![] };
+        let mut s0 = VMOperandStack { slots: vec![] };
 
         s0.push(Value::I32(1));
         s0.push(Value::I32(2));

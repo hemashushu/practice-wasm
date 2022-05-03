@@ -16,8 +16,8 @@ use anvm_parser::{
 };
 
 use crate::{
-    instance::{EngineError, Function},
     ins_function,
+    instance::{EngineError, Function},
     vm_module::VMModule,
 };
 
@@ -61,7 +61,10 @@ impl VMFunction {
         }
     }
 
-    pub fn new_external_function(function_type: FunctionType, rc_function: Rc<dyn Function>) -> Self {
+    pub fn new_external_function(
+        function_type: FunctionType,
+        rc_function: Rc<dyn Function>,
+    ) -> Self {
         VMFunction {
             function_type,
             function_item: FunctionItem::External(rc_function),
@@ -70,7 +73,6 @@ impl VMFunction {
 }
 
 impl Function for VMFunction {
-    /// 从 vm 外部调用函数
     fn eval(&self, args: &[Value]) -> Result<Vec<Value>, EngineError> {
         match &self.function_item {
             FunctionItem::Internal {

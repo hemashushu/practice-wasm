@@ -47,18 +47,18 @@ use anvm_parser::{ast::FunctionType, instruction::Instruction};
 ///        |                       |
 ///        | ------- 栈底。 ------- |
 /// ```
-pub struct ControlStack {
+pub struct VMControlStack {
     // 这里的 `stack frame` 除了包括普通的 `call frame`，还包括
     // 函数内的诸如 block/loop/if 等控制块这种 `flow control frame`
-    frames: Vec<StackFrame>,
+    frames: Vec<VMStackFrame>,
 }
 
 // name: stackFrame
-pub struct StackFrame {
+pub struct VMStackFrame {
     // 创建当前帧的指令
     // 对于函数调用，创建帧的指令是 call
     // 对于流程控制所产生的帧，创建的指令有 block/loop 等
-    pub frame_type: FrameType,
+    pub frame_type: VMFrameType,
 
     // 函数签名、以及块类型
     pub function_type: FunctionType,
@@ -79,21 +79,21 @@ pub struct StackFrame {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum FrameType {
+pub enum VMFrameType {
     Call,
     Block,
     Loop,
 }
 
-impl StackFrame {
+impl VMStackFrame {
     pub fn new(
-        frame_type: FrameType,
+        frame_type: VMFrameType,
         function_type: FunctionType,
         instructions: Rc<Vec<Instruction>>,
         frame_pointer: usize,
         local_variable_count: usize,
     ) -> Self {
-        StackFrame {
+        VMStackFrame {
             frame_type,
             function_type,
             instructions,
@@ -104,16 +104,16 @@ impl StackFrame {
     }
 }
 
-impl ControlStack {
+impl VMControlStack {
     pub fn new() -> Self {
-        ControlStack { frames: vec![] }
+        VMControlStack { frames: vec![] }
     }
 
-    pub fn push_frame(&mut self, stack_frame: StackFrame) {
+    pub fn push_frame(&mut self, stack_frame: VMStackFrame) {
         self.frames.push(stack_frame)
     }
 
-    pub fn pop_frame(&mut self) -> StackFrame {
+    pub fn pop_frame(&mut self) -> VMStackFrame {
         let option_frame = self.frames.pop();
         if let Some(frame) = option_frame {
             frame
@@ -122,7 +122,7 @@ impl ControlStack {
         }
     }
 
-    pub fn peek_frame(&self) -> &StackFrame {
+    pub fn peek_frame(&self) -> &VMStackFrame {
         let option_frame = self.frames.last();
         if let Some(frame) = option_frame {
             frame
@@ -136,12 +136,12 @@ impl ControlStack {
     }
 
     // 获取最后的一个**调用帧**
-    pub fn get_last_call_frame(&self) -> &StackFrame {
+    pub fn get_last_call_frame(&self) -> &VMStackFrame {
         let option_frame = self
             .frames
             .iter()
             .rev()
-            .find(|f| f.frame_type == FrameType::Call);
+            .find(|f| f.frame_type == VMFrameType::Call);
 
         if let Some(frame) = option_frame {
             frame
@@ -162,7 +162,7 @@ impl ControlStack {
     pub fn get_relative_depth(&self) -> usize {
         let mut depth: usize = 0;
         for frame in self.frames.iter().rev() {
-            if frame.frame_type == FrameType::Call {
+            if frame.frame_type == VMFrameType::Call {
                 break;
             } else {
                 depth += 1;
@@ -178,7 +178,7 @@ mod tests {
 
     use anvm_parser::ast::FunctionType;
 
-    use super::{ControlStack, FrameType, StackFrame};
+    use super::{VMControlStack, VMFrameType, VMStackFrame};
 
     fn new_void_function_type() -> FunctionType {
         FunctionType {
@@ -187,9 +187,9 @@ mod tests {
         }
     }
 
-    fn new_call_frame() -> StackFrame {
-        StackFrame::new(
-            FrameType::Call,
+    fn new_call_frame() -> VMStackFrame {
+        VMStackFrame::new(
+            VMFrameType::Call,
             new_void_function_type(),
             Rc::new(vec![]),
             0,
@@ -197,9 +197,9 @@ mod tests {
         )
     }
 
-    fn new_block_frame() -> StackFrame {
-        StackFrame::new(
-            FrameType::Block,
+    fn new_block_frame() -> VMStackFrame {
+        VMStackFrame::new(
+            VMFrameType::Block,
             new_void_function_type(),
             Rc::new(vec![]),
             0,
@@ -207,9 +207,9 @@ mod tests {
         )
     }
 
-    fn new_loop_frame() -> StackFrame {
-        StackFrame::new(
-            FrameType::Loop,
+    fn new_loop_frame() -> VMStackFrame {
+        VMStackFrame::new(
+            VMFrameType::Loop,
             new_void_function_type(),
             Rc::new(vec![]),
             0,
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_push_pop_and_peek() {
-        let mut s0 = ControlStack { frames: vec![] };
+        let mut s0 = VMControlStack { frames: vec![] };
 
         // 测试 push
         s0.push_frame(new_call_frame());
@@ -228,12 +228,12 @@ mod tests {
 
         // 测试 pop
         assert_eq!(s0.get_frame_count(), 3);
-        assert_eq!(s0.pop_frame().frame_type, FrameType::Block);
-        assert_eq!(s0.pop_frame().frame_type, FrameType::Loop);
+        assert_eq!(s0.pop_frame().frame_type, VMFrameType::Block);
+        assert_eq!(s0.pop_frame().frame_type, VMFrameType::Loop);
         assert_eq!(s0.get_frame_count(), 1);
 
         // 测试 peek
-        assert_eq!(s0.peek_frame().frame_type, FrameType::Call);
+        assert_eq!(s0.peek_frame().frame_type, VMFrameType::Call);
         assert_eq!(s0.get_frame_count(), 1);
     }
 }
