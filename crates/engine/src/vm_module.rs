@@ -25,7 +25,7 @@ use crate::{
     vm_control_stack::{VMControlStack, VMFrameType, VMStackFrame},
     vm_function::VMFunction,
     vm_global_variable::VMGlobalVariable,
-    vm_instruction::exec_instruction,
+    vm_instruction::{exec_instruction, exec_instructions},
     vm_memory::VMMemory,
     vm_operand_stack::VMOperandStack,
     vm_table::VMTable,
@@ -164,19 +164,13 @@ impl Module for VMModule {
             )))
         }
     }
-
-    /// 从 vm 外部（即宿主）或者其他模块调用函数
-    fn eval_function(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError> {
-        let rc_function = self.get_export_function(name)?;
-        rc_function.as_ref().eval(args)
-    }
 }
 
 impl VMModule {
     pub fn new(
         name: &str,
         ast_module: ast::Module,
-        module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
+        module_map: &HashMap<String, Rc<RefCell<dyn Module>>>,
         option_memory_data: Option<Vec<u8>>,
     ) -> Result<Rc<RefCell<VMModule>>, EngineError> {
         let operand_stack = VMOperandStack::new();
@@ -216,136 +210,188 @@ impl VMModule {
 
         Ok(rc_module)
     }
+}
 
-    pub fn eval_function_by_index(
-        &self,
-        index: usize,
-        args: &[Value],
-    ) -> Result<Vec<Value>, EngineError> {
-        self.functions[index].as_ref().eval(args)
+/// 从 vm 外部（即宿主）或者其他模块调用函数
+pub fn eval_function(
+    vm_module: Rc<RefCell<VMModule>>,
+    name: &str,
+    args: &[Value],
+) -> Result<Vec<Value>, EngineError> {
+    let rc_function = vm_module.as_ref().borrow().get_export_function(name)?;
+    rc_function.as_ref().eval(args)
+}
+
+pub fn eval_function_by_index(
+    vm_module: Rc<RefCell<VMModule>>,
+    index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, EngineError> {
+    let rc_function = get_function_by_index(vm_module, index);
+    rc_function.as_ref().eval(args)
+}
+
+pub fn get_function_by_index(vm_module: Rc<RefCell<VMModule>>, index: usize) -> Rc<dyn Function> {
+    Rc::clone(&vm_module.as_ref().borrow().functions[index])
+}
+
+pub fn get_start_function_index(vm_module: Rc<RefCell<VMModule>>) -> Option<u32> {
+    vm_module.as_ref().borrow().start_function_index
+}
+
+/// 创建新的控制栈帧
+pub fn enter_control_block(
+    vm_module: Rc<RefCell<VMModule>>,
+    frame_type: VMFrameType,
+    function_type: &Rc<FunctionType>,
+    instructions: &Rc<Vec<Instruction>>,
+    local_variable_count: usize,
+) {
+    let mut module = vm_module.as_ref().borrow_mut();
+
+    let frame_pointer = module.operand_stack.get_stack_size() - function_type.as_ref().params.len();
+
+    let stack_frame = VMStackFrame::new(
+        frame_type.clone(),
+        Rc::clone(function_type),
+        Rc::clone(instructions),
+        frame_pointer,
+        local_variable_count,
+    );
+
+    module.control_stack.push_frame(stack_frame);
+
+    if frame_type == VMFrameType::Call {
+        module.current_call_frame_base_pointer = frame_pointer;
+    }
+}
+
+/// 删除当前控制栈帧
+pub fn leave_control_block(vm_module: Rc<RefCell<VMModule>>) {
+    let mut module = vm_module.as_ref().borrow_mut();
+    let stack_frame = module.control_stack.pop_frame();
+
+    // 做一些离开 `被调用者` 之后的清理工作
+
+    // 丢弃自当前函数调用帧以后产生的所有操作数槽（包括局部变量槽），
+    // 即丢弃 `被调用者` 产生的残留数据。
+
+    // 计算残留数据的大小，根据是除了返回值之外，其他的都属于残留数据
+    let result_count = stack_frame.function_type.as_ref().results.len();
+    let residue_count =
+        module.operand_stack.get_stack_size() - stack_frame.frame_pointer - result_count;
+
+    if residue_count > 0 {
+        // 先弹出有用的数据（即返回值）
+        let result_values = module.operand_stack.pop_values(result_count);
+        // 丢弃残留数据
+        module.operand_stack.pop_values(residue_count);
+        // 再压入有用的数据
+        module.operand_stack.push_values(&result_values);
     }
 
-    pub fn get_start_function_index(&self) -> Option<u32> {
-        self.start_function_index
+    // 如果当前栈帧是 `函数调用帧`，则还需要更新 current_call_frame_base_pointer 的值
+    if stack_frame.frame_type == VMFrameType::Call && module.control_stack.get_frame_count() > 0 {
+        let last_call_frame = module.control_stack.get_last_call_frame();
+        module.current_call_frame_base_pointer = last_call_frame.frame_pointer;
     }
+}
 
-    pub fn enter_control_block(
-        &mut self,
-        frame_type: VMFrameType,
-        function_type: &Rc<FunctionType>,
-        instructions: &Rc<Vec<Instruction>>,
-        local_variable_count: usize,
-    ) {
-        let frame_pointer =
-            self.operand_stack.get_stack_size() - function_type.as_ref().params.len();
+/// 重新执行一下当前控制块
+/// 用于 loop 控制块
+pub fn repeat_control_block(vm_module: Rc<RefCell<VMModule>>) {
+    let stack_size = vm_module.as_ref().borrow().operand_stack.get_stack_size();
 
-        let stack_frame = VMStackFrame::new(
-            frame_type.clone(),
-            Rc::clone(function_type),
-            Rc::clone(instructions),
-            frame_pointer,
-            local_variable_count,
-        );
+    // 这里用于限制 borrow_mut 的作用范围
+    let (target_block_argument_count, frame_pointer) = {
+        let mut module = vm_module.as_ref().borrow_mut();
+        let stack_frame = module.control_stack.peek_frame();
 
-        self.control_stack.push_frame(stack_frame);
+        let target_block_argument_count = stack_frame.function_type.as_ref().params.len();
+        let frame_pointer = stack_frame.frame_pointer;
 
-        if frame_type == VMFrameType::Call {
-            self.current_call_frame_base_pointer = frame_pointer;
-        }
-    }
+        (target_block_argument_count, frame_pointer)
+    };
 
-    /// 消掉当前控制栈帧
-    pub fn leave_control_block(&mut self) {
-        let stack_frame = self.control_stack.pop_frame();
+    // 这里用于限制 borrow_mut 的作用范围
+    {
+        let mut module = vm_module.as_ref().borrow_mut();
 
-        // 做一些离开 `被调用者` 之后的清理工作
-
-        // 丢弃自当前函数调用帧以后产生的所有操作数槽（包括局部变量槽），
-        // 即丢弃 `被调用者` 产生的残留数据。
-
-        // 计算残留数据的大小，根据是除了返回值之外，其他的都属于残留数据
-        let result_count = stack_frame.function_type.as_ref().results.len();
-        let residue_count =
-            self.operand_stack.get_stack_size() - stack_frame.frame_pointer - result_count;
-
-        if residue_count > 0 {
-            // 先弹出有用的数据（即返回值）
-            let result_values = self.operand_stack.pop_values(result_count);
-            // 丢弃残留数据
-            self.operand_stack.pop_values(residue_count);
-            // 再压入有用的数据
-            self.operand_stack.push_values(&result_values);
-        }
-
-        // 如果当前栈帧是 `函数调用帧`，则还需要更新 current_call_frame_base_pointer 的值
-        if stack_frame.frame_type == VMFrameType::Call && self.control_stack.get_frame_count() > 0 {
-            let last_call_frame = self.control_stack.get_last_call_frame();
-            self.current_call_frame_base_pointer = last_call_frame.frame_pointer;
-        }
-    }
-
-    /// 重新执行一下当前控制块
-    /// 用于 loop 控制块
-    pub fn repeat_control_block(&mut self) {
-        let stack_frame = self.control_stack.peek_frame();
         // 注意这里要弹出的操作数的数量是 “目标层参数所需的数量”，而不是 "当前函数的的返回值的数量"。
-        let target_block_arguments = self
-            .operand_stack
-            .pop_values(stack_frame.function_type.as_ref().params.len());
+        let target_block_arguments = module.operand_stack.pop_values(target_block_argument_count);
 
         // 丢弃当前栈帧的残留的数据
         // 即从 `frame pointer` 到栈顶的操作数
-        self.operand_stack
-            .pop_values(self.operand_stack.get_stack_size() - stack_frame.frame_pointer);
+        module.operand_stack.pop_values(stack_size - frame_pointer);
 
         // 将实参重新压入操作数栈
-        self.operand_stack.push_values(&target_block_arguments);
+        module.operand_stack.push_values(&target_block_arguments);
+    }
+
+    // 这里用于限制 borrow_mut 的作用范围
+    {
+        let mut module = vm_module.as_ref().borrow_mut();
+        let stack_frame = module.control_stack.peek_frame();
 
         // 重置 pc 值
         stack_frame.program_counter = 0;
     }
+}
 
-    pub fn do_loop(&mut self) -> Result<(), EngineError> {
-        // 如果从 vm 外部调用 call 指令之后，控制栈
-        // 应该有 1 个栈帧，这时 start_depth 值为 1。
-        //
-        // 当一个函数调用外部的函数，然后外部的函数又再次调用当前 VMModule 的
-        // 其他函数时（注意，不同模块的两个函数暂时不支持相互循环调用），
-        // do_loop() 方法会再次被激活，此时的 start_depth 的值就不是 1。
-        //
-        // 所以这里的 start_depth 不能假设为 1，应该由
-        // get_frame_count() 方法获取。
-        let start_depth = self.control_stack.get_frame_count();
-        while self.control_stack.get_frame_count() >= start_depth {
-            let (program_counter, instructions) = {
-                let stack_frame = self.control_stack.peek_frame();
-                (
-                    stack_frame.program_counter,
-                    Rc::clone(&stack_frame.instructions),
-                )
-            };
+pub fn do_loop(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
+    // 如果从 vm 外部调用 call 指令之后，控制栈
+    // 应该有 1 个栈帧，这时 start_depth 值为 1。
+    //
+    // 当一个函数调用外部的函数，然后外部的函数又再次调用当前 VMModule 的
+    // 其他函数时（注意，不同模块的两个函数暂时不支持相互循环调用），
+    // do_loop() 方法会再次被激活，此时的 start_depth 的值就不是 1。
+    //
+    // 所以这里的 start_depth 不能假设为 1，应该由
+    // get_frame_count() 方法获取。
+    let start_depth = vm_module.as_ref().borrow().control_stack.get_frame_count();
 
-            if program_counter == instructions.len() {
-                self.leave_control_block();
-            } else {
-                {
-                    // 向前移动一个指令
-                    let stack_frame = self.control_stack.peek_frame();
-                    stack_frame.program_counter = program_counter + 1;
-                }
+    while vm_module.as_ref().borrow().control_stack.get_frame_count() >= start_depth {
+        // 这里用于限制 borrow_mut 的作用范围
+        let (instructions, program_counter) = {
+            let mut module = vm_module.as_ref().borrow_mut();
+            let stack_frame = module.control_stack.peek_frame();
 
-                let instruction = &instructions.as_ref()[program_counter];
-                exec_instruction(self, &instruction)?;
-            }
+            let instructions = Rc::clone(&stack_frame.instructions);
+            let program_counter = stack_frame.program_counter;
+            (instructions, program_counter)
+        };
+
+        if program_counter == instructions.len() {
+            leave_control_block(Rc::clone(&vm_module));
+        } else {
+            // 向前移动一个指令
+            move_forward_instruction(Rc::clone(&vm_module), instructions, program_counter)?;
         }
-
-        Ok(())
     }
+
+    Ok(())
+}
+
+fn move_forward_instruction(
+    vm_module: Rc<RefCell<VMModule>>,
+    instructions: Rc<Vec<Instruction>>,
+    program_counter: usize,
+) -> Result<(), EngineError> {
+    // 这里用于限制 borrow_mut 的作用范围
+    {
+        let mut module = vm_module.as_ref().borrow_mut();
+        let stack_frame = module.control_stack.peek_frame();
+        stack_frame.program_counter = program_counter + 1;
+    }
+
+    let instruction = &instructions.as_ref()[program_counter];
+    exec_instruction(vm_module, &instruction)?;
+    Ok(())
 }
 
 fn create_table(
     ast_module: &ast::Module,
-    module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
+    module_map: &HashMap<String, Rc<RefCell<dyn Module>>>,
 ) -> Result<Rc<RefCell<dyn Table>>, EngineError> {
     // 检查是否有表类型的导入项
     let option_import_item = ast_module
@@ -361,9 +407,9 @@ fn create_table(
     {
         // 检查到有表类型的导入项
 
-        let option_module = module_map.get(module_name.as_str());
-        if let Some(rc_module) = option_module {
-            let rc_table = rc_module.as_ref().borrow().get_export_table(name)?;
+        let option_module = module_map.get(module_name);
+        if let Some(source_module) = option_module {
+            let rc_table = source_module.as_ref().borrow().get_export_table(name)?;
 
             if table_type != &rc_table.as_ref().borrow().get_table_type() {
                 Err(EngineError::InvalidOperation(
@@ -385,9 +431,9 @@ fn create_table(
             // 根据定义创建新表
             VMTable::new(first.clone())
         } else {
-            // 创建默认表（容量为 0 的表）
+            // 创建默认表（容量最小值为 0，不限最大值的表）
             VMTable::new(TableType {
-                limit: Limit::Range(0, 0),
+                limit: Limit::AtLeast(0),
             })
         };
 
@@ -397,7 +443,7 @@ fn create_table(
 
 fn create_memory(
     ast_module: &ast::Module,
-    module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
+    module_map: &HashMap<String, Rc<RefCell<dyn Module>>>,
     option_memory_data: Option<Vec<u8>>,
 ) -> Result<Rc<RefCell<dyn Memory>>, EngineError> {
     // 检查是否有内存类型的导入项
@@ -414,9 +460,9 @@ fn create_memory(
     {
         // 检查到有内存类型的导入项
 
-        let option_module = module_map.get(module_name.as_str());
-        if let Some(rc_module) = option_module {
-            let rc_memory = rc_module.as_ref().borrow().get_export_memory(name)?;
+        let option_module = module_map.get(module_name);
+        if let Some(source_module) = option_module {
+            let rc_memory = source_module.as_ref().borrow().get_export_memory(name)?;
 
             if memory_type != &rc_memory.as_ref().borrow().get_memory_type() {
                 Err(EngineError::InvalidOperation(
@@ -442,7 +488,7 @@ fn create_memory(
                 // 根据定义创建新内存块
                 VMMemory::new(first.clone())
             } else {
-                // 创建默认内存块（页面最小值为 1 的内存块）
+                // 创建默认内存块（页面最小值为 1，不限最大值的内存块）
                 VMMemory::new(MemoryType {
                     limit: Limit::AtLeast(1),
                 })
@@ -455,7 +501,7 @@ fn create_memory(
 
 fn create_functions(
     ast_module: &ast::Module,
-    module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
+    module_map: &HashMap<String, Rc<RefCell<dyn Module>>>,
     weak_module: Weak<RefCell<VMModule>>,
 ) -> Result<Vec<Rc<dyn Function>>, EngineError> {
     let mut functions = Vec::<Rc<dyn Function>>::new();
@@ -480,9 +526,9 @@ fn create_functions(
             import_descriptor: ImportDescriptor::FunctionTypeIndex(function_type_index),
         } = import_item
         {
-            let option_module = module_map.get(module_name.as_str());
-            if let Some(rc_module) = option_module {
-                let rc_function = rc_module.as_ref().borrow().get_export_function(name)?;
+            let option_module = module_map.get(module_name);
+            if let Some(source_module) = option_module {
+                let rc_function = source_module.as_ref().borrow().get_export_function(name)?;
 
                 let rc_function_type = &ast_module.function_types[*function_type_index as usize];
                 if rc_function_type.as_ref()
@@ -530,8 +576,8 @@ fn create_functions(
 
 fn create_global_variables(
     ast_module: &ast::Module,
-    module_map: &HashMap<&str, Rc<RefCell<dyn Module>>>,
-    rc_module: Rc<RefCell<VMModule>>,
+    module_map: &HashMap<String, Rc<RefCell<dyn Module>>>,
+    vm_module: Rc<RefCell<VMModule>>,
 ) -> Result<Vec<Rc<RefCell<dyn GlobalVariable>>>, EngineError> {
     let mut global_variables = Vec::<Rc<RefCell<dyn GlobalVariable>>>::new();
 
@@ -550,9 +596,9 @@ fn create_global_variables(
             import_descriptor: ImportDescriptor::GlobalType(global_type),
         } = import_item
         {
-            let option_module = module_map.get(module_name.as_str());
-            if let Some(rc_module) = option_module {
-                let rc_global_variable = rc_module
+            let option_module = module_map.get(module_name);
+            if let Some(source_module) = option_module {
+                let rc_global_variable = source_module
                     .as_ref()
                     .borrow()
                     .get_export_global_variable(name)?;
@@ -577,8 +623,12 @@ fn create_global_variables(
     // 再添加当前模块内定义的全局变量
 
     for global_item in &ast_module.global_items {
+        // 偏移值表达式，通常是一个 i32.const 指令
         let expression = &global_item.init_expression;
-        let value = Value::I32(0); // todo:: 执行指令
+        exec_instructions(Rc::clone(&vm_module), expression)?;
+
+        // 操作数栈的顶端操作数————即偏移值表达式的运算结果————表示内存的有效地址
+        let value = vm_module.as_ref().borrow_mut().operand_stack.pop();
         let global_variable = VMGlobalVariable::new(global_item.global_type.clone(), value);
 
         global_variables.push(Rc::new(RefCell::new(global_variable)));
@@ -589,7 +639,7 @@ fn create_global_variables(
 
 fn fill_table_elements(
     ast_module: &ast::Module,
-    rc_module: Rc<RefCell<VMModule>>,
+    vm_module: Rc<RefCell<VMModule>>,
 ) -> Result<(), EngineError> {
     // todo
     Ok(())
@@ -597,7 +647,7 @@ fn fill_table_elements(
 
 fn fill_memory_datas(
     ast_module: &ast::Module,
-    rc_module: Rc<RefCell<VMModule>>,
+    vm_module: Rc<RefCell<VMModule>>,
 ) -> Result<(), EngineError> {
     // todo
     Ok(())
@@ -607,11 +657,13 @@ fn fill_memory_datas(
 mod tests {
     use std::{cell::RefCell, collections::HashMap, env, fs, rc::Rc};
 
-    use anvm_parser::{ast, binary_parser};
+    use anvm_parser::{ast, binary_parser, types::Value};
 
-    use crate::instance::Module;
+    use crate::{instance::Module, vm_module::eval_function_by_index};
 
     use super::VMModule;
+
+    use pretty_assertions::assert_eq;
 
     // 辅助方法
     fn get_test_resource_file_binary(filename: &str) -> Vec<u8> {
@@ -641,15 +693,21 @@ mod tests {
         binary_parser::parse(&bytes).unwrap()
     }
 
+    fn get_test_vm_module(filename: &str) -> Rc<RefCell<VMModule>> {
+        let ast_module = get_test_module_binary(filename);
+        let module_map = HashMap::<String, Rc<RefCell<dyn Module>>>::new();
+        let vm_module = VMModule::new("test", ast_module, &module_map, None).unwrap();
+        vm_module
+    }
+
     #[test]
     fn test_instruction_const() {
-        // 测试 test-section-1.wasm
-        let ast_module = get_test_module_binary("test-const.wasm");
-        let module_map = HashMap::<&str, Rc<RefCell<dyn Module>>>::new();
-        let rc_module = VMModule::new("test", ast_module, &module_map, None).unwrap();
-        let module = rc_module.as_ref().borrow();
+        // 测试 test-const.wasm
+        let module = get_test_vm_module("test-const.wasm");
+        let r0 = eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap();
+        assert_eq!(r0, vec![Value::I32(123)]);
 
-        let r0 = module.eval_function_by_index(0, &vec![]).unwrap();
-        println!("{:?}", r0);
+        let r1 = eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap();
+        assert_eq!(r1, vec![Value::I32(123), Value::I32(456)]);
     }
 }

@@ -18,7 +18,7 @@ use anvm_parser::{
 use crate::{
     ins_function,
     instance::{EngineError, Function},
-    vm_module::VMModule,
+    vm_module::{do_loop, VMModule},
 };
 
 pub struct VMFunction {
@@ -82,15 +82,18 @@ impl Function for VMFunction {
                 expression,
                 vm_module,
             } => {
-                let rc = match vm_module.upgrade() {
+                let rc_vm_module = match vm_module.upgrade() {
                     Some(rc) => rc,
                     _ => panic!("failed to get the module instance"),
                 };
 
-                // println!("{:?}", rc);
-                let mut m = rc.as_ref().borrow_mut();
-                eval_internal_function(&self.function_type, local_groups, expression, &mut m, args)
-                // Ok(vec![])
+                eval_internal_function(
+                    rc_vm_module,
+                    &self.function_type,
+                    local_groups,
+                    expression,
+                    args,
+                )
             }
             FunctionItem::External(r) => {
                 // 对于 `外部函数`，使用它自己的 eval() 方法求值，
@@ -107,16 +110,21 @@ impl Function for VMFunction {
 
 /// 从 vm 外部（即宿主）或者其他模块调用 "（函数所在的）模块内部定义的" 函数
 fn eval_internal_function(
+    vm_module: Rc<RefCell<VMModule>>,
     function_type: &Rc<FunctionType>,
     local_groups: &Vec<LocalGroup>,
     instructions: &Rc<Vec<Instruction>>,
-    vm_module: &mut VMModule,
     args: &[Value],
 ) -> Result<Vec<Value>, EngineError> {
-    push_args(vm_module, function_type, args)?;
-    ins_function::call_internal_function(vm_module, function_type, local_groups, instructions);
-    vm_module.do_loop()?;
-    let result_values = pop_results(vm_module, function_type);
+    push_args(Rc::clone(&vm_module), function_type, args)?;
+    ins_function::call_internal_function(
+        Rc::clone(&vm_module),
+        function_type,
+        local_groups,
+        instructions,
+    );
+    do_loop(Rc::clone(&vm_module))?;
+    let result_values = pop_results(Rc::clone(&vm_module), function_type);
     Ok(result_values)
 }
 
@@ -141,7 +149,7 @@ fn eval_internal_function(
 /// | - ...      |   | - ...      |
 /// |--- 栈底。---|   |--- 栈底。---|
 fn push_args(
-    vm_module: &mut VMModule,
+    vm_module: Rc<RefCell<VMModule>>,
     function_type: &FunctionType,
     args: &[Value],
 ) -> Result<(), EngineError> {
@@ -151,11 +159,19 @@ fn push_args(
         ));
     }
 
-    vm_module.operand_stack.push_values(args);
+    vm_module
+        .as_ref()
+        .borrow_mut()
+        .operand_stack
+        .push_values(args);
     Ok(())
 }
 
-fn pop_results(vm_module: &mut VMModule, function_type: &FunctionType) -> Vec<Value> {
+fn pop_results(vm_module: Rc<RefCell<VMModule>>, function_type: &FunctionType) -> Vec<Value> {
     let count = function_type.results.len();
-    vm_module.operand_stack.pop_values(count)
+    vm_module
+        .as_ref()
+        .borrow_mut()
+        .operand_stack
+        .pop_values(count)
 }

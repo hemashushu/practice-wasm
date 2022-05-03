@@ -28,8 +28,8 @@ pub trait Module {
         name: &str,
     ) -> Result<Rc<RefCell<dyn GlobalVariable>>, EngineError>;
 
-    /// 从 vm 外部（即宿主）或者其他模块调用函数
-    fn eval_function(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError>;
+    // 从 vm 外部（即宿主）或者其他模块调用函数
+    // fn eval_function(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError>;
 
     // 获取内存快照
     //fn dump_memory(&self, address:usize, length: usize) -> &[u8];

@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 anvm-parser = {path="../parser"}
+
+[dev-dependencies]
+pretty_assertions = "1.2.1"
