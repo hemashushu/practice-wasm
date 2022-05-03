@@ -8,7 +8,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anvm_parser::instruction::Instruction;
 
-use crate::{ins_const, instance::EngineError, vm_module::VMModule};
+use crate::{ins_const, ins_parametric, instance::EngineError, vm_module::VMModule};
 
 pub fn exec_instruction(
     vm_module: Rc<RefCell<VMModule>>,
@@ -19,6 +19,10 @@ pub fn exec_instruction(
         Instruction::Nop | Instruction::Else | Instruction::End => {
             // 无需任何操作
         }
+
+        // 操作数（参数，parametric）指令
+        Instruction::Drop => ins_parametric::drop(vm_module)?,
+        Instruction::Select => ins_parametric::select(vm_module)?,
 
         // 常量指令
         Instruction::I32Const(value) => ins_const::i32_const(vm_module, *value)?,

@@ -14,5 +14,6 @@ pub mod vm_global_variable;
 pub mod vm_module;
 pub mod vm_instruction;
 pub mod ins_const;
+pub mod ins_parametric;
 pub mod ins_function;
 pub mod interpreter;

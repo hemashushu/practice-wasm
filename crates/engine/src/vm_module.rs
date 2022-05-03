@@ -702,12 +702,46 @@ mod tests {
 
     #[test]
     fn test_instruction_const() {
-        // 测试 test-const.wasm
         let module = get_test_vm_module("test-const.wasm");
-        let r0 = eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap();
-        assert_eq!(r0, vec![Value::I32(123)]);
 
-        let r1 = eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap();
-        assert_eq!(r1, vec![Value::I32(123), Value::I32(456)]);
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(123)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(123), Value::I32(456)]
+        );
+    }
+
+    #[test]
+    fn test_inst_parametric() {
+        let module = get_test_vm_module("test-parametric.wasm");
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(100), Value::I32(123)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(100), Value::I32(456)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(123)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            vec![Value::I32(100), Value::I32(123)]
+        );
     }
 }
