@@ -6,7 +6,10 @@
 
 //! # 操作数（参数 parametric）指令
 //!
-//! 用于修改操作数栈元素的指令，包括 drop 和 select
+//! 用于修改操作数栈元素的指令
+//!
+//! - drop
+//! - select
 
 use std::{cell::RefCell, rc::Rc};
 

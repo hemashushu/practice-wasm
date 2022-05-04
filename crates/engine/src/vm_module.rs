@@ -58,9 +58,11 @@ pub struct VMModule {
     /// 在 VMModule 记录此值，是为了避免每次访问局部变量时的重复计算。
     pub current_call_frame_base_pointer: usize,
 
+    /// 模块的名称
     name: String,
-    export_items: Vec<ExportItem>,
-    start_function_index: Option<u32>,
+
+    /// 包含一份模块的语法树对象，用于动态维护模块的内容
+    ast_module: ast::Module,
 }
 
 impl Module for VMModule {
@@ -70,6 +72,7 @@ impl Module for VMModule {
 
     fn get_export_table(&self, name: &str) -> Result<Rc<RefCell<dyn Table>>, EngineError> {
         let option_export_item = self
+            .ast_module
             .export_items
             .iter()
             .find(|export_item| export_item.name == name);
@@ -97,6 +100,7 @@ impl Module for VMModule {
 
     fn get_export_memory(&self, name: &str) -> Result<Rc<RefCell<dyn Memory>>, EngineError> {
         let option_export_item = self
+            .ast_module
             .export_items
             .iter()
             .find(|export_item| export_item.name == name);
@@ -124,6 +128,7 @@ impl Module for VMModule {
 
     fn get_export_function(&self, name: &str) -> Result<Rc<dyn Function>, EngineError> {
         let option_export_item = self
+            .ast_module
             .export_items
             .iter()
             .find(|export_item| export_item.name == name);
@@ -147,6 +152,7 @@ impl Module for VMModule {
         name: &str,
     ) -> Result<Rc<RefCell<dyn GlobalVariable>>, EngineError> {
         let option_export_item = self
+            .ast_module
             .export_items
             .iter()
             .find(|export_item| export_item.name == name);
@@ -177,7 +183,7 @@ impl VMModule {
         let control_stack = VMControlStack::new();
         let rc_table = create_table(&ast_module, module_map)?;
         let rc_memory = create_memory(&ast_module, module_map, option_memory_data)?;
-        let export_items = ast_module.export_items.clone();
+        // let export_items = ast_module.export_items.clone();
 
         let vm_module = VMModule {
             operand_stack,
@@ -188,8 +194,9 @@ impl VMModule {
             global_variables: vec![], // 因为 Global 里面有指令表达式需要 VMModule 实例来执行，所以先用一个空的全局列表顶替。
             current_call_frame_base_pointer: 0,
             name: name.to_string(),
-            export_items,
-            start_function_index: ast_module.start_function_index,
+            ast_module: ast_module.clone() // 克隆一份模块的语法树对象
+            // export_items,
+            // start_function_index: ast_module.start_function_index,
         };
 
         let rc_module = Rc::new(RefCell::new(vm_module));
@@ -236,7 +243,7 @@ pub fn get_function_by_index(vm_module: Rc<RefCell<VMModule>>, index: usize) -> 
 }
 
 pub fn get_start_function_index(vm_module: Rc<RefCell<VMModule>>) -> Option<u32> {
-    vm_module.as_ref().borrow().start_function_index
+    vm_module.as_ref().borrow().ast_module.start_function_index
 }
 
 /// 创建新的控制栈帧
@@ -623,11 +630,11 @@ fn create_global_variables(
     // 再添加当前模块内定义的全局变量
 
     for global_item in &ast_module.global_items {
-        // 偏移值表达式，通常是一个 i32.const 指令
+        // 初始值表达式，通常是一个 i32.const 指令
         let expression = &global_item.init_expression;
         exec_instructions(Rc::clone(&vm_module), expression)?;
 
-        // 操作数栈的顶端操作数————即偏移值表达式的运算结果————表示内存的有效地址
+        // 操作数栈的顶端操作数，即初始值
         let value = vm_module.as_ref().borrow_mut().operand_stack.pop();
         let global_variable = VMGlobalVariable::new(global_item.global_type.clone(), value);
 
@@ -641,7 +648,39 @@ fn fill_table_elements(
     ast_module: &ast::Module,
     vm_module: Rc<RefCell<VMModule>>,
 ) -> Result<(), EngineError> {
-    // todo
+    for element_item in &ast_module.element_items {
+        // 表索引，目前 WebAssembly 标准只支持 0
+        if element_item.table_index != 0 {
+            return Err(EngineError::InvalidOperation(
+                "only table index 0 is supported".to_string(),
+            ));
+        }
+
+        // 偏移值表达式，通常是一个 i32.const 指令
+        let expression = &element_item.offset_expression;
+        exec_instructions(Rc::clone(&vm_module), expression)?;
+
+        // 操作数栈的顶端操作数，即偏移值表达式的运算结果，表示表中的元素位置（索引）
+        let value = vm_module.as_ref().borrow_mut().operand_stack.pop();
+        let offset = match value {
+            Value::I32(v) => v as usize,
+            _ => {
+                return Err(EngineError::InvalidOperation(
+                    "table offset should be a i32 number".to_string(),
+                ));
+            }
+        };
+
+        let module = vm_module.as_ref().borrow();
+        let mut table = module.table.as_ref().borrow_mut();
+
+        for (index, function_index) in element_item.function_indices.iter().enumerate() {
+            let rc_function =
+                get_function_by_index(Rc::clone(&vm_module), *function_index as usize);
+            table.set_element(offset + index, rc_function)?;
+        }
+    }
+
     Ok(())
 }
 
@@ -649,7 +688,35 @@ fn fill_memory_datas(
     ast_module: &ast::Module,
     vm_module: Rc<RefCell<VMModule>>,
 ) -> Result<(), EngineError> {
-    // todo
+    for data_item in &ast_module.data_items {
+        // 内存块索引，目前 WebAssembly 标准只支持 0
+        if data_item.memory_index != 0 {
+            return Err(EngineError::InvalidOperation(
+                "only memory index 0 is supported".to_string(),
+            ));
+        }
+
+        // 偏移值表达式，通常是一个 i32.const 指令
+        let expression = &data_item.offset_expression;
+        exec_instructions(Rc::clone(&vm_module), expression)?;
+
+        // 操作数栈的顶端操作数，即偏移值表达式的运算结果，表示内存的有效地址
+        let value = vm_module.as_ref().borrow_mut().operand_stack.pop();
+        let offset = match value {
+            Value::I32(v) => v as usize,
+            _ => {
+                return Err(EngineError::InvalidOperation(
+                    "memory offset should be a i32 number".to_string(),
+                ));
+            }
+        };
+
+        let module = vm_module.as_ref().borrow();
+        let mut memory = module.memory.as_ref().borrow_mut();
+
+        memory.write_bytes(offset, &data_item.data);
+    }
+
     Ok(())
 }
 
@@ -708,7 +775,6 @@ mod tests {
             eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
             vec![Value::I32(123)]
         );
-
         assert_eq!(
             eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
             vec![Value::I32(123), Value::I32(456)]
@@ -723,25 +789,167 @@ mod tests {
             eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
             vec![Value::I32(100), Value::I32(123)]
         );
-
         assert_eq!(
             eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
             vec![Value::I32(100), Value::I32(456)]
         );
-
         assert_eq!(
             eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
             vec![Value::I32(123)]
         );
-
         assert_eq!(
             eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
             vec![]
         );
-
         assert_eq!(
             eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
             vec![Value::I32(100), Value::I32(123)]
+        );
+    }
+
+    #[test]
+    fn test_inst_numeric_eqz() {
+        let module = get_test_vm_module("test-numeric-eqz.wasm");
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+    }
+
+    #[test]
+    fn test_numeric_comparsion() {
+        let module = get_test_vm_module("test-numeric-comparsion.wasm");
+
+        // i32
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 9, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 10, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 11, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 12, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 13, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 14, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 15, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+
+        // f32
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 16, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 17, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 18, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 19, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(0)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 20, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 21, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 22, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 23, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(1)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 24, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 25, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 26, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 27, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(1)]
         );
     }
 }

@@ -21,12 +21,19 @@ impl VMOperandStack {
     }
 
     /// 压入
-    ///
-    /// 对于 bool 值的约定：
-    /// 使用 i32 或者 i64 的 0 表示 false，
-    /// 使用 1 表示 true。
     pub fn push(&mut self, value: Value) {
         self.slots.push(value);
+    }
+
+    /// WebAssembly 对于 bool 值的约定：
+    /// 使用 i32 0 表示 false，
+    /// 使用 i32 1 表示 true。
+    pub fn push_bool(&mut self, value: bool) {
+        if value {
+            self.slots.push(Value::I32(1));
+        } else {
+            self.slots.push(Value::I32(0));
+        }
     }
 
     /// 弹出

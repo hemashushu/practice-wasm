@@ -456,7 +456,7 @@ const _START_SECTION_ID: u8 = 8; // 无用的语句，仅为了书写文档注�
 ///
 #[derive(Debug, PartialEq, Clone)]
 pub struct ElementItem {
-    /// 表索引，目前恒等于 0
+    /// 表索引，目前 WebAssembly 标准只支持 0
     pub table_index: u32,
 
     /// 偏移值表达式（指令/字节码）
@@ -598,7 +598,7 @@ pub struct LocalGroup {
 ///
 #[derive(Debug, PartialEq, Clone)]
 pub struct DataItem {
-    /// 内存块索引，目前恒等于 0
+    /// 内存块索引，目前 WebAssembly 标准只支持 0
     pub memory_index: u32,
 
     /// 偏移值表达式（指令/字节码）
