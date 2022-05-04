@@ -10,7 +10,7 @@ use anvm_parser::instruction::Instruction;
 
 use crate::{
     ins_const, ins_numeric_comparsion, ins_numeric_eqz, ins_parametric, instance::EngineError,
-    vm_module::VMModule,
+    vm_module::VMModule, ins_numeric_unary,
 };
 
 pub fn exec_instruction(
@@ -73,6 +73,31 @@ pub fn exec_instruction(
         Instruction::F64Gt => ins_numeric_comparsion::f64_gt(vm_module)?,
         Instruction::F64Le => ins_numeric_comparsion::f64_le(vm_module)?,
         Instruction::F64Ge => ins_numeric_comparsion::f64_ge(vm_module)?,
+
+        // 一元运算
+        Instruction::I32Clz => ins_numeric_unary::i32_clz(vm_module)?,
+        Instruction::I32Ctz => ins_numeric_unary::i32_ctz(vm_module)?,
+        Instruction::I32PopCnt => ins_numeric_unary::i32_popcnt(vm_module)?,
+
+        Instruction::I64Clz => ins_numeric_unary::i64_clz(vm_module)?,
+        Instruction::I64Ctz => ins_numeric_unary::i64_ctz(vm_module)?,
+        Instruction::I64PopCnt => ins_numeric_unary::i64_popcnt(vm_module)?,
+
+        Instruction::F32Abs => ins_numeric_unary::f32_abs(vm_module)?,
+        Instruction::F32Neg => ins_numeric_unary::f32_neg(vm_module)?,
+        Instruction::F32Ceil => ins_numeric_unary::f32_ceil(vm_module)?,
+        Instruction::F32Floor => ins_numeric_unary::f32_floor(vm_module)?,
+        Instruction::F32Trunc => ins_numeric_unary::f32_trunc(vm_module)?,
+        Instruction::F32Nearest => ins_numeric_unary::f32_nearest(vm_module)?,
+        Instruction::F32Sqrt => ins_numeric_unary::f32_sqrt(vm_module)?,
+
+        Instruction::F64Abs => ins_numeric_unary::f64_abs(vm_module)?,
+        Instruction::F64Neg => ins_numeric_unary::f64_neg(vm_module)?,
+        Instruction::F64Ceil => ins_numeric_unary::f64_ceil(vm_module)?,
+        Instruction::F64Floor => ins_numeric_unary::f64_floor(vm_module)?,
+        Instruction::F64Trunc => ins_numeric_unary::f64_trunc(vm_module)?,
+        Instruction::F64Nearest => ins_numeric_unary::f64_nearest(vm_module)?,
+        Instruction::F64Sqrt => ins_numeric_unary::f64_sqrt(vm_module)?,
 
         _ => {
             return Err(EngineError::InvalidOperation(format!(

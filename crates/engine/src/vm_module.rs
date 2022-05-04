@@ -952,4 +952,74 @@ mod tests {
             vec![Value::I32(11), Value::I32(1)]
         );
     }
+
+    #[test]
+    fn test_numeric_unary() {
+        let module = get_test_vm_module("test-numeric-unary.wasm");
+
+        // i32
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(27)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(2)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(3)]
+        );
+
+        // f32
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![Value::F32(2.718)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            vec![Value::F32(2.718)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            vec![Value::F32(-2.718)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            vec![Value::F32(3.0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            vec![Value::F32(2.0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            vec![Value::F32(2.0)]
+        );
+
+        // 就近取整（4 舍 6 入，5 奇进偶不进）
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 9, &vec![]).unwrap(),
+            vec![Value::F32(1.0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 10, &vec![]).unwrap(),
+            vec![Value::F32(2.0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 11, &vec![]).unwrap(),
+            vec![Value::F32(2.0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 12, &vec![]).unwrap(),
+            vec![Value::F32(4.0)]
+        );
+
+        // sqrt
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 13, &vec![]).unwrap(),
+            vec![Value::F32(5.0)]
+        );
+    }
 }

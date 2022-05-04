@@ -43,8 +43,8 @@ pub fn drop(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
 /// (select)        <-- 最终压入 10
 ///
 /// 其中：
-/// 栈顶元素（第一个操作数）必须是 int32，
-/// 第二个和第三个操作数的类型必须相同
+/// - 栈顶元素（第一个操作数）必须是 int32，
+/// - 第二个和第三个操作数的类型必须相同
 pub fn select(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -54,16 +54,22 @@ pub fn select(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
         module.operand_stack.pop(),
     );
 
-    if let Value::I32(i) = testing {
-        if i == 0 {
-            module.operand_stack.push(consequent);
-        } else {
-            module.operand_stack.push(alternate);
-        }
-        Ok(())
-    } else {
+    if consequent.get_type() != alternate.get_type() {
         Err(EngineError::InvalidOperation(
-            "the testing number of \"select\" instruction should be type \"i32\"".to_string(),
+            "the value type of the consequent and alternate for \"select\" instruction should be the same".to_string(),
         ))
+    } else {
+        if let Value::I32(value) = testing {
+            if value == 0 {
+                module.operand_stack.push(consequent);
+            } else {
+                module.operand_stack.push(alternate);
+            }
+            Ok(())
+        } else {
+            Err(EngineError::InvalidOperation(
+                "the testing number for \"select\" instruction should be type \"i32\"".to_string(),
+            ))
+        }
     }
 }

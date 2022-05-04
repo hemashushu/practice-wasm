@@ -22,12 +22,12 @@ pub fn i32_eqz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
     let testing = module.operand_stack.pop();
 
-    if let Value::I32(i) = testing {
-        module.operand_stack.push_bool(i == 0);
+    if let Value::I32(value) = testing {
+        module.operand_stack.push_bool(value == 0);
         Ok(())
     } else {
         Err(EngineError::InvalidOperation(
-            "the operand for instruction \"i32.eqz\" should be type \"i32\"".to_string(),
+            "the value type of the operand for instruction \"i32.eqz\" should be \"i32\"".to_string(),
         ))
     }
 }
@@ -36,12 +36,12 @@ pub fn i64_eqz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
     let testing = module.operand_stack.pop();
 
-    if let Value::I64(i) = testing {
-        module.operand_stack.push_bool(i == 0);
+    if let Value::I64(value) = testing {
+        module.operand_stack.push_bool(value == 0);
         Ok(())
     } else {
         Err(EngineError::InvalidOperation(
-            "the operand for instruction \"i64.eqz\" should be type \"i64\"".to_string(),
+            "the value type of the operand for instruction \"i64.eqz\" should be \"i64\"".to_string(),
         ))
     }
 }

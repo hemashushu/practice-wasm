@@ -70,6 +70,8 @@
         (f32.nearest)       ;; 4.0
     )
 
+    ;; sqrt
+
     (func $f13 (result f32)
         (f32.const 25.0)
         (f32.sqrt)          ;; 5.0

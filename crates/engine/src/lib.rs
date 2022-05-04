@@ -17,5 +17,6 @@ pub mod ins_const;
 pub mod ins_parametric;
 pub mod ins_numeric_eqz;
 pub mod ins_numeric_comparsion;
+pub mod ins_numeric_unary;
 pub mod ins_function;
 pub mod interpreter;
