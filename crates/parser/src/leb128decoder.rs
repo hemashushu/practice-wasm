@@ -78,20 +78,6 @@ const INT32_LAST_BYTE_INDEX: usize = 4;
 
 /// 解码无符号 64 位整型
 /// 返回解码后的 u64 数值以及该数值在 leb128 编码中实际有效的字节数
-///
-/// # 示例
-///
-/// ```
-/// use anvm_parser::leb128decoder::decode_u64;
-/// let data: [u8; 4] = [0b1010_1111, 0b0101_1010, 0b1100_0011, 0b0011_1100];
-/// match decode_u64(&data) {
-///     Ok((value, length)) => {
-///         assert_eq!(value, 0b101_1010_010_1111);
-///         assert_eq!(length, 2);
-///     }
-///     _ => panic!("decode u64 failed"),
-/// }
-/// ```
 pub fn decode_u64(data: &[u8]) -> Result<(u64, usize), DecodeError> {
     let mut result: u64 = 0;
     let mut index: usize = 0;
@@ -132,28 +118,14 @@ pub fn decode_u64(data: &[u8]) -> Result<(u64, usize), DecodeError> {
 
 /// 解码有符号 64 位整型
 /// 返回解码后的 i64 数值以及该数值在 leb128 编码中实际有效的字节数
-///
-/// # 示例
-///
-/// ```
-/// use anvm_parser::leb128decoder::decode_i64;
-/// let d1: [u8; 4] = [0b1010_1111, 0b0101_1010, 0b0100_0011, 0b0011_1100];
-/// match decode_i64(&d1) {
-///     Ok((value, length)) => {
-///         assert_eq!(value, 0xffffffffffffed2fu64 as i64);
-///         assert_eq!(length, 2);
-///     }
-///     _ => panic!("decode i64 failed"),
-/// }
-/// ```
 pub fn decode_i64(data: &[u8]) -> Result<(i64, usize), DecodeError> {
-    let mut result: i64 = 0;
+    let mut result: u64 = 0;
     let mut index: usize = 0;
     let mut remains = data;
 
     loop {
         remains = if let Some((byte, rest)) = remains.split_first() {
-            result |= ((byte & 0b0111_1111) as i64) << (index * 7);
+            result |= ((byte & 0b0111_1111) as u64) << (index * 7);
 
             if index == INT64_LAST_BYTE_INDEX {
                 // 否已到达最后一个字节
@@ -183,12 +155,12 @@ pub fn decode_i64(data: &[u8]) -> Result<(i64, usize), DecodeError> {
                 // 当前数值的字节序列已完结
                 // 检查最后一个字节的索引 6 位置的比特值（即符号位）是否为 1（即负数），
                 // 是的话还需要把高端所有位都补上 1 以形成 i64。
-                if byte & SIGN_BIT != 0 {
-                    result |= (-1 as i64) << (index + 1) * 7
+                if byte & SIGN_BIT != 0 && index != INT64_LAST_BYTE_INDEX {
+                    result |= /*(-1 as i64)*/ u64::MAX << (index + 1) * 7
                 }
 
                 // 返回结果
-                return Ok((result, index + 1));
+                return Ok((result as i64, index + 1));
             }
 
             index += 1;
@@ -243,13 +215,13 @@ pub fn decode_u32(data: &[u8]) -> Result<(u32, usize), DecodeError> {
 /// 解码有符号 32 位整型
 /// 返回解码后的 i32 数值以及该数值在 leb128 编码中实际有效的字节数
 pub fn decode_i32(data: &[u8]) -> Result<(i32, usize), DecodeError> {
-    let mut result: i32 = 0;
+    let mut result: u32 = 0;
     let mut index: usize = 0;
     let mut remains = data;
 
     loop {
         remains = if let Some((byte, rest)) = remains.split_first() {
-            result |= ((byte & 0b0111_1111) as i32) << (index * 7);
+            result |= ((byte & 0b0111_1111) as u32) << (index * 7);
 
             if index == INT32_LAST_BYTE_INDEX {
                 // 否已到达最后一个字节
@@ -279,12 +251,12 @@ pub fn decode_i32(data: &[u8]) -> Result<(i32, usize), DecodeError> {
                 // 当前数值的字节序列已完结
                 // 检查最后一个字节的索引 6 位置的比特值（即符号位）是否为 1（即负数），
                 // 是的话还需要把高端所有位都补上 1 以形成 i32。
-                if byte & SIGN_BIT != 0 {
-                    result |= (-1 as i32) << (index + 1) * 7
+                if byte & SIGN_BIT != 0 && index != INT32_LAST_BYTE_INDEX{
+                    result |= /*(-1 as u32)*/ u32::MAX << (index + 1) * 7
                 }
 
                 // 返回结果
-                return Ok((result, index + 1));
+                return Ok((result as i32, index + 1));
             }
 
             index += 1;

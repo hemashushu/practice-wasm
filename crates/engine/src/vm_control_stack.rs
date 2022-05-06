@@ -10,9 +10,9 @@ use anvm_parser::{ast::FunctionType, instruction::Instruction};
 
 /// # 控制栈
 ///
-/// 因为 WebAssembly 的流程控制块的工作方式跟函数调用比较相近，所以
+/// 因为 WebAssembly 的流程控制结构块的工作方式跟函数调用比较相近，所以
 /// 当前的 `函数调用栈`（call stack）除了用于存储 `函数调用帧`（call frame），同时
-/// 也用于存储包含了 `流程控制块的帧`（flow control frame）。
+/// 也用于存储包含了 `流程控制结构块的帧`（flow control frame）。
 ///
 /// 当前使用 `控制栈` 和 `操作数栈` 合在一起以实现传统体系结构的 `栈` 和 `寄存器`，
 /// 简单来说，`操作数栈` 用于数值运算，以及存储每个调用帧的参数、局部变量以及返回值等数据，
@@ -49,7 +49,7 @@ use anvm_parser::{ast::FunctionType, instruction::Instruction};
 /// ```
 pub struct VMControlStack {
     // 这里的 `stack frame` 除了包括普通的 `call frame`，还包括
-    // 函数内的诸如 block/loop/if 等控制块这种 `flow control frame`
+    // 函数内的诸如 block/loop/if 等流程控制结构块这种 `flow control frame`
     frames: Vec<VMStackFrame>,
 }
 
@@ -83,6 +83,7 @@ pub enum VMFrameType {
     Call,
     Block,
     Loop,
+    If
 }
 
 impl VMStackFrame {
@@ -140,9 +141,8 @@ impl VMControlStack {
         &mut self.frames[last_index]
     }
 
-    pub fn get_instruction(&mut self) -> Instruction {
-        todo!()
-    }
+    // pub fn get_instruction(&mut self) -> Instruction {
+    // }
 
     pub fn get_frame_count(&self) -> usize {
         self.frames.len()
@@ -165,15 +165,15 @@ impl VMControlStack {
 
     /// 返回当前帧距离调用帧（即当前函数）的相对于函数的深度
     ///
-    /// 因为 WebAssembly 的控制块（比如 block/loop/if）行为
-    /// 跟函数类似，所以当前帧可能是控制块产生的。
+    /// 因为 WebAssembly 的流程控制结构块（比如 block/loop/if）行为
+    /// 跟函数类似，所以当前帧可能是流程控制结构块产生的。
     ///
     /// 如果当前帧是：
     /// - 调用帧本身（即在函数层里），则返回 0，
-    /// - 在一层控制块里，则返回 1
-    /// - 在两层控制块里，则返回 2
-    pub fn get_relative_depth(&self) -> usize {
-        let mut depth: usize = 0;
+    /// - 在一层流程控制结构块里，则返回 1
+    /// - 在两层流程控制结构块里，则返回 2
+    pub fn get_relative_depth(&self) -> u32 {
+        let mut depth: u32 = 0;
         for frame in self.frames.iter().rev() {
             if frame.frame_type == VMFrameType::Call {
                 break;

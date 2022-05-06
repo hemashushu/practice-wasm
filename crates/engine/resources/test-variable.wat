@@ -1,37 +1,54 @@
 (module
-	(global $g1 i32 (i32.const 10))
-	(global $g2 (mut i32) (i32.const 20))
+    (global $g1 i32 (i32.const 10))
+    (global $g2 (mut i32) (i32.const 20))
 
-	;; call me with (55,66)
-	(func (param $a i32) (param $b i32) (result i32 i32 i32 i32)
-        (local $la i32)
-        (local $lb i32)
-        (local i32 i32)
+    (func $f0 (param $a i32) (param $b i32) (result i32 i32)
+        (local.get $b)
+        (local.get $a)
 
-		(global.get $g2)
-		(local.set $la)		;; $la = $g2 ($la == 20)
+        ;; --- top  ---
+        ;; $a
+        ;; $b
+        ;; -- bottom --
+    )
 
-		(global.get $g1)
-		(global.set $g2)	;; $g2 = $g1 ($g2 == 10)
+    (func $f1 (param i32 i32) (result i32)
+        (local.get 0)
+        (local.get 1)
+        (i32.add)
+    )
 
-		(local.get $b)
-		(local.set $lb)		;; $lb = $b ($lb == 66)
+    ;; call me with (55,66)
+    (func $f2 (param $a i32) (param $b i32) (result i32 i32 i32 i32)
+        (local $la i32)     ;; index 2
+        (local $lb i32)     ;; index 3
+        (local i32 i32)     ;; index 4,5
 
-		(local.get $a)		;; $b = $a ($b == 55)
-		(local.set $b)
+        (global.get $g2)    ;; 20
+        (local.set $la)        ;; $la = $g2 ($la == 20)
 
-		(local.get $b)
-		(local.set 2)		;; locals[2] == 55
+        (global.get $g1)    ;; 10
+        (global.set $g2)    ;; $g2 = $g1 ($g2 == 10)
 
-		(i32.const 77)
-		(local.set 3)		;; locals[3] == 77
+        (global.get $g2)    ;; 10
+        (local.set $lb)     ;; $lb = $g2 ($lb == 10)
 
-		(local.get 2)		;; 55
-		(local.get 3)		;; 77
-		(local.get $la)		;; 20
-		(local.get $lb)		;; 66
+        ;; ----------
 
-		;; global 0 == 10, global 1 == 10
-		;; return [66,20,77,55]
-	)
+        (local.get $a)      ;; 55
+        (local.set 4)       ;; locals[4] == 55
+
+        (local.get $b)      ;; 66
+        (local.set $a)      ;;
+
+        (local.get $a)      ;;
+        (local.set 5)       ;; locals[5] == 66
+
+        (local.get 4)       ;; 55
+        (local.get 5)       ;; 66
+        (local.get $la)     ;; 20
+        (local.get $lb)     ;; 10
+
+        ;; return [55,66,20,10]
+    )
 )

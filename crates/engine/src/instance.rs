@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{any::Any, cell::RefCell, rc::Rc};
 
 use anvm_parser::{
     ast::{FunctionType, GlobalType, MemoryType, TableType},
@@ -32,7 +32,7 @@ pub trait Module {
     // fn eval_function(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError>;
 
     // 获取内存快照
-    //fn dump_memory(&self, address:usize, length: usize) -> &[u8];
+    // fn dump_memory(&self, address:usize, length: usize) -> &[u8];
 
     // 获取调用栈快照
     //fn dump_stacks(&self, count: usize) -> Vec<StackFrame>;
@@ -42,6 +42,7 @@ pub trait Function {
     /// 从 vm 外部（即宿主）或者其他模块调用函数
     fn eval(&self, args: &[Value]) -> Result<Vec<Value>, EngineError>;
     fn get_function_type(&self) -> Rc<FunctionType>;
+    fn as_any(&self) -> &dyn Any;
 }
 
 pub trait Table {

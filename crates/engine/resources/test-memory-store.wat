@@ -3,11 +3,11 @@
 
     ;; 初始化数据：
     ;; addr: 0      : 0x11,
-	;; addr: 8      : 0x2233				: 0x33, 0x22
-	;; addr: 16     : 0x44556677			: 0x77, 0x66, 0x55, 0x44
-	;; addr: 24     : 0xf0e0d0c0b0a09080	: 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0
-	;; addr: 32     : "hello"  				: 0x68, 0x65, 0x6C, 0x6C, 0x6F,
-	;; addr: 40		: "中文"    			 : 0xE4, 0xB8, 0xAD, 0xE6, 0x96, 0x87,
+    ;; addr: 8      : 0x2233                : 0x33, 0x22
+    ;; addr: 16     : 0x44556677            : 0x77, 0x66, 0x55, 0x44
+    ;; addr: 24     : 0xf0e0d0c0b0a09080    : 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0
+    ;; addr: 32     : "hello"               : 0x68, 0x65, 0x6C, 0x6C, 0x6F,
+    ;; addr: 40     : "中文"。               : 0xE4, 0xB8, 0xAD, 0xE6, 0x96, 0x87,
 
     (data 0 (offset (i32.const 0)) "\11")
     (data 0 (offset (i32.const 8)) "\33\22")
@@ -63,7 +63,7 @@
         ;; 写 uint8 0xdd 到地址 03
         (i32.const 2)
         (i32.const 0xdd)
-        (i32.store offset=1)
+        (i32.store8 offset=1)
 
         ;; 读前 4 个字节
         (i32.const 0)
@@ -94,5 +94,32 @@
         (i32.const 20)
         (i64.const 0xe0e1e2e3e4e5e6e7)
         (i64.store)
+    )
+
+    ;; 检查增加页面大小之后，原有的数据应该得到保留
+
+    (func $f4 (result i32 i32 i32 i32)
+        ;; 写入两个 i32 数
+
+        (i32.const 0)
+        (i32.const 0xaabbccdd)
+        (i32.store)
+
+        (i32.const 32)
+        (i32.const 0x10012002)
+        (i32.store)
+
+        ;; 增加页面
+        (i32.const 1)
+        (memory.grow)   ;; 压入数字 1
+        (memory.size)   ;; 压入数字 2
+
+        ;; 读原先的那两个 i32 数
+
+        (i32.const 0)
+        (i32.load)      ;; 压入数字 0xaabbccdd
+
+        (i32.const 32)
+        (i32.load)      ;; 压入数字 0x10012002
     )
 )

@@ -56,7 +56,7 @@ pub fn i32_eq(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.eq\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.eq\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -71,7 +71,7 @@ pub fn i32_ne(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.ne\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.ne\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -86,7 +86,7 @@ pub fn i32_lt_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.lt_s\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.lt_s\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -103,7 +103,7 @@ pub fn i32_lt_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.lt_u\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.lt_u\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -118,7 +118,7 @@ pub fn i32_gt_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.gt_s\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.gt_s\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -135,7 +135,7 @@ pub fn i32_gt_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.gt_u\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.gt_u\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -150,7 +150,7 @@ pub fn i32_le_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.le_s\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.le_s\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -167,7 +167,7 @@ pub fn i32_le_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.le_u\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.le_u\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -182,7 +182,7 @@ pub fn i32_ge_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.ge_s\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.ge_s\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -199,7 +199,7 @@ pub fn i32_ge_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i32.ge_u\" should be type \"i32\"".to_string(),
+            "the value type of two operands for instruction \"i32.ge_u\" should be \"i32\"".to_string(),
         )),
     }
 }
@@ -216,7 +216,7 @@ pub fn i64_eq(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.eq\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.eq\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -231,7 +231,7 @@ pub fn i64_ne(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.ne\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.ne\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -246,7 +246,7 @@ pub fn i64_lt_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.lt_s\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.lt_s\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -263,7 +263,7 @@ pub fn i64_lt_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.lt_u\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.lt_u\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -278,7 +278,7 @@ pub fn i64_gt_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.gt_s\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.gt_s\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -295,7 +295,7 @@ pub fn i64_gt_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.gt_u\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.gt_u\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -310,7 +310,7 @@ pub fn i64_le_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.le_s\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.le_s\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -327,7 +327,7 @@ pub fn i64_le_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.le_u\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.le_u\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -342,7 +342,7 @@ pub fn i64_ge_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.ge_s\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.ge_s\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -359,7 +359,7 @@ pub fn i64_ge_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"i64.ge_u\" should be type \"i64\"".to_string(),
+            "the value type of two operands for instruction \"i64.ge_u\" should be \"i64\"".to_string(),
         )),
     }
 }
@@ -376,7 +376,7 @@ pub fn f32_eq(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f32.eq\" should be type \"f32\"".to_string(),
+            "the value type of two operands for instruction \"f32.eq\" should be \"f32\"".to_string(),
         )),
     }
 }
@@ -391,7 +391,7 @@ pub fn f32_ne(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f32.ne\" should be type \"f32\"".to_string(),
+            "the value type of two operands for instruction \"f32.ne\" should be \"f32\"".to_string(),
         )),
     }
 }
@@ -406,7 +406,7 @@ pub fn f32_lt(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f32.lt\" should be type \"f32\"".to_string(),
+            "the value type of two operands for instruction \"f32.lt\" should be \"f32\"".to_string(),
         )),
     }
 }
@@ -421,7 +421,7 @@ pub fn f32_gt(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f32.gt\" should be type \"f32\"".to_string(),
+            "the value type of two operands for instruction \"f32.gt\" should be \"f32\"".to_string(),
         )),
     }
 }
@@ -436,7 +436,7 @@ pub fn f32_le(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f32.le\" should be type \"f32\"".to_string(),
+            "the value type of two operands for instruction \"f32.le\" should be \"f32\"".to_string(),
         )),
     }
 }
@@ -451,7 +451,7 @@ pub fn f32_ge(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f32.ge\" should be type \"f32\"".to_string(),
+            "the value type of two operands for instruction \"f32.ge\" should be \"f32\"".to_string(),
         )),
     }
 }
@@ -468,7 +468,7 @@ pub fn f64_eq(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f64.eq\" should be type \"f64\"".to_string(),
+            "the value type of two operands for instruction \"f64.eq\" should be \"f64\"".to_string(),
         )),
     }
 }
@@ -483,7 +483,7 @@ pub fn f64_ne(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f64.ne\" should be type \"f64\"".to_string(),
+            "the value type of two operands for instruction \"f64.ne\" should be \"f64\"".to_string(),
         )),
     }
 }
@@ -498,7 +498,7 @@ pub fn f64_lt(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f64.lt\" should be type \"f64\"".to_string(),
+            "the value type of two operands for instruction \"f64.lt\" should be \"f64\"".to_string(),
         )),
     }
 }
@@ -513,7 +513,7 @@ pub fn f64_gt(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f64.gt\" should be type \"f64\"".to_string(),
+            "the value type of two operands for instruction \"f64.gt\" should be \"f64\"".to_string(),
         )),
     }
 }
@@ -528,7 +528,7 @@ pub fn f64_le(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f64.le\" should be type \"f64\"".to_string(),
+            "the value type of two operands for instruction \"f64.le\" should be \"f64\"".to_string(),
         )),
     }
 }
@@ -543,7 +543,7 @@ pub fn f64_ge(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
             Ok(())
         }
         _ => Err(EngineError::InvalidOperation(
-            "the two operands for instruction \"f64.ge\" should be type \"f64\"".to_string(),
+            "the value type of two operands for instruction \"f64.ge\" should be \"f64\"".to_string(),
         )),
     }
 }

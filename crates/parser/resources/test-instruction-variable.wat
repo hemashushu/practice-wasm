@@ -1,15 +1,15 @@
 (module
-	(global $g1 (mut i32) (i32.const 1))  ;; $g1, $g2 可视为自动索引值
-	(global $g2 (mut i32) (i32.const 2))
-	(func (param $a i32) (param $b i32)
+    (global $g1 (mut i32) (i32.const 1))  ;; $g1, $g2 可视为自动索引值
+    (global $g2 (mut i32) (i32.const 2))
+    (func (param $a i32) (param $b i32)
         (local $la i32)
         (local $lb i32)
         (local i64 i64)
-		(global.get $g1)
-		(global.set $g2)
-		(local.get $a)
-		(local.set $b)
-	)
+        (global.get $g1)
+        (global.set $g2)
+        (local.get $a)
+        (local.set $b)
+    )
 )
 
 ;; 0x0024 | 0e          | size of function

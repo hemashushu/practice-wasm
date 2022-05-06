@@ -59,10 +59,10 @@ pub struct VMModule {
     pub current_call_frame_base_pointer: usize,
 
     /// 模块的名称
-    name: String,
+    pub name: String,
 
     /// 包含一份模块的语法树对象，用于动态维护模块的内容
-    ast_module: ast::Module,
+    pub ast_module: ast::Module,
 }
 
 impl Module for VMModule {
@@ -183,7 +183,6 @@ impl VMModule {
         let control_stack = VMControlStack::new();
         let rc_table = create_table(&ast_module, module_map)?;
         let rc_memory = create_memory(&ast_module, module_map, option_memory_data)?;
-        // let export_items = ast_module.export_items.clone();
 
         let vm_module = VMModule {
             operand_stack,
@@ -194,16 +193,10 @@ impl VMModule {
             global_variables: vec![], // 因为 Global 里面有指令表达式需要 VMModule 实例来执行，所以先用一个空的全局列表顶替。
             current_call_frame_base_pointer: 0,
             name: name.to_string(),
-            ast_module: ast_module.clone() // 克隆一份模块的语法树对象
-            // export_items,
-            // start_function_index: ast_module.start_function_index,
+            ast_module: ast_module.clone(), // 克隆一份模块的语法树对象
         };
 
         let rc_module = Rc::new(RefCell::new(vm_module));
-
-        // 填充 table 和 memory 的初始值
-        fill_table_elements(&ast_module, Rc::clone(&rc_module))?;
-        fill_memory_datas(&ast_module, Rc::clone(&rc_module))?;
 
         // 替换 VMModule 实例的 global_variables 成员的值。
         let global_variables =
@@ -214,6 +207,10 @@ impl VMModule {
         let weak_module = Rc::downgrade(&rc_module);
         let functions = create_functions(&ast_module, module_map, weak_module)?;
         rc_module.as_ref().borrow_mut().functions = functions;
+
+        // 填充 table 和 memory 的初始值
+        fill_table_elements(&ast_module, Rc::clone(&rc_module))?;
+        fill_memory_datas(&ast_module, Rc::clone(&rc_module))?;
 
         Ok(rc_module)
     }
@@ -244,6 +241,13 @@ pub fn get_function_by_index(vm_module: Rc<RefCell<VMModule>>, index: usize) -> 
 
 pub fn get_start_function_index(vm_module: Rc<RefCell<VMModule>>) -> Option<u32> {
     vm_module.as_ref().borrow().ast_module.start_function_index
+}
+
+pub fn dump_memory(vm_module: Rc<RefCell<VMModule>>, address: usize, length: usize) -> Vec<u8> {
+    let module = vm_module.as_ref().borrow();
+    let memory = module.memory.as_ref().borrow();
+    let data = memory.read_bytes(address, length);
+    data.to_vec()
 }
 
 /// 创建新的控制栈帧
@@ -304,8 +308,8 @@ pub fn leave_control_block(vm_module: Rc<RefCell<VMModule>>) {
     }
 }
 
-/// 重新执行一下当前控制块
-/// 用于 loop 控制块
+/// 重新执行一下当前流程控制结构块
+/// 用于 loop 流程控制结构块
 pub fn repeat_control_block(vm_module: Rc<RefCell<VMModule>>) {
     let stack_size = vm_module.as_ref().borrow().operand_stack.get_stack_size();
 
@@ -418,6 +422,7 @@ fn create_table(
         if let Some(source_module) = option_module {
             let rc_table = source_module.as_ref().borrow().get_export_table(name)?;
 
+            // 核对一下导入表的 "实际类型" 是否跟 "导入语句所声明的类型" 一致
             if table_type != &rc_table.as_ref().borrow().get_table_type() {
                 Err(EngineError::InvalidOperation(
                     "the type of the imported table does not match the declaration".to_string(),
@@ -471,6 +476,7 @@ fn create_memory(
         if let Some(source_module) = option_module {
             let rc_memory = source_module.as_ref().borrow().get_export_memory(name)?;
 
+            // 核对一下导入内存的 "实际类型" 是否跟 "导入语句所声明的类型" 一致
             if memory_type != &rc_memory.as_ref().borrow().get_memory_type() {
                 Err(EngineError::InvalidOperation(
                     "the type of the imported memory does not match the declaration".to_string(),
@@ -495,9 +501,9 @@ fn create_memory(
                 // 根据定义创建新内存块
                 VMMemory::new(first.clone())
             } else {
-                // 创建默认内存块（页面最小值为 1，不限最大值的内存块）
+                // 创建默认内存块（页面最小值为 0，不限最大值的内存块）
                 VMMemory::new(MemoryType {
-                    limit: Limit::AtLeast(1),
+                    limit: Limit::AtLeast(0),
                 })
             }
         };
@@ -537,6 +543,7 @@ fn create_functions(
             if let Some(source_module) = option_module {
                 let rc_function = source_module.as_ref().borrow().get_export_function(name)?;
 
+                // 核对一下导入函数的 "实际类型" 是否跟 "导入语句所声明的类型" 一致
                 let rc_function_type = &ast_module.function_types[*function_type_index as usize];
                 if rc_function_type.as_ref()
                     != rc_function.as_ref().borrow().get_function_type().as_ref()
@@ -610,6 +617,7 @@ fn create_global_variables(
                     .borrow()
                     .get_export_global_variable(name)?;
 
+                // 核对一下导入全局变量的 "实际类型" 是否跟 "导入语句所声明的类型" 一致
                 if global_type != &rc_global_variable.as_ref().borrow().get_global_type() {
                     return Err(EngineError::InvalidOperation(
                         "the type of the imported global variable does not match the declaration"
@@ -726,7 +734,10 @@ mod tests {
 
     use anvm_parser::{ast, binary_parser, types::Value};
 
-    use crate::{instance::Module, vm_module::eval_function_by_index};
+    use crate::{
+        instance::Module,
+        vm_module::{dump_memory, eval_function_by_index},
+    };
 
     use super::VMModule;
 
@@ -764,6 +775,17 @@ mod tests {
         let ast_module = get_test_module_binary(filename);
         let module_map = HashMap::<String, Rc<RefCell<dyn Module>>>::new();
         let vm_module = VMModule::new("test", ast_module, &module_map, None).unwrap();
+        vm_module
+    }
+
+    fn get_test_vm_module_with_init_memory_data(
+        filename: &str,
+        init_memory_data: Vec<u8>,
+    ) -> Rc<RefCell<VMModule>> {
+        let ast_module = get_test_module_binary(filename);
+        let module_map = HashMap::<String, Rc<RefCell<dyn Module>>>::new();
+        let vm_module =
+            VMModule::new("test", ast_module, &module_map, Some(init_memory_data)).unwrap();
         vm_module
     }
 
@@ -1020,6 +1042,414 @@ mod tests {
         assert_eq!(
             eval_function_by_index(Rc::clone(&module), 13, &vec![]).unwrap(),
             vec![Value::F32(5.0)]
+        );
+    }
+
+    #[test]
+    fn test_numeric_binary() {
+        let module = get_test_vm_module("test-numeric-binary.wasm");
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(55)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(-11)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(726)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(-4)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            vec![
+                Value::I32(11),
+                Value::I32(0b01111111111111111111111111111100)
+            ]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(-2)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(2)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(0b11000)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(0b1111_1001)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 9, &vec![]).unwrap(),
+            vec![Value::I32(11), Value::I32(0b1110_0001)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 10, &vec![]).unwrap(),
+            vec![
+                Value::I32(11),
+                Value::I32(0b11111111_11111111_11111111_1111_0000u32 as i32)
+            ]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 11, &vec![]).unwrap(),
+            vec![
+                Value::I32(11),
+                Value::I32(0b11111111_11111111_11111111_1111_1111u32 as i32)
+            ]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 12, &vec![]).unwrap(),
+            vec![
+                Value::I32(11),
+                Value::I32(0b00001111_11111111_11111111_1111_1111)
+            ]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 13, &vec![]).unwrap(),
+            vec![
+                Value::I32(11),
+                Value::I32(0b11111111_11111111_11111111_1110_0011u32 as i32)
+            ]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 14, &vec![]).unwrap(),
+            vec![
+                Value::I32(11),
+                Value::I32(0b00_11111111_11111111_11111111_111110)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_numeric_convert() {
+        let module = get_test_vm_module("test-numeric-convert.wasm");
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(123)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I64(8)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I64(8)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![Value::I64(-8)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            vec![Value::I64(0x00_00_00_00_ff_ff_ff_f8)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            vec![Value::I32(3)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            vec![Value::I32(3)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            vec![Value::F32(66.0)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            vec![Value::F32(66.0)]
+        );
+
+        // todo:: 这里仅测试了部分指令
+    }
+
+    #[test]
+    fn test_variable() {
+        let module = get_test_vm_module("test-variable.wasm");
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![Value::I32(11), Value::I32(22)])
+                .unwrap(),
+            vec![Value::I32(22), Value::I32(11)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![Value::I32(11), Value::I32(22)])
+                .unwrap(),
+            vec![Value::I32(33)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![Value::I32(55), Value::I32(66)])
+                .unwrap(),
+            vec![
+                Value::I32(55),
+                Value::I32(66),
+                Value::I32(20),
+                Value::I32(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_memory_page() {
+        let module = get_test_vm_module("test-memory-page.wasm");
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(2)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(2), Value::I32(4), Value::I32(7)]
+        );
+    }
+
+    #[test]
+    fn test_memory_load() {
+        let init_memory_data: Vec<u8> = vec![
+            /* addr: 0      */ 0x11, // 17
+            /* addr: 1      */ 0xf1, // uint8'241 == int8'-15 (-15=241-256)
+            /* addr: 2,3    */ 0x55, 0x66, // 0x6655
+            /* addr: 4,5    */ 0x80, 0x90, // 0x9080
+            /* addr: 6..13  */ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            /* addr: 14..21 */ 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0,
+        ];
+
+        let module =
+            get_test_vm_module_with_init_memory_data("test-memory-load.wasm", init_memory_data);
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(0x11)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![
+                Value::I32(0x11),
+                Value::I32(0xf1),
+                Value::I32(0x55),
+                Value::I32(0x66)
+            ]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![
+                Value::I32(0x11),
+                Value::I32(0xf1),
+                Value::I32(0x55),
+                Value::I32(0x66)
+            ]
+        );
+
+        // 测试符号
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![
+                Value::I32(17),
+                Value::I32(17),
+                Value::I32(241),
+                Value::I32(-15)
+            ]
+        );
+
+        // 测试 16 位和 32 位整数
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            vec![
+                Value::I32(0x6655),
+                Value::I32(0x6655),
+                Value::I32(0x9080),
+                Value::I32(0xffff9080u32 as i32),
+                Value::I32(0x03020100)
+            ]
+        );
+
+        // 测试 64 位整数
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            vec![
+                Value::I64(0x03020100),
+                Value::I64(0x03020100),
+                Value::I64(0xb0a09080),
+                Value::I64(0xffffffffb0a09080u64 as i64),
+                Value::I64(0x0706050403020100),
+                Value::I64(0xf0e0d0c0b0a09080u64 as i64)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_memory_store() {
+        let module = get_test_vm_module("test-memory-store.wasm");
+
+        // 检查内存 （经过 data 段）初始化之后的内容
+        let d0: Vec<u8> = vec![
+            0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x33, 0x22, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x77, 0x66, 0x55, 0x44, 0x00, 0x00, 0x00, 0x00, 0x80, 0x90, 0xa0, 0xb0,
+            0xc0, 0xd0, 0xe0, 0xf0, 0x68, 0x65, 0x6C, 0x6C, 0x6F, 0x00, 0x00, 0x00, 0xE4, 0xB8,
+            0xAD, 0xE6, 0x96, 0x87, 0x00, 0x00,
+        ];
+        assert_eq!(dump_memory(Rc::clone(&module), 0, d0.len()), d0);
+
+        // 测试读取数据
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(0x11), Value::I32(0x2233), Value::I32(0x44556677)]
+        );
+
+        // 测试读取数据
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![
+                Value::I64(0xf0e0d0c0b0a09080u64 as i64),
+                Value::I64(0x68),
+                Value::I64(0xe4)
+            ]
+        );
+
+        // 测试 i32.store8
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(0xddccbbaau32 as i32)]
+        );
+        let d2: Vec<u8> = vec![0xaa, 0xbb, 0xcc, 0xdd, 0x00, 0x00, 0x00, 0x00];
+        assert_eq!(dump_memory(Rc::clone(&module), 0, d2.len()), d2);
+
+        // 测试 i32 和 i64 的各种类型 store 指令
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![]
+        );
+        let d3: Vec<u8> = vec![
+            0xaa, 0xbb, 0xcc, 0xdd, 0x02, 0x01, 0x00, 0x00, 0xa3, 0xa2, 0xa1, 0xa0, 0xb0, 0x00,
+            0xc1, 0xc0, 0xd3, 0xd2, 0xd1, 0xd0, 0xe7, 0xe6, 0xe5, 0xe4, 0xe3, 0xe2, 0xe1, 0xe0,
+        ];
+        assert_eq!(dump_memory(Rc::clone(&module), 0, d3.len()), d3);
+
+        // 测试 memory.grow 指令之后，访问原有的内存数据
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            vec![
+                Value::I32(1),
+                Value::I32(2),
+                Value::I32(0xaabbccddu32 as i32),
+                Value::I32(0x10012002),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_function_call() {
+        let module = get_test_vm_module("test-function-call.wasm");
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(3)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(-5)]
+        );
+    }
+
+    #[test]
+    fn test_function_indirect_call() {
+        let module = get_test_vm_module("test-function-indirect-call.wasm");
+
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(12)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(8)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(20)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![Value::I32(5)]
+        );
+    }
+
+    #[test]
+    fn test_branch() {
+        let module = get_test_vm_module("test-branch.wasm");
+
+        // 测试 return
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            vec![Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            vec![Value::I32(2)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            vec![Value::I32(3)]
+        );
+
+        // 测试 br
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            vec![Value::I32(4)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            vec![Value::I32(2)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            vec![Value::I32(11)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            vec![Value::I32(12)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            vec![Value::I32(13)]
+        );
+
+        // 测试 br_if
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            vec![Value::I32(55)]
+        );
+
+        // 测试 br_table
+        // todo::
+
+        // 测试 if
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 9, &vec![]).unwrap(),
+            vec![Value::I32(2)]
+        );
+        assert_eq!(
+            eval_function_by_index(Rc::clone(&module), 10, &vec![]).unwrap(),
+            vec![Value::I32(1)]
         );
     }
 }

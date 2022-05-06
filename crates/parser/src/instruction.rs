@@ -209,29 +209,29 @@ pub enum Instruction {
     Unreachable,
     Nop,
     Block {
-        result: Option<ValueType>,
+        block_type: BlockType,
         body: Rc<Vec<Instruction>>,
     },
     Loop {
-        result: Option<ValueType>,
+        block_type: BlockType,
         body: Rc<Vec<Instruction>>,
     },
     If {
-        result: Option<ValueType>,
+        block_type: BlockType,
         consequet_body: Rc<Vec<Instruction>>,
         alternate_body: Rc<Vec<Instruction>>,
     },
     Else,
     End,
-    Br(u32),        // relative deepth
-    BrIf(u32),      // relative deepth
+    Br(u32),        // params: relative deepth
+    BrIf(u32),      // params: relative deepth
     BrTable {
         relative_depths: Vec<u32>,
         default_relative_depth: u32,
     },
     Return,
-    Call(u32),          // function index
-    CallIndirect(u32),  // function index
+    Call(u32),              // params: function index
+    CallIndirect(u32, u32), // params: function type index, table index
 
     Drop,
     Select,
@@ -265,8 +265,8 @@ pub enum Instruction {
     I64Store8(MemoryArg),
     I64Store16(MemoryArg),
     I64Store32(MemoryArg),
-    MemorySize(u32), // memory block index
-    MemoryGrow(u32), // memory block index
+    MemorySize(u32), // params: memory block index
+    MemoryGrow(u32), // params: memory block index
 
     I32Const(i32),
     I64Const(i64),
@@ -415,7 +415,13 @@ pub enum Instruction {
     I64Extend16S,
     I64Extend32S,
 
-    TruncSat(u8),
+    TruncSat(u8),   // params: kind
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum BlockType {
+    ResultOnly(Option<ValueType>),
+    FunctionTypeIndex(u32)
 }
 
 #[derive(Debug, PartialEq, Clone)]

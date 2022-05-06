@@ -247,7 +247,7 @@ pub fn f32_nearest(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> 
 
 fn round_half_to_even_f32(value: f32) -> f32 {
     let round_half_away_from_zero = f32::round(value); // 4 舍 5 入，即 "Round half away from zero"
-    let first_digit_of_fractional = ((value - ((value as i32) as f32)) * 10.0) as i32; // 获取第 1 位小数
+    let first_digit_of_fractional = ((value - f32::trunc(value)) * 10.0) as i32; // 获取第 1 位小数
 
     if first_digit_of_fractional != 5 && first_digit_of_fractional != -5 {
         // 第 1 位小数不是 5，结果跟 4 舍 5 入 一样
@@ -386,7 +386,7 @@ pub fn f64_nearest(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> 
 
 fn round_half_to_even_f64(value: f64) -> f64 {
     let round_half_away_from_zero = f64::round(value); // 4 舍 5 入，即 "Round half away from zero"
-    let first_digit_of_fractional = ((value - ((value as i32) as f64)) * 10.0) as i32; // 获取第 1 位小数
+    let first_digit_of_fractional = ((value - f64::trunc(value)) * 10.0) as i32; // 获取第 1 位小数
 
     if first_digit_of_fractional != 5 && first_digit_of_fractional != -5 {
         // 第 1 位小数不是 5，结果跟 4 舍 5 入 一样

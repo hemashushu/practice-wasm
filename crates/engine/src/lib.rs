@@ -4,19 +4,26 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+mod vm_operand_stack;
+mod vm_control_stack;
+mod vm_function;
+mod vm_table;
+mod vm_memory;
+mod vm_global_variable;
+mod vm_module;
+mod vm_instruction;
+
+mod ins_const;
+mod ins_parametric;
+mod ins_numeric_eqz;
+mod ins_numeric_comparsion;
+mod ins_numeric_unary;
+mod ins_numeric_binary;
+mod ins_numeric_convert;
+mod ins_variable;
+mod ins_memory;
+mod ins_function;
+mod ins_branch;
+
 pub mod instance;
-pub mod vm_operand_stack;
-pub mod vm_control_stack;
-pub mod vm_function;
-pub mod vm_table;
-pub mod vm_memory;
-pub mod vm_global_variable;
-pub mod vm_module;
-pub mod vm_instruction;
-pub mod ins_const;
-pub mod ins_parametric;
-pub mod ins_numeric_eqz;
-pub mod ins_numeric_comparsion;
-pub mod ins_numeric_unary;
-pub mod ins_function;
 pub mod interpreter;

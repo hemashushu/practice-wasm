@@ -11,7 +11,7 @@ use crate::{
         CodeItem, DataItem, ElementItem, ExportDescriptor, ExportItem, FunctionType, GlobalItem,
         GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType, Module, TableType,
     },
-    instruction::{self, Instruction, MemoryArg},
+    instruction::{self, BlockType, Instruction, MemoryArg},
     leb128decoder,
     types::ValueType,
 };
@@ -549,7 +549,7 @@ fn continue_parse_expression(source: &[u8]) -> Result<(Vec<Instruction>, &[u8]),
 /// # 解析指令序列
 ///
 /// 不断解析下一个指令，直到遇到 `end` 指令为止
-/// 注意解析指令序列过程中，如果遇到结构块，会进入递归解析，
+/// 注意解析指令序列过程中，如果遇到流程控制结构块，会进入递归解析，
 /// 所以这个 `end` 指令必然是完成的一个结构的结束指令。
 fn continue_parse_instructions_until_opcode_end(
     source: &[u8],
@@ -576,7 +576,7 @@ fn continue_parse_instructions_until_opcode_end(
 /// 不断解析下一个指令，直到遇到 `else` 指令或者 `end` 指令为止。
 /// 这个解析过程是专门为解析 `if` 指令使用。
 ///
-/// 注意解析指令序列过程中，如果遇到结构块，会进入递归解析，
+/// 注意解析指令序列过程中，如果遇到流程控制结构块，会进入递归解析，
 /// 所以找到的 `else` 或者 `end` 指令必然是完成的一个结构的结束指令。
 fn continue_parse_instructions_until_opcode_else_or_end(
     source: &[u8],
@@ -611,30 +611,31 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
         instruction::NOP => Instruction::Nop,
         instruction::BLOCK => {
             // block = opcode_block + block_type:i32 + instructions + opcode_end
-            let (block_type, post_block_type) = read_i32(remains)?;
-            let option_value_type = get_value_type_by_block_type(block_type)?;
+            let (block_type_value, post_block_type) = read_i32(remains)?;
+            let block_type = get_block_type(block_type_value)?;
             let (body, post_body) = continue_parse_instructions_until_opcode_end(post_block_type)?;
             remains = post_body;
             Instruction::Block {
-                result: option_value_type,
+                block_type,
                 body: Rc::new(body),
             }
         }
         instruction::LOOP => {
             // loop = opcode_loop + block_type:i32 + instructions + opcode_end
-            let (block_type, post_block_type) = read_i32(remains)?;
-            let option_value_type = get_value_type_by_block_type(block_type)?;
-            let (body, post_body) = continue_parse_instructions_until_opcode_end(post_block_type)?;
+            let (block_type_value, post_block_type_value) = read_i32(remains)?;
+            let block_type = get_block_type(block_type_value)?;
+            let (body, post_body) =
+                continue_parse_instructions_until_opcode_end(post_block_type_value)?;
             remains = post_body;
             Instruction::Loop {
-                result: option_value_type,
+                block_type,
                 body: Rc::new(body),
             }
         }
         instruction::IF => {
             // if = opcode_if + block_type:i32 + (instructions + opcode_else){?} + instructions + opcode_end
-            let (block_type, post_block_type) = read_i32(remains)?;
-            let option_value_type = get_value_type_by_block_type(block_type)?;
+            let (block_type_value, post_block_type) = read_i32(remains)?;
+            let block_type = get_block_type(block_type_value)?;
             let (consequent_body, is_else, post_then_body) =
                 continue_parse_instructions_until_opcode_else_or_end(post_block_type)?;
             let (alternate_body, post_else_body) = if is_else {
@@ -644,7 +645,7 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
             };
             remains = post_else_body;
             Instruction::If {
-                result: option_value_type,
+                block_type,
                 consequet_body: Rc::new(consequent_body),
                 alternate_body: Rc::new(alternate_body),
             }
@@ -681,9 +682,11 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
             Instruction::Call(function_index)
         }
         instruction::CALL_INDIRECT => {
-            let (function_index, post_function_index) = read_u32(remains)?;
-            remains = consume_zero(post_function_index)?;
-            Instruction::CallIndirect(function_index)
+            // call_indirect = opcode_call_indirect + function_type_index:u32 + table_index:u32
+            let (function_type_index, post_function_type_index) = read_u32(remains)?;
+            let (table_index, post_table_index) = read_u32(post_function_type_index)?;
+            remains = post_table_index;
+            Instruction::CallIndirect(function_type_index, table_index)
         }
         instruction::DROP => Instruction::Drop,
         instruction::SELECT => Instruction::Select,
@@ -862,13 +865,15 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
         }
         instruction::MEMORY_SIZE => {
             // memory.size = opcode_memory.size + memory_block_index:u32
-            remains = consume_zero(remains)?;
-            Instruction::MemorySize(0)
+            let (memory_block_index, post_index) = read_u32(remains)?;
+            remains = post_index;
+            Instruction::MemorySize(memory_block_index)
         }
         instruction::MEMORY_GROW => {
             // memory.grow = opcode_memory.grow + memory_block_index:u32
-            remains = consume_zero(remains)?;
-            Instruction::MemoryGrow(0)
+            let (memory_block_index, post_index) = read_u32(remains)?;
+            remains = post_index;
+            Instruction::MemoryGrow(memory_block_index)
         }
 
         // 常量指令
@@ -1051,20 +1056,21 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
     Ok((instruction, remains))
 }
 
-/// 将结构块的返回类型转换为函数返回类型
-/// 因为在解析器的实现时，结构块将会当作一种简化的函数来处理
+/// 将流程控制结构块的返回类型转换为函数返回类型
+/// 因为在解析器的实现时，流程控制结构块将会当作一种简化的函数来处理
 ///
 /// block_type = (signed) i32
-fn get_value_type_by_block_type(block_type: i32) -> Result<Option<ValueType>, ParseError> {
-    match block_type {
-        BLOCK_TYPE_I32 => Ok(Some(ValueType::I32)),
-        BLOCK_TYPE_I64 => Ok(Some(ValueType::I64)),
-        BLOCK_TYPE_F32 => Ok(Some(ValueType::F32)),
-        BLOCK_TYPE_F64 => Ok(Some(ValueType::F64)),
-        BLOCK_TYPE_EMPTY => Ok(None),
+fn get_block_type(value: i32) -> Result<BlockType, ParseError> {
+    match value {
+        BLOCK_TYPE_I32 => Ok(BlockType::ResultOnly(Some(ValueType::I32))),
+        BLOCK_TYPE_I64 => Ok(BlockType::ResultOnly(Some(ValueType::I64))),
+        BLOCK_TYPE_F32 => Ok(BlockType::ResultOnly(Some(ValueType::F32))),
+        BLOCK_TYPE_F64 => Ok(BlockType::ResultOnly(Some(ValueType::F64))),
+        BLOCK_TYPE_EMPTY => Ok(BlockType::ResultOnly(None)),
+        _ if value >= 0 => Ok(BlockType::FunctionTypeIndex(value as u32)),
         _ => Err(ParseError::Unsupported(format!(
             "unsupported block type: {}",
-            block_type
+            value
         ))),
     }
 }
@@ -1185,13 +1191,13 @@ fn parse_element_section(source: &[u8]) -> Result<(Vec<ElementItem>, &[u8]), Par
 /// element_item = table_index:u32 + offset_expression + <function_index>
 /// offset_expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
 fn continue_parse_element_item(source: &[u8]) -> Result<(ElementItem, &[u8]), ParseError> {
-    let remains = consume_zero(source)?; // table index 总是为 0
-    let (offset_expression, post_expression) = continue_parse_expression(remains)?;
+    let (table_index, post_index) = read_u32(source)?; // table index 总是为 0
+    let (offset_expression, post_expression) = continue_parse_expression(post_index)?;
     let (function_indices, post_indices) = read_u32_vec(post_expression)?;
 
     Ok((
         ElementItem {
-            table_index: 0,
+            table_index: table_index,
             offset_expression,
             function_indices,
         },
@@ -1282,13 +1288,13 @@ fn parse_data_section(source: &[u8]) -> Result<(Vec<DataItem>, &[u8]), ParseErro
 /// data_item = memory_block_index:u32 + offset_expression + data:byte{*}
 /// offset_expression = = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
 fn continue_parse_data_item(source: &[u8]) -> Result<(DataItem, &[u8]), ParseError> {
-    let remains = consume_zero(source)?; // memory index 总是为 0
-    let (offset_expression, post_expression) = continue_parse_expression(remains)?;
+    let (memory_block_index, post_index) = read_u32(source)?; // memory index 总是为 0
+    let (offset_expression, post_expression) = continue_parse_expression(post_index)?;
     let (data, post_data) = read_byte_vec(post_expression)?;
 
     Ok((
         DataItem {
-            memory_index: 0,
+            memory_index: memory_block_index,
             offset_expression,
             data,
         },
@@ -1341,6 +1347,10 @@ fn read_fixed_u32(source: &[u8]) -> Result<(u32, &[u8]), ParseError> {
 }
 
 /// 读取变长（leb128 编码的）u32
+///
+/// 注：
+/// 大部分指令使用 unsigned int，但有些使用 signed int，
+/// 比如 const 指令的立即数和 block type
 fn read_u32(source: &[u8]) -> Result<(u32, &[u8]), ParseError> {
     match leb128decoder::decode_u32(source) {
         Ok((value, length)) => Ok((value, &source[length..])),
@@ -1357,8 +1367,20 @@ fn read_i32(source: &[u8]) -> Result<(i32, &[u8]), ParseError> {
 }
 
 /// 读取变长（leb128 编码的）i64
+///
+/// 注：
+/// 大部分指令使用 unsigned int，但有些使用 signed int，
+/// 比如 const 指令的立即数和 block type
 fn read_i64(source: &[u8]) -> Result<(i64, &[u8]), ParseError> {
     match leb128decoder::decode_i64(source) {
+        Ok((value, length)) => Ok((value, &source[length..])),
+        _ => Err(ParseError::DecodingError),
+    }
+}
+
+/// 读取变长（leb128 编码的）i64
+fn read_u64(source: &[u8]) -> Result<(u64, &[u8]), ParseError> {
+    match leb128decoder::decode_u64(source) {
         Ok((value, length)) => Ok((value, &source[length..])),
         _ => Err(ParseError::DecodingError),
     }
@@ -1412,17 +1434,17 @@ fn read_string(source: &[u8]) -> Result<(String, &[u8]), ParseError> {
     }
 }
 
-/// 读取一个字节并断言其值为 0
-/// 用于读取 memory/data 和 table/element 等需要指定目标对象索引值，
-/// 但该索引值只能是 0 的场合
-fn consume_zero(source: &[u8]) -> Result<&[u8], ParseError> {
-    let (number, remains) = read_u32(source)?;
-    if number != 0 {
-        Err(ParseError::Unsupported("expected number zero".to_string()))
-    } else {
-        Ok(remains)
-    }
-}
+// /// 读取一个字节并断言其值为 0
+// /// 用于读取 memory/data 和 table/element 等需要指定目标对象索引值，
+// /// 但该索引值只能是 0 的场合
+// fn consume_zero(source: &[u8]) -> Result<&[u8], ParseError> {
+//     let (number, remains) = read_u32(source)?;
+//     if number != 0 {
+//         Err(ParseError::Unsupported("expected number zero".to_string()))
+//     } else {
+//         Ok(remains)
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -1434,7 +1456,7 @@ mod tests {
             GlobalItem, GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType,
             Module, TableType,
         },
-        instruction::{self, Instruction, MemoryArg},
+        instruction::{self, Instruction, MemoryArg, BlockType},
         types::ValueType,
     };
 
@@ -1855,15 +1877,15 @@ mod tests {
                 local_groups: vec![],
                 expression: Rc::new(vec![
                     Instruction::Block {
-                        result: Some(ValueType::I32),
+                        block_type: BlockType::ResultOnly(Some(ValueType::I32)),
                         body: Rc::new(vec![
                             Instruction::I32Const(1),
                             Instruction::Loop {
-                                result: Some(ValueType::I32),
+                                block_type: BlockType::ResultOnly(Some(ValueType::I32)),
                                 body: Rc::new(vec![
                                     Instruction::I32Const(2),
                                     Instruction::If {
-                                        result: Some(ValueType::I32),
+                                        block_type: BlockType::ResultOnly(Some(ValueType::I32)),
                                         consequet_body: Rc::new(vec![
                                             Instruction::I32Const(3),
                                             Instruction::Else
@@ -1925,7 +1947,7 @@ mod tests {
                     expression: Rc::new(vec![
                         Instruction::Call(1),
                         Instruction::I32Const(2),
-                        Instruction::CallIndirect(0),
+                        Instruction::CallIndirect(0, 0),
                         Instruction::End
                     ])
                 },
@@ -1947,7 +1969,7 @@ mod tests {
                 local_groups: vec![],
                 expression: Rc::new(vec![
                     Instruction::Block {
-                        result: None,
+                        block_type: BlockType::ResultOnly(None),
                         body: Rc::new(vec![
                             Instruction::I32Const(100),
                             Instruction::Br(0),
@@ -1956,7 +1978,7 @@ mod tests {
                         ])
                     },
                     Instruction::Loop {
-                        result: None,
+                        block_type: BlockType::ResultOnly(None),
                         body: Rc::new(vec![
                             Instruction::I32Const(200),
                             Instruction::Br(0),
@@ -1967,7 +1989,7 @@ mod tests {
                     Instruction::I32Const(300),
                     Instruction::I32Eqz,
                     Instruction::If {
-                        result: None,
+                        block_type: BlockType::ResultOnly(None),
                         consequet_body: Rc::new(vec![
                             Instruction::I32Const(400),
                             Instruction::Br(0),
@@ -1980,6 +2002,30 @@ mod tests {
                             Instruction::I32Const(501),
                             Instruction::End
                         ]),
+                    },
+                    Instruction::End
+                ])
+            }
+        );
+
+        assert_eq!(
+            m0.code_items[2],
+            CodeItem {
+                local_groups: vec![],
+                expression: Rc::new(vec![
+                    Instruction::Block {
+                        block_type: BlockType::ResultOnly(Some(ValueType::I32)),
+                        body: Rc::new(vec![
+                            Instruction::I32Const(10),
+                            Instruction::End
+                        ])
+                    },
+                    Instruction::Block {
+                        block_type: BlockType::FunctionTypeIndex(1),
+                        body: Rc::new(vec![
+                            Instruction::I32Const(20),
+                            Instruction::End
+                        ])
                     },
                     Instruction::End
                 ])

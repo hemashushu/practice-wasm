@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
+    any::Any,
     cell::RefCell,
     rc::{Rc, Weak},
 };
@@ -22,8 +23,8 @@ use crate::{
 };
 
 pub struct VMFunction {
-    function_type: Rc<FunctionType>,
-    function_item: FunctionItem,
+    pub function_type: Rc<FunctionType>,
+    pub function_item: FunctionItem,
 }
 
 pub enum FunctionItem {
@@ -106,9 +107,36 @@ impl Function for VMFunction {
     fn get_function_type(&self) -> Rc<FunctionType> {
         Rc::clone(&self.function_type)
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 /// 从 vm 外部（即宿主）或者其他模块调用 "（函数所在的）模块内部定义的" 函数
+///
+/// 从 vm 外部调用模块内部函数时，将入的实参压入操作数栈，
+/// 参数列表左边（小索引端）的实参先压入，
+/// 对于返回结果，先弹出的数值放置在结果数组的右边（大索引端）。
+///
+/// 示例：
+///
+/// |  START            END       |
+/// |  |                ^         |
+/// |  V                |         |
+/// | (a,b,c)          (x,y)      |
+/// |  | | |            ^ ^       |
+/// |  V V V            | |       |
+/// |
+/// |--- 栈顶。---|   |--- 栈顶。---|
+/// | - c        |   |            |
+/// | - b        |   | - y        |
+/// | - a        |   | - x        |
+/// | - ...      |   | - ...      |
+/// |--- 栈底。---|   |--- 栈底。---|
+/// |                             |
+/// |    internal function        |
+/// |-----------------------------|
 fn eval_internal_function(
     vm_module: Rc<RefCell<VMModule>>,
     function_type: &Rc<FunctionType>,
@@ -116,7 +144,13 @@ fn eval_internal_function(
     instructions: &Rc<Vec<Instruction>>,
     args: &[Value],
 ) -> Result<Vec<Value>, EngineError> {
-    push_args(Rc::clone(&vm_module), function_type, args)?;
+    if args.len() != function_type.params.len() {
+        return Err(EngineError::InvalidOperation(
+            "the number of arguments and parameters do not match".to_string(),
+        ));
+    }
+
+    push_arguments(Rc::clone(&vm_module), args);
     ins_function::call_internal_function(
         Rc::clone(&vm_module),
         function_type,
@@ -128,43 +162,12 @@ fn eval_internal_function(
     Ok(result_values)
 }
 
-/// 从 vm 外部调用模块内部函数时，将入的实参压入操作数栈
-///
-/// 参数列表左边（小索引端）的实参先压入
-/// 对于返回结果，先弹出的数值放置在结果数组的右边（大索引端）
-///
-/// 示例：
-/// caller     caller
-///  |          ^
-///  V          |
-/// (a,b,c)    (x,y)
-///  | | |      ^ ^
-///  V V V      | |
-/// internal function
-///
-/// |--- 栈顶。---|   |--- 栈顶。---|
-/// | - c        |   |            |
-/// | - b        |   | - y        |
-/// | - a        |   | - x        |
-/// | - ...      |   | - ...      |
-/// |--- 栈底。---|   |--- 栈底。---|
-fn push_args(
-    vm_module: Rc<RefCell<VMModule>>,
-    function_type: &FunctionType,
-    args: &[Value],
-) -> Result<(), EngineError> {
-    if args.len() != function_type.params.len() {
-        return Err(EngineError::InvalidOperation(
-            "the number of arguments and parameters do not match".to_string(),
-        ));
-    }
-
+fn push_arguments(vm_module: Rc<RefCell<VMModule>>, args: &[Value]) {
     vm_module
         .as_ref()
         .borrow_mut()
         .operand_stack
         .push_values(args);
-    Ok(())
 }
 
 fn pop_results(vm_module: Rc<RefCell<VMModule>>, function_type: &FunctionType) -> Vec<Value> {

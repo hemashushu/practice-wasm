@@ -71,4 +71,23 @@
 ;; 0x005f | 0b          | End
 ;; 0x0060 | 0b          | End
 
+    (func
+        (block (result i32)
+            (i32.const 10)
+        )
+        (block (param i32 i32) (result i32)
+            (i32.const 20)
+        )
+    )
+
 )
+
+;; 0x0068 | 0c          | size of function
+;; 0x0069 | 00          | 0 local blocks
+;; 0x006a | 02 7f       | Block { ty: Type(I32) }
+;; 0x006c | 41 0a       | I32Const { value: 10 }
+;; 0x006e | 0b          | End
+;; 0x006f | 02 01       | Block { ty: FuncType(1) }
+;; 0x0071 | 41 14       | I32Const { value: 20 }
+;; 0x0073 | 0b          | End
+;; 0x0074 | 0b          | End
