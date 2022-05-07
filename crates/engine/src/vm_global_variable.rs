@@ -6,7 +6,7 @@
 
 use anvm_parser::{ast::GlobalType, types::Value};
 
-use crate::instance::{EngineError, GlobalVariable};
+use crate::object::{EngineError, GlobalVariable};
 
 pub struct VMGlobalVariable {
     /// GlobalType 记录变量的 `数据类型` 以及 `可变性`

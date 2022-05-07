@@ -25,5 +25,5 @@ mod ins_memory;
 mod ins_function;
 mod ins_branch;
 
+pub mod object;
 pub mod instance;
-pub mod interpreter;

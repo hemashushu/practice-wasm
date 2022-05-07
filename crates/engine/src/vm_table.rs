@@ -30,7 +30,7 @@ use std::rc::Rc;
 
 use anvm_parser::ast::{Limit, TableType};
 
-use crate::instance::{EngineError, Function, Table};
+use crate::object::{EngineError, Function, Table};
 
 pub struct VMTable {
     /// TableType 的信息包含表的类型（目前只有函数引用类型）以及限制值（范围值）

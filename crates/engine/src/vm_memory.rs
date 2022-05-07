@@ -6,7 +6,7 @@
 
 use anvm_parser::ast::{Limit, MemoryType};
 
-use crate::instance::{EngineError, Memory};
+use crate::object::{EngineError, Memory};
 
 /// 内存的容量单位是 `页`（`page`）
 /// 一页内存为 65536 个字节
@@ -161,7 +161,7 @@ impl Memory for VMMemory {
 mod tests {
     use anvm_parser::ast::{Limit, MemoryType};
 
-    use crate::instance::{EngineError, Memory};
+    use crate::object::{EngineError, Memory};
 
     use super::VMMemory;
 

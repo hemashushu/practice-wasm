@@ -16,7 +16,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anvm_parser::types::Value;
 
-use crate::{instance::EngineError, vm_module::VMModule};
+use crate::{object::EngineError, vm_module::VMModule};
 
 pub fn i32_eqz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();

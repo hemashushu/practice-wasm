@@ -17,7 +17,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anvm_parser::types::Value;
 
-use crate::{instance::EngineError, vm_module::VMModule};
+use crate::{object::EngineError, vm_module::VMModule};
 
 pub fn i32_const(vm_module: Rc<RefCell<VMModule>>, value: i32) -> Result<(), EngineError> {
     vm_module

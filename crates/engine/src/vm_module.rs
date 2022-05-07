@@ -21,7 +21,7 @@ use anvm_parser::{
 };
 
 use crate::{
-    instance::{EngineError, Function, GlobalVariable, Memory, Module, Table},
+    object::{EngineError, Function, GlobalVariable, Memory, Module, Table},
     vm_control_stack::{VMControlStack, VMFrameType, VMStackFrame},
     vm_function::VMFunction,
     vm_global_variable::VMGlobalVariable,
@@ -170,6 +170,12 @@ impl Module for VMModule {
             )))
         }
     }
+
+    fn get_entry_function(&self) -> Result<Option<Rc<dyn Function>>, EngineError> {
+        // 返回 `start` 段指定的函数，或者当不存在 `start` 段时，
+        // 寻找导出的函数当中是否存在名字为 `main` 的函数
+        todo!()
+    }
 }
 
 impl VMModule {
@@ -214,40 +220,6 @@ impl VMModule {
 
         Ok(rc_module)
     }
-}
-
-/// 从 vm 外部（即宿主）或者其他模块调用函数
-pub fn eval_function(
-    vm_module: Rc<RefCell<VMModule>>,
-    name: &str,
-    args: &[Value],
-) -> Result<Vec<Value>, EngineError> {
-    let rc_function = vm_module.as_ref().borrow().get_export_function(name)?;
-    rc_function.as_ref().eval(args)
-}
-
-pub fn eval_function_by_index(
-    vm_module: Rc<RefCell<VMModule>>,
-    index: usize,
-    args: &[Value],
-) -> Result<Vec<Value>, EngineError> {
-    let rc_function = get_function_by_index(vm_module, index);
-    rc_function.as_ref().eval(args)
-}
-
-pub fn get_function_by_index(vm_module: Rc<RefCell<VMModule>>, index: usize) -> Rc<dyn Function> {
-    Rc::clone(&vm_module.as_ref().borrow().functions[index])
-}
-
-pub fn get_start_function_index(vm_module: Rc<RefCell<VMModule>>) -> Option<u32> {
-    vm_module.as_ref().borrow().ast_module.start_function_index
-}
-
-pub fn dump_memory(vm_module: Rc<RefCell<VMModule>>, address: usize, length: usize) -> Vec<u8> {
-    let module = vm_module.as_ref().borrow();
-    let memory = module.memory.as_ref().borrow();
-    let data = memory.read_bytes(address, length);
-    data.to_vec()
 }
 
 /// 创建新的控制栈帧
@@ -728,6 +700,30 @@ fn fill_memory_datas(
     Ok(())
 }
 
+pub fn get_start_function_index(vm_module: Rc<RefCell<VMModule>>) -> Option<u32> {
+    vm_module.as_ref().borrow().ast_module.start_function_index
+}
+
+pub fn get_function_by_index(vm_module: Rc<RefCell<VMModule>>, index: usize) -> Rc<dyn Function> {
+    Rc::clone(&vm_module.as_ref().borrow().functions[index])
+}
+
+pub fn eval_function_by_index(
+    vm_module: Rc<RefCell<VMModule>>,
+    index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, EngineError> {
+    let rc_function = get_function_by_index(vm_module, index);
+    rc_function.as_ref().eval(args)
+}
+
+pub fn dump_memory(vm_module: Rc<RefCell<VMModule>>, address: usize, length: usize) -> Vec<u8> {
+    let module = vm_module.as_ref().borrow();
+    let memory = module.memory.as_ref().borrow();
+    let data = memory.read_bytes(address, length);
+    data.to_vec()
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, collections::HashMap, env, fs, rc::Rc};
@@ -735,7 +731,7 @@ mod tests {
     use anvm_parser::{ast, binary_parser, types::Value};
 
     use crate::{
-        instance::Module,
+        object::Module,
         vm_module::{dump_memory, eval_function_by_index},
     };
 
@@ -744,7 +740,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     // 辅助方法
-    fn get_test_resource_file_binary(filename: &str) -> Vec<u8> {
+    fn get_test_binary_resource(filename: &str) -> Vec<u8> {
         let mut path_buf = env::current_dir().expect("failed to get current directory");
 
         // 使用 `cargo test` 测试时，
@@ -767,7 +763,7 @@ mod tests {
     }
 
     fn get_test_module_binary(filename: &str) -> ast::Module {
-        let bytes = get_test_resource_file_binary(filename);
+        let bytes = get_test_binary_resource(filename);
         binary_parser::parse(&bytes).unwrap()
     }
 

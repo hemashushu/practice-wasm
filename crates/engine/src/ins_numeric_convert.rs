@@ -107,7 +107,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anvm_parser::types::Value;
 
-use crate::{instance::EngineError, vm_module::VMModule};
+use crate::{object::EngineError, vm_module::VMModule};
 
 // 整数截断
 

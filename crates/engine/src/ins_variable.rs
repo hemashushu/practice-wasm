@@ -19,7 +19,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{instance::EngineError, vm_module::VMModule};
+use crate::{object::EngineError, vm_module::VMModule};
 
 pub fn local_get(vm_module: Rc<RefCell<VMModule>>, index: u32) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();

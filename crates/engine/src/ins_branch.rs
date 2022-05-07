@@ -51,7 +51,7 @@ use anvm_parser::{
 };
 
 use crate::{
-    instance::EngineError,
+    object::EngineError,
     vm_control_stack::VMFrameType,
     vm_module::{enter_control_block, leave_control_block, repeat_control_block, VMModule},
 };

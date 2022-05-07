@@ -18,7 +18,7 @@ use anvm_parser::{
 
 use crate::{
     ins_function,
-    instance::{EngineError, Function},
+    object::{EngineError, Function},
     vm_module::{do_loop, VMModule},
 };
 

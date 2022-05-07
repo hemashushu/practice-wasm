@@ -103,7 +103,7 @@ use anvm_parser::{
 };
 
 use crate::{
-    instance::{EngineError, Function},
+    object::{EngineError, Function},
     vm_control_stack::VMFrameType,
     vm_function::{FunctionItem, VMFunction},
     vm_module::{enter_control_block, VMModule},

@@ -11,7 +11,7 @@ use anvm_parser::instruction::Instruction;
 use crate::{
     ins_branch, ins_const, ins_function, ins_memory, ins_numeric_binary, ins_numeric_comparsion,
     ins_numeric_convert, ins_numeric_eqz, ins_numeric_unary, ins_parametric, ins_variable,
-    instance::EngineError, vm_module::VMModule,
+    object::EngineError, vm_module::VMModule,
 };
 
 pub fn exec_instruction(
