@@ -762,13 +762,13 @@ mod tests {
         fs::read(fullname).expect(&format!("failed to read the specified file: {}", fullname))
     }
 
-    fn get_test_module_binary(filename: &str) -> ast::Module {
+    fn get_test_ast_module(filename: &str) -> ast::Module {
         let bytes = get_test_binary_resource(filename);
         binary_parser::parse(&bytes).unwrap()
     }
 
     fn get_test_vm_module(filename: &str) -> Rc<RefCell<VMModule>> {
-        let ast_module = get_test_module_binary(filename);
+        let ast_module = get_test_ast_module(filename);
         let module_map = HashMap::<String, Rc<RefCell<dyn Module>>>::new();
         let vm_module = VMModule::new("test", ast_module, &module_map, None).unwrap();
         vm_module
@@ -778,7 +778,7 @@ mod tests {
         filename: &str,
         init_memory_data: Vec<u8>,
     ) -> Rc<RefCell<VMModule>> {
-        let ast_module = get_test_module_binary(filename);
+        let ast_module = get_test_ast_module(filename);
         let module_map = HashMap::<String, Rc<RefCell<dyn Module>>>::new();
         let vm_module =
             VMModule::new("test", ast_module, &module_map, Some(init_memory_data)).unwrap();

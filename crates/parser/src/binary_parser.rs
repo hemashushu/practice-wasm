@@ -1434,18 +1434,6 @@ fn read_string(source: &[u8]) -> Result<(String, &[u8]), ParseError> {
     }
 }
 
-// /// 读取一个字节并断言其值为 0
-// /// 用于读取 memory/data 和 table/element 等需要指定目标对象索引值，
-// /// 但该索引值只能是 0 的场合
-// fn consume_zero(source: &[u8]) -> Result<&[u8], ParseError> {
-//     let (number, remains) = read_u32(source)?;
-//     if number != 0 {
-//         Err(ParseError::Unsupported("expected number zero".to_string()))
-//     } else {
-//         Ok(remains)
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use std::{env, fs, rc::Rc};
@@ -1465,7 +1453,7 @@ mod tests {
 
     // 辅助方法
 
-    fn get_test_resource_file_binary(filename: &str) -> Vec<u8> {
+    fn get_test_binary_resource(filename: &str) -> Vec<u8> {
         let mut path_buf = env::current_dir().expect("failed to get current directory");
 
         // 使用 `cargo test` 测试时，
@@ -1492,7 +1480,7 @@ mod tests {
     #[test]
     fn test_parse_module_sections() {
         // 测试 test-section-1.wasm
-        let s0 = get_test_resource_file_binary("test-section-1.wasm");
+        let s0 = get_test_binary_resource("test-section-1.wasm");
         let m0 = parse(&s0).unwrap();
         let e0 = Module {
             custom_items: vec![],
@@ -1533,7 +1521,7 @@ mod tests {
         assert_eq!(e0, m0);
 
         // 测试 test-section-2.wasm
-        let s1 = get_test_resource_file_binary("test-section-2.wasm");
+        let s1 = get_test_binary_resource("test-section-2.wasm");
         let m1 = parse(&s1).unwrap();
         let e1 = Module {
             custom_items: vec![],
@@ -1651,7 +1639,7 @@ mod tests {
         assert_eq!(e1, m1);
 
         // 测试 test-section-3.wasm
-        let s2 = get_test_resource_file_binary("test-section-3.wasm");
+        let s2 = get_test_binary_resource("test-section-3.wasm");
         let m2 = parse(&s2).unwrap();
         let e2 = Module {
             custom_items: vec![],
@@ -1744,7 +1732,7 @@ mod tests {
 
     #[test]
     fn test_parse_instruction_const() {
-        let s0 = get_test_resource_file_binary("test-instruction-const.wasm");
+        let s0 = get_test_binary_resource("test-instruction-const.wasm");
         let m0 = parse(&s0).unwrap();
         assert_eq!(
             m0.code_items[0],
@@ -1764,7 +1752,7 @@ mod tests {
 
     #[test]
     fn test_parse_instruction_variable() {
-        let s0 = get_test_resource_file_binary("test-instruction-variable.wasm");
+        let s0 = get_test_binary_resource("test-instruction-variable.wasm");
         let m0 = parse(&s0).unwrap();
 
         assert_eq!(
@@ -1821,7 +1809,7 @@ mod tests {
 
     #[test]
     fn test_parse_instruction_memory() {
-        let s0 = get_test_resource_file_binary("test-instruction-memory.wasm");
+        let s0 = get_test_binary_resource("test-instruction-memory.wasm");
         let m0 = parse(&s0).unwrap();
 
         assert_eq!(
@@ -1868,7 +1856,7 @@ mod tests {
 
     #[test]
     fn test_parse_instruction_flow_control() {
-        let s0 = get_test_resource_file_binary("test-instruction-flow-control.wasm");
+        let s0 = get_test_binary_resource("test-instruction-flow-control.wasm");
         let m0 = parse(&s0).unwrap();
 
         assert_eq!(
@@ -1910,7 +1898,7 @@ mod tests {
 
     #[test]
     fn test_parse_instruction_call() {
-        let s0 = get_test_resource_file_binary("test-instruction-call.wasm");
+        let s0 = get_test_binary_resource("test-instruction-call.wasm");
         let m0 = parse(&s0).unwrap();
 
         assert_eq!(
@@ -1961,7 +1949,7 @@ mod tests {
 
     #[test]
     fn test_parse_instruction_branch() {
-        let s0 = get_test_resource_file_binary("test-instruction-branch.wasm");
+        let s0 = get_test_binary_resource("test-instruction-branch.wasm");
         let m0 = parse(&s0).unwrap();
         assert_eq!(
             m0.code_items[0],
