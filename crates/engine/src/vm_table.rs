@@ -28,7 +28,7 @@
 
 use std::rc::Rc;
 
-use anvm_parser::ast::{Limit, TableType};
+use anvm_ast::ast::{Limit, TableType};
 
 use crate::object::{EngineError, Function, Table};
 

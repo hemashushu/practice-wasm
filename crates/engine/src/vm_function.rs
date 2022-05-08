@@ -10,7 +10,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use anvm_parser::{
+use anvm_ast::{
     ast::{FunctionType, LocalGroup},
     instruction::Instruction,
     types::Value,
@@ -24,6 +24,7 @@ use crate::{
 
 pub struct VMFunction {
     pub function_type: Rc<FunctionType>,
+    pub function_index: usize,
     pub function_item: FunctionItem,
 }
 
@@ -48,12 +49,14 @@ pub enum FunctionItem {
 impl VMFunction {
     pub fn new_internal_function(
         function_type: Rc<FunctionType>,
+        function_index: usize,
         local_groups: Vec<LocalGroup>,
         expression: Rc<Vec<Instruction>>,
         vm_module: Weak<RefCell<VMModule>>,
     ) -> Self {
         VMFunction {
             function_type,
+            function_index,
             function_item: FunctionItem::Internal {
                 local_groups,
                 expression,
@@ -64,10 +67,12 @@ impl VMFunction {
 
     pub fn new_external_function(
         function_type: Rc<FunctionType>,
+        function_index: usize,
         rc_function: Rc<dyn Function>,
     ) -> Self {
         VMFunction {
             function_type,
+            function_index,
             function_item: FunctionItem::External(rc_function),
         }
     }
@@ -91,6 +96,7 @@ impl Function for VMFunction {
                 eval_internal_function(
                     rc_vm_module,
                     &self.function_type,
+                    self.function_index,
                     local_groups,
                     expression,
                     args,
@@ -110,6 +116,10 @@ impl Function for VMFunction {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn get_index(&self) -> usize {
+        self.function_index
     }
 }
 
@@ -140,6 +150,7 @@ impl Function for VMFunction {
 fn eval_internal_function(
     vm_module: Rc<RefCell<VMModule>>,
     function_type: &Rc<FunctionType>,
+    function_index: usize,
     local_groups: &Vec<LocalGroup>,
     instructions: &Rc<Vec<Instruction>>,
     args: &[Value],
@@ -154,6 +165,7 @@ fn eval_internal_function(
     ins_function::call_internal_function(
         Rc::clone(&vm_module),
         function_type,
+        function_index,
         local_groups,
         instructions,
     );

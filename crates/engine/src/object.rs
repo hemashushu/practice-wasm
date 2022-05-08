@@ -6,9 +6,9 @@
 
 use std::{any::Any, cell::RefCell, rc::Rc};
 
-use anvm_parser::{
+use anvm_ast::{
     ast::{FunctionType, GlobalType, MemoryType, TableType},
-    types::Value,
+    types::Value, instruction::Instruction,
 };
 
 /// `模块` 对象的接口
@@ -28,22 +28,25 @@ pub trait Module {
         name: &str,
     ) -> Result<Rc<RefCell<dyn GlobalVariable>>, EngineError>;
 
-    // 从 vm 外部（即宿主）或者其他模块调用函数
-    // fn eval_function(&self, name: &str, args: &[Value]) -> Result<Vec<Value>, EngineError>;
+    // 下列是用于提供 debug 功能的函数
 
-    // 获取内存快照
-    // fn dump_memory(&self, address:usize, length: usize) -> &[u8];
+    /// 获取内存快照
+    fn dump_memory(&self, address: usize, length: usize) -> Vec<u8>;
 
     // 获取调用栈快照
-    //fn dump_stacks(&self, count: usize) -> Vec<StackFrame>;
+    // fn dump_stacks(&self, count: usize) -> Vec<StackFrame>;
 
-    fn get_entry_function(&self) -> Result<Option<Rc<dyn Function>>, EngineError>;
+    fn get_function_by_index(&self, index: usize) -> Rc<dyn Function>;
 }
 
 pub trait Function {
     /// 从 vm 外部（即宿主）或者其他模块调用函数
     fn eval(&self, args: &[Value]) -> Result<Vec<Value>, EngineError>;
     fn get_function_type(&self) -> Rc<FunctionType>;
+
+    /// 获取函数在模块中的索引值，
+    /// 用于提供调试功能
+    fn get_index(&self) -> usize;
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -104,4 +107,34 @@ pub enum EngineError {
     Overflow(String),
     ObjectNotFound(String),
     InvalidOperation(String),
+}
+
+pub trait OperandStack {
+    fn get_operands(&self) -> Vec<Value>;
+    fn get_operand_count(&self) -> usize;
+}
+
+pub trait StackFrame {
+    fn get_frame_type(&self) -> FrameType;
+    fn get_function_type(&self) -> Rc<FunctionType>;
+    fn get_instructions(&self) -> Rc<Vec<Instruction>>;
+    fn get_frame_pointer(&self) -> usize;
+    fn get_program_counter(&self) -> usize;
+    fn get_operand_pointer(&self) -> usize;
+    fn get_function_index(&self) -> Option<usize>;
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FrameType {
+    Call,
+    Block,
+    Loop,
+    If,
+}
+
+pub trait ControlStack {
+    fn get_frames(&self) -> Vec<Rc<dyn StackFrame>>;
+    fn get_frame_count(&self) -> usize;
+    fn get_last_frame(&self) -> Rc<dyn StackFrame>;
+    fn get_last_call_all_frames(&self) -> Vec<Rc<dyn StackFrame>>;
 }

@@ -11,7 +11,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use anvm_parser::{
+use anvm_ast::{
     ast::{
         self, ExportDescriptor, ExportItem, FunctionType, ImportDescriptor, ImportItem, Limit,
         MemoryType, TableType,
@@ -21,13 +21,17 @@ use anvm_parser::{
 };
 
 use crate::{
-    object::{EngineError, Function, GlobalVariable, Memory, Module, Table},
-    vm_control_stack::{VMControlStack, VMFrameType, VMStackFrame},
+    object::{
+        ControlStack, EngineError, FrameType, Function, GlobalVariable, Memory, Module,
+        OperandStack, Table,
+    },
+    vm_control_stack::VMControlStack,
     vm_function::VMFunction,
     vm_global_variable::VMGlobalVariable,
     vm_instruction::{exec_instruction, exec_instructions},
     vm_memory::VMMemory,
     vm_operand_stack::VMOperandStack,
+    vm_stack_frame::VMStackFrame,
     vm_table::VMTable,
 };
 
@@ -171,10 +175,14 @@ impl Module for VMModule {
         }
     }
 
-    fn get_entry_function(&self) -> Result<Option<Rc<dyn Function>>, EngineError> {
-        // 返回 `start` 段指定的函数，或者当不存在 `start` 段时，
-        // 寻找导出的函数当中是否存在名字为 `main` 的函数
-        todo!()
+    fn dump_memory(&self, address: usize, length: usize) -> Vec<u8> {
+        let memory = self.memory.as_ref().borrow();
+        let data = memory.read_bytes(address, length);
+        data.to_vec()
+    }
+
+    fn get_function_by_index(&self, index: usize) -> Rc<dyn Function> {
+        Rc::clone(&self.functions[index])
     }
 }
 
@@ -225,18 +233,21 @@ impl VMModule {
 /// 创建新的控制栈帧
 pub fn enter_control_block(
     vm_module: Rc<RefCell<VMModule>>,
-    frame_type: VMFrameType,
+    frame_type: FrameType,
     function_type: &Rc<FunctionType>,
+    function_index: Option<usize>,
     instructions: &Rc<Vec<Instruction>>,
     local_variable_count: usize,
 ) {
     let mut module = vm_module.as_ref().borrow_mut();
 
-    let frame_pointer = module.operand_stack.get_stack_size() - function_type.as_ref().params.len();
+    let frame_pointer =
+        module.operand_stack.get_operand_count() - function_type.as_ref().params.len();
 
     let stack_frame = VMStackFrame::new(
         frame_type.clone(),
         Rc::clone(function_type),
+        function_index,
         Rc::clone(instructions),
         frame_pointer,
         local_variable_count,
@@ -244,7 +255,7 @@ pub fn enter_control_block(
 
     module.control_stack.push_frame(stack_frame);
 
-    if frame_type == VMFrameType::Call {
+    if frame_type == FrameType::Call {
         module.current_call_frame_base_pointer = frame_pointer;
     }
 }
@@ -262,7 +273,7 @@ pub fn leave_control_block(vm_module: Rc<RefCell<VMModule>>) {
     // 计算残留数据的大小，根据是除了返回值之外，其他的都属于残留数据
     let result_count = stack_frame.function_type.as_ref().results.len();
     let residue_count =
-        module.operand_stack.get_stack_size() - stack_frame.frame_pointer - result_count;
+        module.operand_stack.get_operand_count() - stack_frame.frame_pointer - result_count;
 
     if residue_count > 0 {
         // 先弹出有用的数据（即返回值）
@@ -274,7 +285,7 @@ pub fn leave_control_block(vm_module: Rc<RefCell<VMModule>>) {
     }
 
     // 如果当前栈帧是 `函数调用帧`，则还需要更新 current_call_frame_base_pointer 的值
-    if stack_frame.frame_type == VMFrameType::Call && module.control_stack.get_frame_count() > 0 {
+    if stack_frame.frame_type == FrameType::Call && module.control_stack.get_frame_count() > 0 {
         let last_call_frame = module.control_stack.get_last_call_frame();
         module.current_call_frame_base_pointer = last_call_frame.frame_pointer;
     }
@@ -283,11 +294,15 @@ pub fn leave_control_block(vm_module: Rc<RefCell<VMModule>>) {
 /// 重新执行一下当前流程控制结构块
 /// 用于 loop 流程控制结构块
 pub fn repeat_control_block(vm_module: Rc<RefCell<VMModule>>) {
-    let stack_size = vm_module.as_ref().borrow().operand_stack.get_stack_size();
+    let stack_size = vm_module
+        .as_ref()
+        .borrow()
+        .operand_stack
+        .get_operand_count();
 
     // 这里用于限制 borrow_mut 的作用范围
     let (target_block_argument_count, frame_pointer) = {
-        let mut module = vm_module.as_ref().borrow_mut();
+        let module = vm_module.as_ref().borrow();
         let stack_frame = module.control_stack.peek_frame();
 
         let target_block_argument_count = stack_frame.function_type.as_ref().params.len();
@@ -314,10 +329,11 @@ pub fn repeat_control_block(vm_module: Rc<RefCell<VMModule>>) {
     // 这里用于限制 borrow_mut 的作用范围
     {
         let mut module = vm_module.as_ref().borrow_mut();
-        let stack_frame = module.control_stack.peek_frame();
+        // let stack_frame = module.control_stack.peek_frame();
 
         // 重置 pc 值
-        stack_frame.program_counter = 0;
+        // stack_frame.program_counter = 0;
+        module.control_stack.reset_program_counter();
     }
 }
 
@@ -336,7 +352,7 @@ pub fn do_loop(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
     while vm_module.as_ref().borrow().control_stack.get_frame_count() >= start_depth {
         // 这里用于限制 borrow_mut 的作用范围
         let (instructions, program_counter) = {
-            let mut module = vm_module.as_ref().borrow_mut();
+            let module = vm_module.as_ref().borrow();
             let stack_frame = module.control_stack.peek_frame();
 
             let instructions = Rc::clone(&stack_frame.instructions);
@@ -363,8 +379,9 @@ fn move_forward_instruction(
     // 这里用于限制 borrow_mut 的作用范围
     {
         let mut module = vm_module.as_ref().borrow_mut();
-        let stack_frame = module.control_stack.peek_frame();
-        stack_frame.program_counter = program_counter + 1;
+        // let stack_frame = module.control_stack.peek_frame();
+        // stack_frame.program_counter = program_counter + 1;
+        module.control_stack.increase_program_counter();
     }
 
     let instruction = &instructions.as_ref()[program_counter];
@@ -504,7 +521,7 @@ fn create_functions(
         })
         .collect::<Vec<&ImportItem>>();
 
-    for import_item in import_items {
+    for (index, import_item) in import_items.iter().enumerate() {
         if let ImportItem {
             module_name,
             name,
@@ -527,6 +544,7 @@ fn create_functions(
                 } else {
                     let function = VMFunction::new_external_function(
                         Rc::clone(rc_function_type),
+                        index,
                         Rc::clone(&rc_function),
                     );
                     functions.push(Rc::new(function));
@@ -541,6 +559,7 @@ fn create_functions(
     }
 
     // 再添加当前模块内定义的函数
+    let imported_count = functions.len();
 
     for (function_index, function_type_index) in ast_module.function_list.iter().enumerate() {
         let rc_function_type = &ast_module.function_types[*function_type_index as usize];
@@ -550,6 +569,7 @@ fn create_functions(
 
         let function = VMFunction::new_internal_function(
             Rc::clone(rc_function_type),
+            imported_count + function_index,
             local_groups,
             rc_expression,
             Weak::clone(&weak_module),
@@ -651,13 +671,21 @@ fn fill_table_elements(
             }
         };
 
+        let rc_functions: Vec<Rc<dyn Function>> = {
+            let module = vm_module.as_ref().borrow();
+
+            element_item
+                .function_indices
+                .iter()
+                .map(|function_index| module.get_function_by_index(*function_index as usize))
+                .collect()
+        };
+
         let module = vm_module.as_ref().borrow();
         let mut table = module.table.as_ref().borrow_mut();
 
-        for (index, function_index) in element_item.function_indices.iter().enumerate() {
-            let rc_function =
-                get_function_by_index(Rc::clone(&vm_module), *function_index as usize);
-            table.set_element(offset + index, rc_function)?;
+        for (index, rc_function) in rc_functions.iter().enumerate() {
+            table.set_element(offset + index, Rc::clone(rc_function))?;
         }
     }
 
@@ -700,40 +728,29 @@ fn fill_memory_datas(
     Ok(())
 }
 
-pub fn get_start_function_index(vm_module: Rc<RefCell<VMModule>>) -> Option<u32> {
-    vm_module.as_ref().borrow().ast_module.start_function_index
-}
+// pub fn get_start_function_index(vm_module: Rc<RefCell<VMModule>>) -> Option<u32> {
+//     vm_module.as_ref().borrow().ast_module.start_function_index
+// }
 
-pub fn get_function_by_index(vm_module: Rc<RefCell<VMModule>>, index: usize) -> Rc<dyn Function> {
-    Rc::clone(&vm_module.as_ref().borrow().functions[index])
-}
+// pub fn get_function_by_index(vm_module: Rc<RefCell<VMModule>>, index: usize) -> Rc<dyn Function> {
+//     Rc::clone(&vm_module.as_ref().borrow().functions[index])
+// }
 
-pub fn eval_function_by_index(
-    vm_module: Rc<RefCell<VMModule>>,
-    index: usize,
-    args: &[Value],
-) -> Result<Vec<Value>, EngineError> {
-    let rc_function = get_function_by_index(vm_module, index);
-    rc_function.as_ref().eval(args)
-}
-
-pub fn dump_memory(vm_module: Rc<RefCell<VMModule>>, address: usize, length: usize) -> Vec<u8> {
-    let module = vm_module.as_ref().borrow();
-    let memory = module.memory.as_ref().borrow();
-    let data = memory.read_bytes(address, length);
-    data.to_vec()
-}
+// pub fn dump_memory(vm_module: Rc<RefCell<VMModule>>, address: usize, length: usize) -> Vec<u8> {
+//     let module = vm_module.as_ref().borrow();
+//     let memory = module.memory.as_ref().borrow();
+//     let data = memory.read_bytes(address, length);
+//     data.to_vec()
+// }
 
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, collections::HashMap, env, fs, rc::Rc};
 
-    use anvm_parser::{ast, binary_parser, types::Value};
+    use anvm_ast::{ast, types::Value};
+    use anvm_binary_parser::parser;
 
-    use crate::{
-        object::Module,
-        vm_module::{dump_memory, eval_function_by_index},
-    };
+    use crate::object::{EngineError, Module};
 
     use super::VMModule;
 
@@ -764,7 +781,7 @@ mod tests {
 
     fn get_test_ast_module(filename: &str) -> ast::Module {
         let bytes = get_test_binary_resource(filename);
-        binary_parser::parse(&bytes).unwrap()
+        parser::parse(&bytes).unwrap()
     }
 
     fn get_test_vm_module(filename: &str) -> Rc<RefCell<VMModule>> {
@@ -785,16 +802,25 @@ mod tests {
         vm_module
     }
 
+    pub fn eval_function_by_index(
+        vm_module: &Rc<RefCell<VMModule>>,
+        index: usize,
+        args: &[Value],
+    ) -> Result<Vec<Value>, EngineError> {
+        let rc_function = vm_module.as_ref().borrow().get_function_by_index(index);
+        rc_function.as_ref().eval(args)
+    }
+
     #[test]
     fn test_instruction_const() {
         let module = get_test_vm_module("test-const.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(123)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(123), Value::I32(456)]
         );
     }
@@ -804,23 +830,20 @@ mod tests {
         let module = get_test_vm_module("test-parametric.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(100), Value::I32(123)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(100), Value::I32(456)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(123)]
         );
+        assert_eq!(eval_function_by_index(&module, 3, &vec![]).unwrap(), vec![]);
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
-            vec![]
-        );
-        assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            eval_function_by_index(&module, 4, &vec![]).unwrap(),
             vec![Value::I32(100), Value::I32(123)]
         );
     }
@@ -830,15 +853,15 @@ mod tests {
         let module = get_test_vm_module("test-numeric-eqz.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
     }
@@ -850,123 +873,123 @@ mod tests {
         // i32
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
-            vec![Value::I32(10), Value::I32(0)]
-        );
-
-        assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
-            vec![Value::I32(10), Value::I32(0)]
-        );
-        assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
-            vec![Value::I32(10), Value::I32(1)]
-        );
-        assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
-            vec![Value::I32(10), Value::I32(1)]
-        );
-        assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            eval_function_by_index(&module, 3, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            eval_function_by_index(&module, 4, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 9, &vec![]).unwrap(),
+            eval_function_by_index(&module, 5, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 10, &vec![]).unwrap(),
+            eval_function_by_index(&module, 6, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 11, &vec![]).unwrap(),
+            eval_function_by_index(&module, 7, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 12, &vec![]).unwrap(),
+            eval_function_by_index(&module, 8, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+        assert_eq!(
+            eval_function_by_index(&module, 9, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 13, &vec![]).unwrap(),
+            eval_function_by_index(&module, 10, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 14, &vec![]).unwrap(),
+            eval_function_by_index(&module, 11, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+
+        assert_eq!(
+            eval_function_by_index(&module, 12, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 15, &vec![]).unwrap(),
+            eval_function_by_index(&module, 13, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(&module, 14, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval_function_by_index(&module, 15, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
 
         // f32
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 16, &vec![]).unwrap(),
+            eval_function_by_index(&module, 16, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 17, &vec![]).unwrap(),
+            eval_function_by_index(&module, 17, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 18, &vec![]).unwrap(),
+            eval_function_by_index(&module, 18, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 19, &vec![]).unwrap(),
+            eval_function_by_index(&module, 19, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0)]
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 20, &vec![]).unwrap(),
+            eval_function_by_index(&module, 20, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 21, &vec![]).unwrap(),
+            eval_function_by_index(&module, 21, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 22, &vec![]).unwrap(),
+            eval_function_by_index(&module, 22, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 23, &vec![]).unwrap(),
+            eval_function_by_index(&module, 23, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 24, &vec![]).unwrap(),
+            eval_function_by_index(&module, 24, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 25, &vec![]).unwrap(),
+            eval_function_by_index(&module, 25, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 26, &vec![]).unwrap(),
+            eval_function_by_index(&module, 26, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 27, &vec![]).unwrap(),
+            eval_function_by_index(&module, 27, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
     }
@@ -978,65 +1001,65 @@ mod tests {
         // i32
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(27)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(2)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
 
         // f32
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            eval_function_by_index(&module, 3, &vec![]).unwrap(),
             vec![Value::F32(2.718)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            eval_function_by_index(&module, 4, &vec![]).unwrap(),
             vec![Value::F32(2.718)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            eval_function_by_index(&module, 5, &vec![]).unwrap(),
             vec![Value::F32(-2.718)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            eval_function_by_index(&module, 6, &vec![]).unwrap(),
             vec![Value::F32(3.0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            eval_function_by_index(&module, 7, &vec![]).unwrap(),
             vec![Value::F32(2.0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            eval_function_by_index(&module, 8, &vec![]).unwrap(),
             vec![Value::F32(2.0)]
         );
 
         // 就近取整（4 舍 6 入，5 奇进偶不进）
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 9, &vec![]).unwrap(),
+            eval_function_by_index(&module, 9, &vec![]).unwrap(),
             vec![Value::F32(1.0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 10, &vec![]).unwrap(),
+            eval_function_by_index(&module, 10, &vec![]).unwrap(),
             vec![Value::F32(2.0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 11, &vec![]).unwrap(),
+            eval_function_by_index(&module, 11, &vec![]).unwrap(),
             vec![Value::F32(2.0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 12, &vec![]).unwrap(),
+            eval_function_by_index(&module, 12, &vec![]).unwrap(),
             vec![Value::F32(4.0)]
         );
 
         // sqrt
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 13, &vec![]).unwrap(),
+            eval_function_by_index(&module, 13, &vec![]).unwrap(),
             vec![Value::F32(5.0)]
         );
     }
@@ -1046,52 +1069,52 @@ mod tests {
         let module = get_test_vm_module("test-numeric-binary.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(55)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(-11)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(726)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            eval_function_by_index(&module, 3, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(-4)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            eval_function_by_index(&module, 4, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b01111111111111111111111111111100)
             ]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            eval_function_by_index(&module, 5, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(-2)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            eval_function_by_index(&module, 6, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(2)]
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            eval_function_by_index(&module, 7, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0b11000)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            eval_function_by_index(&module, 8, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0b1111_1001)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 9, &vec![]).unwrap(),
+            eval_function_by_index(&module, 9, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0b1110_0001)]
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 10, &vec![]).unwrap(),
+            eval_function_by_index(&module, 10, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b11111111_11111111_11111111_1111_0000u32 as i32)
@@ -1099,14 +1122,14 @@ mod tests {
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 11, &vec![]).unwrap(),
+            eval_function_by_index(&module, 11, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b11111111_11111111_11111111_1111_1111u32 as i32)
             ]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 12, &vec![]).unwrap(),
+            eval_function_by_index(&module, 12, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b00001111_11111111_11111111_1111_1111)
@@ -1114,14 +1137,14 @@ mod tests {
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 13, &vec![]).unwrap(),
+            eval_function_by_index(&module, 13, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b11111111_11111111_11111111_1110_0011u32 as i32)
             ]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 14, &vec![]).unwrap(),
+            eval_function_by_index(&module, 14, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b00_11111111_11111111_11111111_111110)
@@ -1134,41 +1157,41 @@ mod tests {
         let module = get_test_vm_module("test-numeric-convert.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(123)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I64(8)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I64(8)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            eval_function_by_index(&module, 3, &vec![]).unwrap(),
             vec![Value::I64(-8)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            eval_function_by_index(&module, 4, &vec![]).unwrap(),
             vec![Value::I64(0x00_00_00_00_ff_ff_ff_f8)]
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            eval_function_by_index(&module, 5, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            eval_function_by_index(&module, 6, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            eval_function_by_index(&module, 7, &vec![]).unwrap(),
             vec![Value::F32(66.0)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            eval_function_by_index(&module, 8, &vec![]).unwrap(),
             vec![Value::F32(66.0)]
         );
 
@@ -1180,18 +1203,15 @@ mod tests {
         let module = get_test_vm_module("test-variable.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![Value::I32(11), Value::I32(22)])
-                .unwrap(),
+            eval_function_by_index(&module, 0, &vec![Value::I32(11), Value::I32(22)]).unwrap(),
             vec![Value::I32(22), Value::I32(11)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![Value::I32(11), Value::I32(22)])
-                .unwrap(),
+            eval_function_by_index(&module, 1, &vec![Value::I32(11), Value::I32(22)]).unwrap(),
             vec![Value::I32(33)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![Value::I32(55), Value::I32(66)])
-                .unwrap(),
+            eval_function_by_index(&module, 2, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
             vec![
                 Value::I32(55),
                 Value::I32(66),
@@ -1206,11 +1226,11 @@ mod tests {
         let module = get_test_vm_module("test-memory-page.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(2)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(2), Value::I32(4), Value::I32(7)]
         );
     }
@@ -1230,11 +1250,11 @@ mod tests {
             get_test_vm_module_with_init_memory_data("test-memory-load.wasm", init_memory_data);
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(0x11)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![
                 Value::I32(0x11),
                 Value::I32(0xf1),
@@ -1243,7 +1263,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![
                 Value::I32(0x11),
                 Value::I32(0xf1),
@@ -1254,7 +1274,7 @@ mod tests {
 
         // 测试符号
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            eval_function_by_index(&module, 3, &vec![]).unwrap(),
             vec![
                 Value::I32(17),
                 Value::I32(17),
@@ -1265,7 +1285,7 @@ mod tests {
 
         // 测试 16 位和 32 位整数
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            eval_function_by_index(&module, 4, &vec![]).unwrap(),
             vec![
                 Value::I32(0x6655),
                 Value::I32(0x6655),
@@ -1277,7 +1297,7 @@ mod tests {
 
         // 测试 64 位整数
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            eval_function_by_index(&module, 5, &vec![]).unwrap(),
             vec![
                 Value::I64(0x03020100),
                 Value::I64(0x03020100),
@@ -1300,17 +1320,17 @@ mod tests {
             0xc0, 0xd0, 0xe0, 0xf0, 0x68, 0x65, 0x6C, 0x6C, 0x6F, 0x00, 0x00, 0x00, 0xE4, 0xB8,
             0xAD, 0xE6, 0x96, 0x87, 0x00, 0x00,
         ];
-        assert_eq!(dump_memory(Rc::clone(&module), 0, d0.len()), d0);
+        assert_eq!(module.as_ref().borrow().dump_memory(0, d0.len()), d0);
 
         // 测试读取数据
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(0x11), Value::I32(0x2233), Value::I32(0x44556677)]
         );
 
         // 测试读取数据
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![
                 Value::I64(0xf0e0d0c0b0a09080u64 as i64),
                 Value::I64(0x68),
@@ -1320,26 +1340,23 @@ mod tests {
 
         // 测试 i32.store8
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(0xddccbbaau32 as i32)]
         );
         let d2: Vec<u8> = vec![0xaa, 0xbb, 0xcc, 0xdd, 0x00, 0x00, 0x00, 0x00];
-        assert_eq!(dump_memory(Rc::clone(&module), 0, d2.len()), d2);
+        assert_eq!(module.as_ref().borrow().dump_memory(0, d2.len()), d2);
 
         // 测试 i32 和 i64 的各种类型 store 指令
-        assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
-            vec![]
-        );
+        assert_eq!(eval_function_by_index(&module, 3, &vec![]).unwrap(), vec![]);
         let d3: Vec<u8> = vec![
             0xaa, 0xbb, 0xcc, 0xdd, 0x02, 0x01, 0x00, 0x00, 0xa3, 0xa2, 0xa1, 0xa0, 0xb0, 0x00,
             0xc1, 0xc0, 0xd3, 0xd2, 0xd1, 0xd0, 0xe7, 0xe6, 0xe5, 0xe4, 0xe3, 0xe2, 0xe1, 0xe0,
         ];
-        assert_eq!(dump_memory(Rc::clone(&module), 0, d3.len()), d3);
+        assert_eq!(module.as_ref().borrow().dump_memory(0, d3.len()), d3);
 
         // 测试 memory.grow 指令之后，访问原有的内存数据
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            eval_function_by_index(&module, 4, &vec![]).unwrap(),
             vec![
                 Value::I32(1),
                 Value::I32(2),
@@ -1354,15 +1371,15 @@ mod tests {
         let module = get_test_vm_module("test-function-call.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(-5)]
         );
     }
@@ -1372,19 +1389,19 @@ mod tests {
         let module = get_test_vm_module("test-function-indirect-call.wasm");
 
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(12)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(8)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(20)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            eval_function_by_index(&module, 3, &vec![]).unwrap(),
             vec![Value::I32(5)]
         );
     }
@@ -1395,43 +1412,43 @@ mod tests {
 
         // 测试 return
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 0, &vec![]).unwrap(),
+            eval_function_by_index(&module, 0, &vec![]).unwrap(),
             vec![Value::I32(1)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 1, &vec![]).unwrap(),
+            eval_function_by_index(&module, 1, &vec![]).unwrap(),
             vec![Value::I32(2)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 2, &vec![]).unwrap(),
+            eval_function_by_index(&module, 2, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
 
         // 测试 br
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 3, &vec![]).unwrap(),
+            eval_function_by_index(&module, 3, &vec![]).unwrap(),
             vec![Value::I32(4)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 4, &vec![]).unwrap(),
+            eval_function_by_index(&module, 4, &vec![]).unwrap(),
             vec![Value::I32(2)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 5, &vec![]).unwrap(),
+            eval_function_by_index(&module, 5, &vec![]).unwrap(),
             vec![Value::I32(11)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 6, &vec![]).unwrap(),
+            eval_function_by_index(&module, 6, &vec![]).unwrap(),
             vec![Value::I32(12)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 7, &vec![]).unwrap(),
+            eval_function_by_index(&module, 7, &vec![]).unwrap(),
             vec![Value::I32(13)]
         );
 
         // 测试 br_if
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 8, &vec![]).unwrap(),
+            eval_function_by_index(&module, 8, &vec![]).unwrap(),
             vec![Value::I32(55)]
         );
 
@@ -1440,11 +1457,11 @@ mod tests {
 
         // 测试 if
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 9, &vec![]).unwrap(),
+            eval_function_by_index(&module, 9, &vec![]).unwrap(),
             vec![Value::I32(2)]
         );
         assert_eq!(
-            eval_function_by_index(Rc::clone(&module), 10, &vec![]).unwrap(),
+            eval_function_by_index(&module, 10, &vec![]).unwrap(),
             vec![Value::I32(1)]
         );
     }

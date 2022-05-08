@@ -44,7 +44,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use anvm_parser::{
+use anvm_ast::{
     ast::FunctionType,
     instruction::{BlockType, Instruction},
     types::{Value, ValueType},
@@ -52,7 +52,7 @@ use anvm_parser::{
 
 use crate::{
     object::EngineError,
-    vm_control_stack::VMFrameType,
+    object::FrameType,
     vm_module::{enter_control_block, leave_control_block, repeat_control_block, VMModule},
 };
 
@@ -64,8 +64,9 @@ pub fn exec_block(
     let function_type = get_block_function_type(&vm_module, block_type);
     enter_control_block(
         vm_module,
-        VMFrameType::Block,
+        FrameType::Block,
         &function_type,
+        None,
         body,
         0, // `block 流程控制结构块` 没有自己的局部变量空槽
     );
@@ -80,8 +81,9 @@ pub fn exec_loop(
     let function_type = get_block_function_type(&vm_module, block_type);
     enter_control_block(
         vm_module,
-        VMFrameType::Loop,
+        FrameType::Loop,
         &function_type,
+        None,
         body,
         0, // `loop 流程控制结构块` 没有自己的局部变量空槽
     );
@@ -109,16 +111,18 @@ pub fn exec_if(
         if value != 0 {
             enter_control_block(
                 vm_module,
-                VMFrameType::If,
+                FrameType::If,
                 &function_type,
+                None,
                 consequet_body,
                 0, // `if 流程控制结构块` 没有自己的局部变量空槽
             );
         } else {
             enter_control_block(
                 vm_module,
-                VMFrameType::If,
+                FrameType::If,
                 &function_type,
+                None,
                 alternate_body,
                 0, // `if 流程控制结构块` 没有自己的局部变量空槽
             );
@@ -189,7 +193,7 @@ pub fn br(vm_module: Rc<RefCell<VMModule>>, relative_depth: u32) -> Result<(), E
         stack_frame.frame_type.clone()
     };
 
-    if frame_type == VMFrameType::Loop {
+    if frame_type == FrameType::Loop {
         repeat_control_block(vm_module);
     } else {
         leave_control_block(vm_module);

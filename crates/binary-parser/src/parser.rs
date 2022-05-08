@@ -6,15 +6,16 @@
 
 use std::{rc::Rc, vec};
 
-use crate::{
+use anvm_ast::{
     ast::{
         CodeItem, DataItem, ElementItem, ExportDescriptor, ExportItem, FunctionType, GlobalItem,
         GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType, Module, TableType,
     },
     instruction::{self, BlockType, Instruction, MemoryArg},
-    leb128decoder,
     types::ValueType,
 };
+
+use crate::leb128decoder;
 
 /// 二进制模块以一个 4 个字节的幻数 `0x00 0x61 0x73 0x6d` 开始。
 /// 转成 ascii 则是 `0x00` 和 `asm`
@@ -1438,13 +1439,13 @@ fn read_string(source: &[u8]) -> Result<(String, &[u8]), ParseError> {
 mod tests {
     use std::{env, fs, rc::Rc};
 
-    use crate::{
+    use anvm_ast::{
         ast::{
             CodeItem, DataItem, ElementItem, ExportDescriptor, ExportItem, FunctionType,
             GlobalItem, GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType,
             Module, TableType,
         },
-        instruction::{self, Instruction, MemoryArg, BlockType},
+        instruction::{self, BlockType, Instruction, MemoryArg},
         types::ValueType,
     };
 
@@ -1466,11 +1467,11 @@ mod tests {
         //
         // 这里需要处理这种情况。
 
-        if !path_buf.ends_with("parser") {
+        if !path_buf.ends_with("binary-parser") {
             // path_buf.pop();
             // path_buf.pop();
             path_buf.push("crates");
-            path_buf.push("parser");
+            path_buf.push("binary-parser");
         }
         let fullname_buf = path_buf.join("resources").join(filename);
         let fullname = fullname_buf.to_str().unwrap();
@@ -2003,17 +2004,11 @@ mod tests {
                 expression: Rc::new(vec![
                     Instruction::Block {
                         block_type: BlockType::ResultOnly(Some(ValueType::I32)),
-                        body: Rc::new(vec![
-                            Instruction::I32Const(10),
-                            Instruction::End
-                        ])
+                        body: Rc::new(vec![Instruction::I32Const(10), Instruction::End])
                     },
                     Instruction::Block {
                         block_type: BlockType::FunctionTypeIndex(1),
-                        body: Rc::new(vec![
-                            Instruction::I32Const(20),
-                            Instruction::End
-                        ])
+                        body: Rc::new(vec![Instruction::I32Const(20), Instruction::End])
                     },
                     Instruction::End
                 ])

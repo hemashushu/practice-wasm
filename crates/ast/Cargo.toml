@@ -1,5 +1,5 @@
 [package]
-name = "anvm-parser"
+name = "anvm-ast"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 
 [dev-dependencies]
-pretty_assertions = "1.2.1"
+

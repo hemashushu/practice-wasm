@@ -6,7 +6,10 @@
 
 use std::rc::Rc;
 
-use anvm_parser::{ast::FunctionType, instruction::Instruction};
+use crate::{
+    object::{ControlStack, FrameType, StackFrame},
+    vm_stack_frame::VMStackFrame,
+};
 
 /// # 控制栈
 ///
@@ -53,54 +56,44 @@ pub struct VMControlStack {
     frames: Vec<VMStackFrame>,
 }
 
-// name: stackFrame
-pub struct VMStackFrame {
-    // 创建当前帧的指令
-    // 对于函数调用，创建帧的指令是 call
-    // 对于流程控制所产生的帧，创建的指令有 block/loop 等
-    pub frame_type: VMFrameType,
+impl ControlStack for VMControlStack {
+    fn get_frames(&self) -> Vec<Rc<dyn StackFrame>> {
+        let mut stack_frames: Vec<Rc<dyn StackFrame>> = vec![];
+        for frame in &self.frames {
+            stack_frames.push(Rc::new(frame.clone()));
+        }
+        stack_frames
+    }
 
-    // 函数签名、以及块类型
-    pub function_type: Rc<FunctionType>,
+    fn get_frame_count(&self) -> usize {
+        self.frames.len()
+    }
 
-    // 复制了一份当前过程的指令
-    pub instructions: Rc<Vec<Instruction>>,
+    fn get_last_frame(&self) -> Rc<dyn StackFrame> {
+        if let Some(frame) = self.frames.last() {
+            let stack_frame = frame.clone();
+            Rc::new(stack_frame)
+        } else {
+            panic!("control stack is empty")
+        }
+    }
 
-    // base pointer 一个栈帧的开始的开始地址，对于函数调用来说，它是第 0 个实参的地址
-    pub frame_pointer: usize,
+    fn get_last_call_all_frames(&self) -> Vec<Rc<dyn StackFrame>> {
+        let option_frame = self
+            .frames
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, frame)| frame.frame_type == FrameType::Call);
 
-    // operand pointer，用于表示（逻辑上）操作数栈的开始位置，
-    // 这样便于调试时，快速列出局部变量和操作数这两种数据。
-    pub operand_pointer: usize,
-
-    // program counter 程序计数器，即当前指令的地址 **在当前函数的指令序列** 里的索引（位置），
-    // 初始值为 0
-    pub program_counter: usize,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum VMFrameType {
-    Call,
-    Block,
-    Loop,
-    If
-}
-
-impl VMStackFrame {
-    pub fn new(
-        frame_type: VMFrameType,
-        function_type: Rc<FunctionType>,
-        instructions: Rc<Vec<Instruction>>,
-        frame_pointer: usize,
-        local_variable_count: usize,
-    ) -> Self {
-        VMStackFrame {
-            frame_type,
-            function_type,
-            instructions,
-            frame_pointer,
-            operand_pointer: frame_pointer + local_variable_count,
-            program_counter: 0, // pc 的初始值为 0
+        if let Some((start, _)) = option_frame {
+            let mut stack_frames: Vec<Rc<dyn StackFrame>> = vec![];
+            for index in start..self.frames.len() {
+                stack_frames.push(Rc::new(self.frames[index].clone()));
+            }
+            stack_frames
+        } else {
+            panic!("call frame not found")
         }
     }
 }
@@ -123,29 +116,32 @@ impl VMControlStack {
         }
     }
 
-    // pub fn peek_frame(&self) -> &VMStackFrame {
-    //     let option_frame = self.frames.last();
-    //     if let Some(frame) = option_frame {
-    //         frame
-    //     } else {
-    //         panic!("control stack is empty")
-    //     }
-    // }
+    pub fn peek_frame(&self) -> &VMStackFrame {
+        if let Some(frame) = self.frames.last() {
+            frame
+        } else {
+            panic!("control stack is empty")
+        }
+    }
 
-    pub fn peek_frame(&mut self) -> &mut VMStackFrame {
+    pub fn reset_program_counter(&mut self) {
         if self.frames.len() == 0 {
             panic!("control stack is empty")
         }
 
         let last_index = self.frames.len() - 1;
-        &mut self.frames[last_index]
+        self.frames[last_index].program_counter = 0;
     }
 
-    // pub fn get_instruction(&mut self) -> Instruction {
-    // }
+    pub fn increase_program_counter(&mut self) {
+        if self.frames.len() == 0 {
+            panic!("control stack is empty")
+        }
 
-    pub fn get_frame_count(&self) -> usize {
-        self.frames.len()
+        let last_index = self.frames.len() - 1;
+        let mut last_frame = &mut self.frames[last_index];
+
+        last_frame.program_counter = last_frame.program_counter + 1;
     }
 
     // 获取最后的一个**调用帧**
@@ -154,7 +150,7 @@ impl VMControlStack {
             .frames
             .iter()
             .rev()
-            .find(|f| f.frame_type == VMFrameType::Call);
+            .find(|f| f.frame_type == FrameType::Call);
 
         if let Some(frame) = option_frame {
             frame
@@ -175,7 +171,7 @@ impl VMControlStack {
     pub fn get_relative_depth(&self) -> u32 {
         let mut depth: u32 = 0;
         for frame in self.frames.iter().rev() {
-            if frame.frame_type == VMFrameType::Call {
+            if frame.frame_type == FrameType::Call {
                 break;
             } else {
                 depth += 1;
@@ -189,9 +185,9 @@ impl VMControlStack {
 mod tests {
     use std::rc::Rc;
 
-    use anvm_parser::ast::FunctionType;
+    use anvm_ast::ast::FunctionType;
 
-    use super::{VMControlStack, VMFrameType, VMStackFrame};
+    use super::{ControlStack, FrameType, VMControlStack, VMStackFrame};
 
     fn new_void_function_type() -> Rc<FunctionType> {
         Rc::new(FunctionType {
@@ -202,8 +198,9 @@ mod tests {
 
     fn new_call_frame() -> VMStackFrame {
         VMStackFrame::new(
-            VMFrameType::Call,
+            FrameType::Call,
             new_void_function_type(),
+            Some(0),
             Rc::new(vec![]),
             0,
             0,
@@ -212,8 +209,9 @@ mod tests {
 
     fn new_block_frame() -> VMStackFrame {
         VMStackFrame::new(
-            VMFrameType::Block,
+            FrameType::Block,
             new_void_function_type(),
+            None,
             Rc::new(vec![]),
             0,
             0,
@@ -222,8 +220,9 @@ mod tests {
 
     fn new_loop_frame() -> VMStackFrame {
         VMStackFrame::new(
-            VMFrameType::Loop,
+            FrameType::Loop,
             new_void_function_type(),
+            None,
             Rc::new(vec![]),
             0,
             0,
@@ -241,12 +240,12 @@ mod tests {
 
         // 测试 pop
         assert_eq!(s0.get_frame_count(), 3);
-        assert_eq!(s0.pop_frame().frame_type, VMFrameType::Block);
-        assert_eq!(s0.pop_frame().frame_type, VMFrameType::Loop);
+        assert_eq!(s0.pop_frame().frame_type, FrameType::Block);
+        assert_eq!(s0.pop_frame().frame_type, FrameType::Loop);
         assert_eq!(s0.get_frame_count(), 1);
 
         // 测试 peek
-        assert_eq!(s0.peek_frame().frame_type, VMFrameType::Call);
+        assert_eq!(s0.peek_frame().frame_type, FrameType::Call);
         assert_eq!(s0.get_frame_count(), 1);
     }
 }

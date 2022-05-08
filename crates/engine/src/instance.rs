@@ -7,10 +7,10 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    object::{EngineError, Module},
+    object::{EngineError, Function, Module},
     vm_module::VMModule,
 };
-use anvm_parser::{ast, types::Value};
+use anvm_ast::ast;
 
 pub struct Instance {
     pub module_map: HashMap<String, Rc<RefCell<dyn Module>>>,
@@ -22,9 +22,18 @@ impl Instance {
         Self { module_map }
     }
 
-    pub fn add_module(&mut self, name: &str, ast_module: ast::Module) -> Result<(), EngineError> {
+    pub fn add_ast_module(
+        &mut self,
+        name: &str,
+        ast_module: ast::Module,
+    ) -> Result<(), EngineError> {
         let vm_module = VMModule::new(name, ast_module, &self.module_map, None)?;
-        self.module_map.insert(name.to_string(), vm_module);
+        self.add_module(vm_module)
+    }
+
+    pub fn add_module(&mut self, module: Rc<RefCell<dyn Module>>) -> Result<(), EngineError> {
+        let name = module.as_ref().borrow().get_name();
+        self.module_map.insert(name, module);
         Ok(())
     }
 
@@ -47,20 +56,27 @@ impl Instance {
 //     Ok(module_map)
 // }
 
-/// 从 vm 外部（即宿主）或者其他模块调用函数
-pub fn eval_function(
-    vm_module: Rc<RefCell<VMModule>>,
-    name: &str,
-    args: &[Value],
-) -> Result<Vec<Value>, EngineError> {
-    let rc_function = vm_module.as_ref().borrow().get_export_function(name)?;
-    rc_function.as_ref().eval(args)
+// /// 从 vm 外部（即宿主）或者其他模块调用函数
+// pub fn eval_function(
+//     vm_module: Rc<RefCell<VMModule>>,
+//     name: &str,
+//     args: &[Value],
+// ) -> Result<Vec<Value>, EngineError> {
+//     let rc_function = vm_module.as_ref().borrow().get_export_function(name)?;
+//     rc_function.as_ref().eval(args)
+// }
+
+fn get_entry_function(vm_module: Rc<RefCell<VMModule>>) -> Option<Rc<dyn Function>> {
+    // 返回 `start` 段指定的函数，或者当不存在 `start` 段时，
+    // 寻找导出的函数当中是否存在名字为 `main` 的函数
+    todo!()
 }
 
 #[cfg(test)]
 mod tests {
     use super::Instance;
-    use anvm_parser::{ast, binary_parser, types::Value};
+    use anvm_ast::{ast, types::Value};
+    use anvm_binary_parser::parser;
     use std::{env, fs};
 
     fn get_test_binary_resource(filename: &str) -> Vec<u8> {
@@ -87,17 +103,17 @@ mod tests {
 
     fn get_test_ast_module(filename: &str) -> ast::Module {
         let bytes = get_test_binary_resource(filename);
-        binary_parser::parse(&bytes).unwrap()
+        parser::parse(&bytes).unwrap()
     }
 
     #[test]
     fn test_module_link() {
         let mut instance = Instance::new();
         instance
-            .add_module("lib", get_test_ast_module("test-module-link-lib.wasm"))
+            .add_ast_module("lib", get_test_ast_module("test-module-link-lib.wasm"))
             .unwrap();
         instance
-            .add_module("app", get_test_ast_module("test-module-link-app.wasm"))
+            .add_ast_module("app", get_test_ast_module("test-module-link-app.wasm"))
             .unwrap();
 
         let rc_app_vm_module = instance.get_module("app").unwrap();

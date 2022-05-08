@@ -1,2 +1,9 @@
 [workspace]
-members = ["crates/parser", "crates/engine", "crates/native", "crates/repl", "crates/launcher"]
+members = [
+    "crates/ast",
+    "crates/binary-parser",
+    "crates/engine",
+    "crates/native",
+    "crates/repl",
+    "crates/launcher"
+]

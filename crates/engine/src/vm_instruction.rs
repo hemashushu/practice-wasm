@@ -6,7 +6,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use anvm_parser::instruction::Instruction;
+use anvm_ast::instruction::Instruction;
 
 use crate::{
     ins_branch, ins_const, ins_function, ins_memory, ins_numeric_binary, ins_numeric_comparsion,

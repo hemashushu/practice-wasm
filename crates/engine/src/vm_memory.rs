@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use anvm_parser::ast::{Limit, MemoryType};
+use anvm_ast::ast::{Limit, MemoryType};
 
 use crate::object::{EngineError, Memory};
 
@@ -159,7 +159,7 @@ impl Memory for VMMemory {
 
 #[cfg(test)]
 mod tests {
-    use anvm_parser::ast::{Limit, MemoryType};
+    use anvm_ast::ast::{Limit, MemoryType};
 
     use crate::object::{EngineError, Memory};
 

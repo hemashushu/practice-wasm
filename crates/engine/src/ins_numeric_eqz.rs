@@ -14,7 +14,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use anvm_parser::types::Value;
+use anvm_ast::types::Value;
 
 use crate::{object::EngineError, vm_module::VMModule};
 

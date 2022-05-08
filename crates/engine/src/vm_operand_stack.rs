@@ -4,7 +4,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use anvm_parser::types::Value;
+use anvm_ast::types::Value;
+
+use crate::object::OperandStack;
 
 /// # 操作数栈（运算栈）
 ///
@@ -13,6 +15,19 @@ use anvm_parser::types::Value;
 /// 也用于实现 `函数调用帧`（call frame）。
 pub struct VMOperandStack {
     slots: Vec<Value>,
+}
+
+impl OperandStack for VMOperandStack {
+    fn get_operands(&self) -> Vec<Value> {
+        self.slots.clone()
+    }
+
+    /// 获取栈的总大小
+    ///
+    /// 相当于体系结构当中的 `stack pointer`
+    fn get_operand_count(&self) -> usize {
+        self.slots.len()
+    }
 }
 
 impl VMOperandStack {
@@ -58,13 +73,6 @@ impl VMOperandStack {
         } else {
             panic!("operand stack is empty")
         }
-    }
-
-    /// 获取栈的总大小
-    ///
-    /// 相当于体系结构当中的 `stack pointer`
-    pub fn get_stack_size(&self) -> usize {
-        self.slots.len()
     }
 
     /// 按索引来获取栈的操作数
@@ -116,8 +124,9 @@ impl VMOperandStack {
 
 #[cfg(test)]
 mod tests {
-    use anvm_parser::types::Value;
+    use anvm_ast::types::Value;
 
+    use crate::object::OperandStack;
     use super::VMOperandStack;
 
     #[test]
@@ -127,22 +136,22 @@ mod tests {
         // 测试 push
         s0.push(Value::I32(1));
         s0.push(Value::I32(2));
-        assert_eq!(s0.get_stack_size(), 2);
+        assert_eq!(s0.get_operand_count(), 2);
 
         // 测试 pop
         assert_eq!(s0.pop(), Value::I32(2));
-        assert_eq!(s0.get_stack_size(), 1);
+        assert_eq!(s0.get_operand_count(), 1);
 
         // 再次 push
         s0.push(Value::F32(3.0));
         s0.push(Value::F32(4.0));
-        assert_eq!(s0.get_stack_size(), 3);
+        assert_eq!(s0.get_operand_count(), 3);
 
         // 测试 peek 和 pop
         assert_eq!(s0.peek(), Value::F32(4.0));
-        assert_eq!(s0.get_stack_size(), 3); // peek 不会改变 slots 的内容
+        assert_eq!(s0.get_operand_count(), 3); // peek 不会改变 slots 的内容
         assert_eq!(s0.pop(), Value::F32(4.0));
-        assert_eq!(s0.get_stack_size(), 2);
+        assert_eq!(s0.get_operand_count(), 2);
         assert_eq!(s0.peek(), Value::F32(3.0));
     }
 
@@ -154,7 +163,7 @@ mod tests {
         s0.push(Value::I32(2));
         s0.push(Value::I32(3));
 
-        assert_eq!(s0.get_stack_size(), 3);
+        assert_eq!(s0.get_operand_count(), 3);
         assert_eq!(s0.get_value(0), Value::I32(1));
         assert_eq!(s0.get_value(1), Value::I32(2));
         assert_eq!(s0.get_value(2), Value::I32(3));
@@ -162,7 +171,7 @@ mod tests {
         s0.set_value(0, Value::I64(11));
         s0.set_value(2, Value::F64(3.3));
 
-        assert_eq!(s0.get_stack_size(), 3);
+        assert_eq!(s0.get_operand_count(), 3);
         assert_eq!(s0.get_value(0), Value::I64(11));
         assert_eq!(s0.get_value(1), Value::I32(2));
         assert_eq!(s0.get_value(2), Value::F64(3.3));
@@ -170,7 +179,7 @@ mod tests {
         assert_eq!(s0.pop(), Value::F64(3.3));
         assert_eq!(s0.pop(), Value::I32(2));
         assert_eq!(s0.pop(), Value::I64(11));
-        assert_eq!(s0.get_stack_size(), 0);
+        assert_eq!(s0.get_operand_count(), 0);
     }
 
     #[test]
@@ -180,11 +189,11 @@ mod tests {
         s0.push(Value::I32(1));
         s0.push(Value::I32(2));
         s0.push(Value::I32(3));
-        assert_eq!(s0.get_stack_size(), 3);
+        assert_eq!(s0.get_operand_count(), 3);
 
         // 测试 push_values
         s0.push_values(&vec![Value::I32(11), Value::I32(22)]);
-        assert_eq!(s0.get_stack_size(), 5);
+        assert_eq!(s0.get_operand_count(), 5);
         assert_eq!(s0.get_value(0), Value::I32(1));
         assert_eq!(s0.get_value(1), Value::I32(2));
         assert_eq!(s0.get_value(2), Value::I32(3));

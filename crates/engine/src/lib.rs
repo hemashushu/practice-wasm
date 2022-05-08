@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 mod vm_operand_stack;
+mod vm_stack_frame;
 mod vm_control_stack;
 mod vm_function;
 mod vm_table;

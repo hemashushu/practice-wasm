@@ -96,7 +96,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use anvm_parser::{
+use anvm_ast::{
     ast::{FunctionType, LocalGroup},
     instruction::Instruction,
     types::Value,
@@ -104,7 +104,7 @@ use anvm_parser::{
 
 use crate::{
     object::{EngineError, Function},
-    vm_control_stack::VMFrameType,
+    object::FrameType,
     vm_function::{FunctionItem, VMFunction},
     vm_module::{enter_control_block, VMModule},
 };
@@ -125,6 +125,7 @@ pub fn call(vm_module: Rc<RefCell<VMModule>>, function_index: u32) -> Result<(),
         .downcast_ref::<VMFunction>()
         .expect("should be a VMFunction object");
 
+    let function_index = vm_function.function_index;
     let rc_function_type = Rc::clone(&vm_function.function_type);
 
     match &vm_function.function_item {
@@ -136,7 +137,13 @@ pub fn call(vm_module: Rc<RefCell<VMModule>>, function_index: u32) -> Result<(),
             expression,
             vm_module: _,
         } => {
-            call_internal_function(vm_module, &rc_function_type, local_groups, expression);
+            call_internal_function(
+                vm_module,
+                &rc_function_type,
+                function_index,
+                local_groups,
+                expression,
+            );
             Ok(())
         }
     }
@@ -145,6 +152,7 @@ pub fn call(vm_module: Rc<RefCell<VMModule>>, function_index: u32) -> Result<(),
 pub fn call_internal_function(
     vm_module: Rc<RefCell<VMModule>>,
     function_type: &Rc<FunctionType>,
+    function_index: usize,
     local_groups: &Vec<LocalGroup>,
     instructions: &Rc<Vec<Instruction>>,
 ) {
@@ -156,8 +164,9 @@ pub fn call_internal_function(
     // 创建被进入新的调用帧
     enter_control_block(
         Rc::clone(&vm_module),
-        VMFrameType::Call,
+        FrameType::Call,
         function_type,
+        Some(function_index),
         instructions,
         local_variable_count,
     );
@@ -282,6 +291,7 @@ pub fn call_indirect(
         .downcast_ref::<VMFunction>()
         .expect("should be a VMFunction object");
 
+    let function_index = vm_function.function_index;
     let rc_function_type = Rc::clone(&vm_function.function_type);
 
     match &vm_function.function_item {
@@ -293,7 +303,13 @@ pub fn call_indirect(
             expression,
             vm_module: _,
         } => {
-            call_internal_function(vm_module, &rc_function_type, local_groups, expression);
+            call_internal_function(
+                vm_module,
+                &rc_function_type,
+                function_index,
+                local_groups,
+                expression,
+            );
             Ok(())
         }
     }

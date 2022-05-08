@@ -101,7 +101,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use anvm_parser::{instruction::MemoryArg, types::Value};
+use anvm_ast::{instruction::MemoryArg, types::Value};
 
 use crate::{object::EngineError, vm_module::VMModule};
 
