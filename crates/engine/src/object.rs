@@ -4,11 +4,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{any::Any, cell::RefCell, rc::Rc};
+use std::{any::Any, cell::RefCell, rc::Rc, fmt::Debug};
 
 use anvm_ast::{
     ast::{FunctionType, GlobalType, MemoryType, TableType},
-    types::Value, instruction::Instruction,
+    instruction::Instruction,
+    types::Value,
 };
 
 /// `模块` 对象的接口
@@ -18,7 +19,7 @@ use anvm_ast::{
 /// 模块之间的链接和调用的实现基于 Module/Function/Table/Memory/Global 等接口，
 /// 注意本地函数（native function）也将会存储在一个拥有 Module 接口的模块当中。
 pub trait Module {
-    fn get_name(&self) -> String;
+    fn get_name(&self) -> &str;
 
     fn get_export_table(&self, name: &str) -> Result<Rc<RefCell<dyn Table>>, EngineError>;
     fn get_export_memory(&self, name: &str) -> Result<Rc<RefCell<dyn Memory>>, EngineError>;
@@ -27,6 +28,8 @@ pub trait Module {
         &self,
         name: &str,
     ) -> Result<Rc<RefCell<dyn GlobalVariable>>, EngineError>;
+
+    fn get_exports(&self) -> Vec<Export>;
 
     // 下列是用于提供 debug 功能的函数
 
@@ -39,6 +42,13 @@ pub trait Module {
     fn get_function_by_index(&self, index: usize) -> Rc<dyn Function>;
 }
 
+pub enum Export {
+    Table(Rc<RefCell<dyn Table>>),
+    Memory(Rc<RefCell<dyn Memory>>),
+    Function(Rc<dyn Function>),
+    GlobalVariable(Rc<RefCell<dyn GlobalVariable>>),
+}
+
 pub trait Function {
     /// 从 vm 外部（即宿主）或者其他模块调用函数
     fn eval(&self, args: &[Value]) -> Result<Vec<Value>, EngineError>;
@@ -47,6 +57,7 @@ pub trait Function {
     /// 获取函数在模块中的索引值，
     /// 用于提供调试功能
     fn get_index(&self) -> usize;
+    fn get_name(&self) -> Option<String>;
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -103,10 +114,15 @@ pub trait GlobalVariable {
 
 #[derive(Debug)]
 pub enum EngineError {
-    OutOfRange(String),
+    OutOfIndex(String),
     Overflow(String),
     ObjectNotFound(String),
     InvalidOperation(String),
+    ModuleError(Box<dyn ModuleError>)
+}
+
+pub trait ModuleError:Debug {
+    fn as_any(&self) -> &dyn Any;
 }
 
 pub trait OperandStack {

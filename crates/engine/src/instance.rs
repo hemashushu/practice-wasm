@@ -7,7 +7,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    object::{EngineError, Function, Module},
+    object::{EngineError, Module},
     vm_module::VMModule,
 };
 use anvm_ast::ast;
@@ -32,7 +32,7 @@ impl Instance {
     }
 
     pub fn add_module(&mut self, module: Rc<RefCell<dyn Module>>) -> Result<(), EngineError> {
-        let name = module.as_ref().borrow().get_name();
+        let name = module.as_ref().borrow().get_name().to_string();
         self.module_map.insert(name, module);
         Ok(())
     }
@@ -66,11 +66,10 @@ impl Instance {
 //     rc_function.as_ref().eval(args)
 // }
 
-fn get_entry_function(vm_module: Rc<RefCell<VMModule>>) -> Option<Rc<dyn Function>> {
-    // 返回 `start` 段指定的函数，或者当不存在 `start` 段时，
-    // 寻找导出的函数当中是否存在名字为 `main` 的函数
-    todo!()
-}
+// fn get_entry_function(vm_module: Rc<RefCell<VMModule>>) -> Option<Rc<dyn Function>> {
+// 返回 `start` 段指定的函数，或者当不存在 `start` 段时，
+// 寻找导出的函数当中是否存在名字为 `main` 的函数
+// }
 
 #[cfg(test)]
 mod tests {

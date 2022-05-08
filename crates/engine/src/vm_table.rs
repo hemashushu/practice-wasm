@@ -71,7 +71,7 @@ impl Table for VMTable {
 
     fn get_element(&self, index: usize) -> Result<Option<Rc<dyn Function>>, EngineError> {
         if index >= self.elements.len() {
-            return Err(EngineError::OutOfRange(
+            return Err(EngineError::OutOfIndex(
                 "element index out of the range of the table".to_string(),
             ));
         }
@@ -84,7 +84,7 @@ impl Table for VMTable {
 
     fn set_element(&mut self, index: usize, func: Rc<dyn Function>) -> Result<(), EngineError> {
         if index >= self.elements.len() {
-            return Err(EngineError::OutOfRange(
+            return Err(EngineError::OutOfIndex(
                 "element index out of the range of the table".to_string(),
             ));
         }

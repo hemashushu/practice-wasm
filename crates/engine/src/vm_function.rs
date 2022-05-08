@@ -25,10 +25,12 @@ use crate::{
 pub struct VMFunction {
     pub function_type: Rc<FunctionType>,
     pub function_index: usize,
-    pub function_item: FunctionItem,
+    pub function_kind: VMFunctionKind,
+
+    name: Option<String>,
 }
 
-pub enum FunctionItem {
+pub enum VMFunctionKind {
     /// 内部函数
     ///
     /// 当前模块内定义的函数
@@ -50,6 +52,7 @@ impl VMFunction {
     pub fn new_internal_function(
         function_type: Rc<FunctionType>,
         function_index: usize,
+        name: Option<String>,
         local_groups: Vec<LocalGroup>,
         expression: Rc<Vec<Instruction>>,
         vm_module: Weak<RefCell<VMModule>>,
@@ -57,23 +60,26 @@ impl VMFunction {
         VMFunction {
             function_type,
             function_index,
-            function_item: FunctionItem::Internal {
+            function_kind: VMFunctionKind::Internal {
                 local_groups,
                 expression,
                 vm_module,
             },
+            name,
         }
     }
 
     pub fn new_external_function(
         function_type: Rc<FunctionType>,
         function_index: usize,
+        name: Option<String>,
         rc_function: Rc<dyn Function>,
     ) -> Self {
         VMFunction {
             function_type,
             function_index,
-            function_item: FunctionItem::External(rc_function),
+            function_kind: VMFunctionKind::External(rc_function),
+            name,
         }
     }
 }
@@ -82,8 +88,8 @@ impl Function for VMFunction {
     /// 从 vm 外部（即宿主）或者其他模块调用函数
     fn eval(&self, args: &[Value]) -> Result<Vec<Value>, EngineError> {
         // 注意模块内的函数有可能是从外部导入的
-        match &self.function_item {
-            FunctionItem::Internal {
+        match &self.function_kind {
+            VMFunctionKind::Internal {
                 local_groups,
                 expression,
                 vm_module,
@@ -102,7 +108,7 @@ impl Function for VMFunction {
                     args,
                 )
             }
-            FunctionItem::External(r) => {
+            VMFunctionKind::External(r) => {
                 // 对于 `外部函数`，使用它自己的 eval() 方法求值，
                 // 也就是说它会作为其所在的模块的 `内部函数` 来求值。
                 r.as_ref().eval(args)
@@ -114,12 +120,16 @@ impl Function for VMFunction {
         Rc::clone(&self.function_type)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn get_index(&self) -> usize {
         self.function_index
+    }
+
+    fn get_name(&self) -> Option<String> {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

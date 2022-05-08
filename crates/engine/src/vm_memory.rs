@@ -32,6 +32,19 @@ impl VMMemory {
         }
     }
 
+    /// 创建指定页面数（且不限最大值的）内存块
+    pub fn new_with_min_page(min: u32) -> Self {
+        let memory_type = MemoryType {
+            limit: Limit::AtLeast(min),
+        };
+        let byte_len = min * PAGE_SIZE;
+
+        VMMemory {
+            memory_type: memory_type,
+            data: vec![0; byte_len as usize],
+        }
+    }
+
     /// 以给定的初始数据来创建 VMMemory 对象
     pub fn new_with_init_data(init_data: Vec<u8>) -> Self {
         let byte_len = init_data.len() as u32;

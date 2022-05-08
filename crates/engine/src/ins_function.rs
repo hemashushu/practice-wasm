@@ -105,7 +105,7 @@ use anvm_ast::{
 use crate::{
     object::{EngineError, Function},
     object::FrameType,
-    vm_function::{FunctionItem, VMFunction},
+    vm_function::{VMFunctionKind, VMFunction},
     vm_module::{enter_control_block, VMModule},
 };
 
@@ -128,11 +128,11 @@ pub fn call(vm_module: Rc<RefCell<VMModule>>, function_index: u32) -> Result<(),
     let function_index = vm_function.function_index;
     let rc_function_type = Rc::clone(&vm_function.function_type);
 
-    match &vm_function.function_item {
-        FunctionItem::External(external_function) => {
+    match &vm_function.function_kind {
+        VMFunctionKind::External(external_function) => {
             call_external_func(vm_module, &rc_function_type, Rc::clone(external_function))
         }
-        FunctionItem::Internal {
+        VMFunctionKind::Internal {
             local_groups,
             expression,
             vm_module: _,
@@ -294,11 +294,11 @@ pub fn call_indirect(
     let function_index = vm_function.function_index;
     let rc_function_type = Rc::clone(&vm_function.function_type);
 
-    match &vm_function.function_item {
-        FunctionItem::External(external_function) => {
+    match &vm_function.function_kind {
+        VMFunctionKind::External(external_function) => {
             call_external_func(vm_module, &rc_function_type, Rc::clone(external_function))
         }
-        FunctionItem::Internal {
+        VMFunctionKind::Internal {
             local_groups,
             expression,
             vm_module: _,

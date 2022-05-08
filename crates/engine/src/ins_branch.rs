@@ -260,5 +260,5 @@ pub fn exec_return(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> 
             .get_relative_depth()
     };
 
-    br(vm_module, relative_depth)
+    br(vm_module, relative_depth as u32)
 }

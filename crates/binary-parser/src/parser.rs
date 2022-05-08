@@ -1459,7 +1459,7 @@ mod tests {
 
         // 使用 `cargo test` 测试时，
         // `env::current_dir()` 函数获得的当前目录为
-        // `./xiaoxuan-vm/crates/parser`；
+        // `./xiaoxuan-vm/crates/binary-parser`；
         //
         // 但如果使用 vscode 的源码编辑框里面的 `debug` 按钮开始调试，
         // `env::current_dir()` 函数获得的当前目录为

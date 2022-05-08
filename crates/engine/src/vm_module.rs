@@ -23,7 +23,7 @@ use anvm_ast::{
 use crate::{
     object::{
         ControlStack, EngineError, FrameType, Function, GlobalVariable, Memory, Module,
-        OperandStack, Table,
+        OperandStack, Table, Export,
     },
     vm_control_stack::VMControlStack,
     vm_function::VMFunction,
@@ -70,8 +70,8 @@ pub struct VMModule {
 }
 
 impl Module for VMModule {
-    fn get_name(&self) -> String {
-        self.name.clone()
+    fn get_name(&self) -> &str {
+        &self.name
     }
 
     fn get_export_table(&self, name: &str) -> Result<Rc<RefCell<dyn Table>>, EngineError> {
@@ -173,6 +173,10 @@ impl Module for VMModule {
                 self.name, name
             )))
         }
+    }
+
+    fn get_exports(&self) -> Vec<Export> {
+        todo!()
     }
 
     fn dump_memory(&self, address: usize, length: usize) -> Vec<u8> {
@@ -545,6 +549,7 @@ fn create_functions(
                     let function = VMFunction::new_external_function(
                         Rc::clone(rc_function_type),
                         index,
+                        Some(name.clone()),
                         Rc::clone(&rc_function),
                     );
                     functions.push(Rc::new(function));
@@ -570,6 +575,7 @@ fn create_functions(
         let function = VMFunction::new_internal_function(
             Rc::clone(rc_function_type),
             imported_count + function_index,
+            None,
             local_groups,
             rc_expression,
             Weak::clone(&weak_module),

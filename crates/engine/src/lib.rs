@@ -9,7 +9,7 @@ mod vm_stack_frame;
 mod vm_control_stack;
 mod vm_function;
 mod vm_table;
-mod vm_memory;
+pub mod vm_memory;
 mod vm_global_variable;
 mod vm_module;
 mod vm_instruction;

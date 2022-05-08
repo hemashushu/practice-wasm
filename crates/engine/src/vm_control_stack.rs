@@ -79,14 +79,13 @@ impl ControlStack for VMControlStack {
     }
 
     fn get_last_call_all_frames(&self) -> Vec<Rc<dyn StackFrame>> {
-        let option_frame = self
+        let option_position = self
             .frames
             .iter()
-            .enumerate()
             .rev()
-            .find(|(_, frame)| frame.frame_type == FrameType::Call);
+            .position(|frame| frame.frame_type == FrameType::Call);
 
-        if let Some((start, _)) = option_frame {
+        if let Some(start) = option_position {
             let mut stack_frames: Vec<Rc<dyn StackFrame>> = vec![];
             for index in start..self.frames.len() {
                 stack_frames.push(Rc::new(self.frames[index].clone()));
@@ -168,16 +167,28 @@ impl VMControlStack {
     /// - 调用帧本身（即在函数层里），则返回 0，
     /// - 在一层流程控制结构块里，则返回 1
     /// - 在两层流程控制结构块里，则返回 2
-    pub fn get_relative_depth(&self) -> u32 {
-        let mut depth: u32 = 0;
-        for frame in self.frames.iter().rev() {
-            if frame.frame_type == FrameType::Call {
-                break;
-            } else {
-                depth += 1;
-            }
+    pub fn get_relative_depth(&self) -> usize {
+        // let mut depth: u32 = 0;
+        // for frame in self.frames.iter().rev() {
+        //     if frame.frame_type == FrameType::Call {
+        //         break;
+        //     } else {
+        //         depth += 1;
+        //     }
+        // }
+        // depth
+
+        let option_position = self
+            .frames
+            .iter()
+            .rev()
+            .position(|frame| frame.frame_type == FrameType::Call);
+
+        if let Some(depth) = option_position {
+            depth
+        } else {
+            panic!("call frame not found")
         }
-        depth
     }
 }
 
