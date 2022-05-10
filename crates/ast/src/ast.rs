@@ -4,13 +4,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::rc::Rc;
-
 use crate::{instruction::Instruction, types::ValueType};
 
-/// # 模块结构
+/// # 模块
 ///
-/// 二进制和文本格式的 WebAssembly 共用同一个 Module 结构
+/// 二进制和文本格式的 WebAssembly 对应的模块结构是相同的，这里以
+/// 二进制模块的定义为主。
 ///
 /// 结构的详细文档参阅：
 /// <https://webassembly.github.io/spec/core/binary/modules.html>
@@ -22,7 +21,7 @@ pub struct Module {
 
     /// 类型列表，目前类型列表只支持列出函数类型（即函数签名），所以这里命名为 function_type，（section id 1）
     /// 需注意不同的函数可能有相同的签名，所以类型列表的数量并不等于函数的数量。
-    pub function_types: Vec<Rc<FunctionType>>,
+    pub function_types: Vec<FunctionType>,
 
     /// 导入项列表，（section id 2）
     pub import_items: Vec<ImportItem>,
@@ -77,7 +76,7 @@ pub struct CustomItem {
 
 /// # 类型
 ///
-/// 目前类型段只支持列出函数类型（即函数签名）
+/// 函数、流程控制结构块共用的类型项
 ///
 /// ## 二进制格式
 ///
@@ -156,7 +155,7 @@ pub struct FunctionType {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ImportItem {
     pub module_name: String,
-    pub name: String,
+    pub item_name: String,
     pub import_descriptor: ImportDescriptor,
 }
 
@@ -168,7 +167,7 @@ pub enum ImportDescriptor {
     GlobalType(GlobalType),
 }
 
-/// # 函数（列表）段
+/// # 补充：函数（列表）段
 ///
 /// 函数列表列出所有的函数的类型，至于函数的指令（字节码）部分则位于代码列表
 ///
@@ -212,9 +211,8 @@ pub enum ImportDescriptor {
 ///     (drop)
 ///     (i32.add (local.get $a) (local.get $b))
 /// )
-const _FUNCTION_LIST_SECTION_ID: u8 = 3; // 无用的语句，仅为了书写文档注释
 
-/// # 表
+/// # 表类型
 ///
 /// 表用于存储元素项目，目前元素项目只支持函数引用（函数索引），
 /// 表和元素项用于列出一组函数的索引，然后在执行 `call_indirect` 指令时，
@@ -292,7 +290,7 @@ impl Limit {
     }
 }
 
-/// # 内存
+/// # 内存类型
 ///
 /// 内存项用于声明模块的内存块信息，内存块的初始化数据位于数据段里。
 ///
@@ -323,7 +321,7 @@ pub struct MemoryType {
     pub limit: Limit,
 }
 
-/// # 全局变量
+/// # 全局变量项
 ///
 /// 全局段列出模块所有全局变量（包括全局常量），全局变量项
 /// 需要指出变量是否可变，以及初始值（使用常量表达式）。
@@ -415,7 +413,7 @@ pub enum ExportDescriptor {
     GlobalItemIndex(u32),
 }
 
-/// # 起始函数索引
+/// # 补充：起始函数索引
 ///
 /// 指定 wasm 加载后自动开始执行的函数（比如 main 函数）
 ///
@@ -429,7 +427,6 @@ pub enum ExportDescriptor {
 ///     (func $main ...)
 ///     (start $main)       ;; start 指令后面跟着起始函数的索引值或者标识符
 /// )
-const _START_SECTION_ID: u8 = 8; // 无用的语句，仅为了书写文档注释
 
 /// # 元素项
 ///
@@ -554,7 +551,7 @@ pub struct CodeItem {
     pub local_groups: Vec<LocalGroup>,
 
     /// 指令/字节码
-    pub expression: Rc<Vec<Instruction>>,
+    pub expression: Vec<Instruction>,
 }
 
 /// 局部变量信息组

@@ -11,7 +11,7 @@ use anvm_ast::{
         CodeItem, DataItem, ElementItem, ExportDescriptor, ExportItem, FunctionType, GlobalItem,
         GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType, Module, TableType,
     },
-    instruction::{self, BlockType, Instruction, MemoryArg},
+    instruction::{self, BlockType, Instruction, MemoryArgument},
     types::ValueType,
 };
 
@@ -1080,20 +1080,21 @@ fn get_block_type(value: i32) -> Result<BlockType, ParseError> {
 ///
 /// 参数有两个：
 ///
-/// 第一个是 `align`，即对齐方式，数据类型是整数，单位是 `字节`，
-/// 二进制格式里 `align` 存储的是 2 的对数，比如：
+/// 第一个是 `offset`，即偏移值，单位是 `字节`。
+///
+/// 第二个是 `align`，即对齐方式，数据类型是整数，单位是 `字节`，
+/// 二进制格式里 `align` 的值是 2 的对数，比如：
 /// 1 表示对齐 2^1 个字节，
 /// 2 表示对齐 2^2 个字节。
 ///
-/// 注意文本格式里就是字节数，比如文本格式的 8 对应二进制格式的 3 (2^3)。
-///
-/// 第二个是 `offset`，即偏移值，单位是 `字节`。
+/// 文本格式里 `align` 的值就是字节数，比如文本格式的 8 对应二进制格式的 3 (2^3)。
 ///
 /// 二进制格式：
 ///
 /// memory_load_and_store_argument = align:u32 + offset:u32
 ///
 /// 文本格式：
+///
 /// (i32.load offset=200 align=8) ;; 注意先写 offset 后写 align
 ///
 /// 在文本格式里缺省 `align` 值时，
@@ -1101,10 +1102,10 @@ fn get_block_type(value: i32) -> Result<BlockType, ParseError> {
 /// 对于 i64.load/i64.store，默认对齐 8 个字节
 fn continue_parse_memory_load_and_store_argument(
     source: &[u8],
-) -> Result<(MemoryArg, &[u8]), ParseError> {
+) -> Result<(MemoryArgument, &[u8]), ParseError> {
     let (align, post_align) = read_u32(source)?;
     let (offset, post_offset) = read_u32(post_align)?;
-    Ok((MemoryArg { align, offset }, post_offset))
+    Ok((MemoryArgument { align, offset }, post_offset))
 }
 
 /// # 解析导出段
@@ -1445,7 +1446,7 @@ mod tests {
             GlobalItem, GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType,
             Module, TableType,
         },
-        instruction::{self, BlockType, Instruction, MemoryArg},
+        instruction::{self, BlockType, Instruction, MemoryArgument},
         types::ValueType,
     };
 
@@ -1693,7 +1694,7 @@ mod tests {
                 CodeItem {
                     local_groups: vec![],
                     expression: Rc::new(vec![
-                        Instruction::I32Load(MemoryArg {
+                        Instruction::I32Load(MemoryArgument {
                             align: 2,
                             offset: 100,
                         }),
@@ -1703,11 +1704,11 @@ mod tests {
                 CodeItem {
                     local_groups: vec![],
                     expression: Rc::new(vec![
-                        Instruction::I32Load(MemoryArg {
+                        Instruction::I32Load(MemoryArgument {
                             align: 3,
                             offset: 200,
                         }),
-                        Instruction::I64Load(MemoryArg {
+                        Instruction::I64Load(MemoryArgument {
                             align: 3,
                             offset: 400,
                         }),
@@ -1836,11 +1837,11 @@ mod tests {
                 expression: Rc::new(vec![
                     Instruction::I32Const(1),
                     Instruction::I32Const(2),
-                    Instruction::I32Load(MemoryArg {
+                    Instruction::I32Load(MemoryArgument {
                         align: 2,
                         offset: 100
                     }),
-                    Instruction::I32Store(MemoryArg {
+                    Instruction::I32Store(MemoryArgument {
                         align: 2,
                         offset: 100
                     }),

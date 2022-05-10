@@ -1,9 +1,9 @@
 [workspace]
 members = [
     "crates/ast",
-    "crates/binary-parser",
-    "crates/engine",
-    "crates/native",
-    "crates/repl",
-    "crates/launcher"
+    # "crates/binary-parser",
+    # "crates/engine",
+    # "crates/native",
+    # "crates/repl",
+    # "crates/launcher"
 ]

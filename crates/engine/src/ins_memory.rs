@@ -32,20 +32,29 @@
 //!
 //! ## 加载指令
 //!
-//! 格式
+//! 二进制格式
 //!
 //! i32.load align:uint32 offset:uint32
 //!
-//! load 指令有两个立即数：
+//! 文本格式
+//!
+//! (i32.load offset=0 align=2)
+//!
+//! 对于文本格式，必须先写 offset 再写 align，且可以省略 `align` 值，
+//! 对于 i32.load/i32.store，默认对齐 4 个字节
+//! 对于 i64.load/i64.store，默认对齐 8 个字节
+//!
+//! 参数的作用
+//!
+//! - offset 偏移值
+//!   加载（以及存储）指令都会从操作数栈弹出一个 i32 类型的整数，让它与指令的立即数 offset 相加，得到
+//!   实际的内存地址，即：有效地址 = offset + popUint32()
 //!
 //! - align 地址对齐字节数量的对数，表示对齐一个 ”以 2 为底，以 align 为指数“ 的字节数，
 //!   比如 align = 1 时，表示对齐 2^1 = 2 个字节
 //!   比如 align = 2 时，表示对齐 2^2 = 4 个字节
 //!   align 只起提示作用，用于帮助编译器优化机器代码，对实际执行没有影响（对于 wasm 解析器，可以忽略这个值）
-//!
-//! - offset 偏移值
-//!   加载（以及存储）指令都会从操作数栈弹出一个 i32 类型的整数，让它与指令的立即数 offset 相加，得到
-//!   实际的内存地址，即：有效地址 = offset + popUint32()
+//!   文本格式里 `align` 的值就是字节数，比如文本格式的 8 对应二进制格式的 3 (2^3)。
 //!
 //! 加载过程：
 //!
@@ -101,7 +110,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use anvm_ast::{instruction::MemoryArg, types::Value};
+use anvm_ast::{instruction::MemoryArgument, types::Value};
 
 use crate::{object::EngineError, vm_module::VMModule};
 
@@ -165,7 +174,7 @@ pub fn memory_grow(
 /// 所以有效地址（uint32 + uint32）是一个 33 位的无符号整数，实际的值有可能会超出了 uint32 的范围。
 fn get_effective_address(
     module: &mut VMModule,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<usize, EngineError> {
     // MemoryArg 里头的 align 暂时无用
     let offset = memory_args.offset;
@@ -184,7 +193,7 @@ fn get_effective_address(
 
 pub fn i32_load(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -196,7 +205,7 @@ pub fn i32_load(
 
 pub fn i32_load16_s(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -208,7 +217,7 @@ pub fn i32_load16_s(
 
 pub fn i32_load16_u(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -220,7 +229,7 @@ pub fn i32_load16_u(
 
 pub fn i32_load8_s(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -232,7 +241,7 @@ pub fn i32_load8_s(
 
 pub fn i32_load8_u(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -246,7 +255,7 @@ pub fn i32_load8_u(
 
 pub fn i64_load(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -258,7 +267,7 @@ pub fn i64_load(
 
 pub fn i64_load32_s(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -270,7 +279,7 @@ pub fn i64_load32_s(
 
 pub fn i64_load32_u(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -282,7 +291,7 @@ pub fn i64_load32_u(
 
 pub fn i64_load16_s(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -294,7 +303,7 @@ pub fn i64_load16_s(
 
 pub fn i64_load16_u(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -306,7 +315,7 @@ pub fn i64_load16_u(
 
 pub fn i64_load8_s(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -318,7 +327,7 @@ pub fn i64_load8_s(
 
 pub fn i64_load8_u(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -332,7 +341,7 @@ pub fn i64_load8_u(
 
 pub fn f32_load(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -344,7 +353,7 @@ pub fn f32_load(
 
 pub fn f64_load(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -358,7 +367,7 @@ pub fn f64_load(
 
 pub fn i32_store(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -380,7 +389,7 @@ pub fn i32_store(
 
 pub fn i32_store_16(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -403,7 +412,7 @@ pub fn i32_store_16(
 
 pub fn i32_store_8(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -426,7 +435,7 @@ pub fn i32_store_8(
 
 pub fn i64_store(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -448,7 +457,7 @@ pub fn i64_store(
 
 pub fn i64_store_32(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -471,7 +480,7 @@ pub fn i64_store_32(
 
 pub fn i64_store_16(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -494,7 +503,7 @@ pub fn i64_store_16(
 
 pub fn i64_store_8(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -519,7 +528,7 @@ pub fn i64_store_8(
 
 pub fn f32_store(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 
@@ -541,7 +550,7 @@ pub fn f32_store(
 
 pub fn f64_store(
     vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArg,
+    memory_args: &MemoryArgument,
 ) -> Result<(), EngineError> {
     let mut module = vm_module.as_ref().borrow_mut();
 

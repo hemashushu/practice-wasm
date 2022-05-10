@@ -20,7 +20,7 @@ pub enum ValueType {
 
 /// # 虚拟机内部运算使用的基本数据类型
 ///
-/// 部分指令明确表明需要将整数解析为无符号整数（unsigned int）进行运算，
+/// 部分指令会明确表明需要将整数解析为无符号整数（unsigned int）进行运算，
 /// 比如 `lt_u` 和 `gt_u` 等，而 `Value` 仅包含了有符号的整数，
 /// 所以进行无符号运算时，需要先转换在运算。
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -42,8 +42,7 @@ impl Value {
     }
 }
 
-/// WebAssembly 的索引使用 u32 类型。
-/// https://webassembly.github.io/spec/core/syntax/modules.html#indices
-///
-/// 这里为了简单起见就不单独定义它们了，而直接使用 u32。
-type _Index = u32; // 无用的语句，仅为了书写文档注释
+// WebAssembly 的索引值，比如函数类型的索引，函数索引，内存块索引等，使用 u32 类型。
+// https://webassembly.github.io/spec/core/syntax/modules.html#indices
+//
+// 为了简单起见，当前项目不单独定义它们
