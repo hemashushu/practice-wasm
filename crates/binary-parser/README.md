@@ -1,5 +1,5 @@
-# XiaoXuan Micro - Binary Parser
+# XiaoXuan VM - Binary Parser
 
-A parser for WebAssembly binary formats.
+WebAssembly binary format parser.
 
-一个 WebAssembly 二进制格式的解析器。
+WebAssembly 二进制格式的解析器。

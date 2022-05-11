@@ -19,20 +19,26 @@ pub struct Module {
     /// 自定义项目列表，（section id 0）
     pub custom_items: Vec<CustomItem>,
 
-    /// 类型列表，目前类型列表只支持列出函数类型（即函数签名），所以这里命名为 function_type，（section id 1）
-    /// 需注意不同的函数可能有相同的签名，所以类型列表的数量并不等于函数的数量。
-    pub function_types: Vec<FunctionType>,
+    /// 类型列表，（section id 1）
+    /// 目前类型列表只支持列出函数类型（即函数签名），
+    /// 需注意不同的函数可能有相同的签名，所以类型列表的数量并不等于函数的数量
+    pub types: Vec<TypeItem>,
 
     /// 导入项列表，（section id 2）
     pub import_items: Vec<ImportItem>,
 
-    /// 函数列表，列出所有的函数的类型，至于函数的指令（字节码）部分则位于代码列表，（section id 3）
+    /// 函数列表，（section id 3）
+    /// 按顺序列出所有的函数所对应的类型，
+    /// 函数的主体部分则位于代码列表
     pub function_list: Vec<u32>,
 
-    /// 表格列表，表格用于储存元素，表格和元素合在一起实现函数间接调用，目前只支持声明或导入 1 项表格，（section id 4）
-    pub table_types: Vec<TableType>,
+    /// 表格列表，（section id 4）
+    /// 表格用于储存 `元素`，`表格` 和 `元素` 合在一起通常用于实现
+    /// 函数的间接调用，目前只支持声明或导入 1 个表格
+    pub tables: Vec<TableType>,
 
-    /// 内存块描述列表，目前只支持声明或导入 1 项内存块，（section id 5）
+    /// 内存块描述列表，（section id 5）
+    /// 目前只支持声明或导入 1 项内存块
     pub memory_blocks: Vec<MemoryType>,
 
     /// 全局变量列表，（section id 6）
@@ -41,13 +47,16 @@ pub struct Module {
     /// 导出项列表，（section id 7）
     pub export_items: Vec<ExportItem>,
 
-    /// 应用程序入口函数的索引（入口函数即 `主函数`，`main 函数`），（section id 8）
+    /// 应用程序入口函数的索引，（section id 8）
+    /// 入口函数即 `主函数` 或者 `main 函数`
     pub start_function_index: Option<u32>,
 
-    /// 元素项列表，目前元素项只能用于列出函数索引，（section id 9）
+    /// 元素项列表，（section id 9）
+    /// 目前元素项只能用于列出函数索引
     pub element_items: Vec<ElementItem>,
 
-    /// 函数的主体（指令、字节码）项列表，（section id 10）
+    /// 函数的主体项列表，（section id 10）
+    /// 函数的主体即一系列连续的指令
     pub code_items: Vec<CodeItem>,
 
     /// 内存的初始化数据，（section id 11）
@@ -56,8 +65,11 @@ pub struct Module {
 
 /// # 自定义项
 ///
-/// 自定义段可以出现多次，出现的位置也不限。
-/// 一般用于存放函数的名称、参数和变量的名称等信息，不参与运算
+/// - 自定义段可以出现多次，出现的位置也不限。
+///   一般用于存放函数的名称、局部变量（含参数）的名称等信息，不参与运算。
+/// - 一个自定义段里可能有多个自定义项。
+///
+/// # 自定义段
 ///
 /// ## 二进制格式
 ///
@@ -68,15 +80,51 @@ pub struct Module {
 ///   数据的字节数，数据类型是 u32；
 /// - `{*}` 表示重复 0 次或多次，`{+}` 表示重复 1 次或多次，`{?}` 表示重复 0 次或 1 次。
 ///
+// #[derive(Debug, PartialEq, Clone)]
+// pub struct CustomItem {
+//     pub content: CustomItemContent,
+// }
+
 #[derive(Debug, PartialEq, Clone)]
-pub struct CustomItem {
-    pub name: String,
-    pub data: Vec<u8>,
+pub enum CustomItem {
+    NameCollection(Vec<NameCollection>),
+    Other(String, Vec<u8>), // params: (name, data)
 }
 
-/// # 类型
+#[derive(Debug, PartialEq, Clone)]
+pub enum NameCollection {
+    TypeNames(Vec<IndexNamePair>),
+    FunctionNames(Vec<IndexNamePair>),
+    LocalVariableNamesPairList(Vec<FunctionIndexAndLocalVariableNamesPair>),
+    BlockLabelsPairList(Vec<FunctionIndexAndBlockLabelsPair>),
+    GlobalVariableNames(Vec<IndexNamePair>),
+    MemoryBlockNames(Vec<IndexNamePair>),
+    TableNames(Vec<IndexNamePair>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FunctionIndexAndLocalVariableNamesPair {
+    pub function_index: u32,
+    pub local_variable_names: Vec<IndexNamePair>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FunctionIndexAndBlockLabelsPair {
+    pub function_index: u32,
+    pub block_labels: Vec<IndexNamePair>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct IndexNamePair {
+    pub index: u32,
+    pub name: String,
+}
+
+/// # 类型项
 ///
-/// 函数、流程控制结构块共用的类型项
+/// 记录函数、流程控制结构块等的类型
+///
+/// # 类型段
 ///
 /// ## 二进制格式
 ///
@@ -110,6 +158,11 @@ pub struct CustomItem {
 /// (type $ft1 (func (param i32 i32) (result i32 i32)))
 ///
 #[derive(Debug, PartialEq, Clone)]
+pub enum TypeItem {
+    FunctionType(FunctionType),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct FunctionType {
     pub params: Vec<ValueType>,
     pub results: Vec<ValueType>,
@@ -117,11 +170,15 @@ pub struct FunctionType {
 
 /// # 导入项
 ///
+/// 支持导入函数，还支持导入表格、内存块、全局变量：
+///
+/// # 导入段
+///
 /// ## 二进制格式
 ///
 /// import_section = 0x02 + content_length:u32 + <import_item>
 /// import_item = module_name:string + member_name:string + import_descriptor
-/// import_description = tag:byte + (function_type_index | table_type | memory_type | global_type)
+/// import_description = tag:byte + (type_index | table_type | memory_type | global_type)
 ///
 /// module_name 和 member_name 是字符串以 utf-8 编码后的字节数组。
 ///
@@ -135,14 +192,11 @@ pub struct FunctionType {
 ///
 /// `env` 和 `f1` 分别是导入项的模块名和成员名，`func` 表示导入项的类型是函数。`$ft1` 和 `f1` 可以内联：
 ///
-/// (import "env" "f1" (func $f1 (param i32 i32) (result i32)))
-///
-/// 除了支持导入函数，还支持导入表格、内存块、全局变量：
-///
-/// (import "env" "t1" (table $t 1 8 funcref))  ;; 导入表格
-/// (import "env" "m1" (memory $m 4 16))        ;; 导入内存块
-/// (import "env" "g1" (global $g1 i32))        ;; 全局常量
-/// (import "env" "g2" (global $g1 (mut i32)))  ;; 全局变量
+/// (import "env" "f1" (func $f1 (param i32 i32) (result i32))) ;; 导入函数
+/// (import "env" "t1" (table $t 1 8 funcref))                  ;; 导入表格
+/// (import "env" "m1" (memory $m 4 16))                        ;; 导入内存块
+/// (import "env" "g1" (global $g1 i32))                        ;; 导入全局常量
+/// (import "env" "g2" (global $g1 (mut i32)))                  ;; 导入全局变量
 ///
 /// 导入项也可以内联到函数、表、内存和全局变量段当中：
 ///
@@ -161,19 +215,19 @@ pub struct ImportItem {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ImportDescriptor {
-    FunctionTypeIndex(u32),
-    TableType(TableType),
-    MemoryType(MemoryType),
-    GlobalType(GlobalType),
+    FunctionTypeIndex(u32), // 导入函数
+    TableType(TableType),   // 导入表
+    MemoryType(MemoryType), // 导入内存块
+    GlobalType(GlobalType), // 导入全局变量
 }
 
-/// # 补充：函数（列表）段
+/// # 补充 A：函数（列表）段
 ///
-/// 函数列表列出所有的函数的类型，至于函数的指令（字节码）部分则位于代码列表
+/// 函数列表列出所有的函数所对应的类型，至于函数的主体（指令列表）部分则位于代码列表
 ///
 /// ## 二进制格式
 ///
-/// function_section = 0x03 + content_length:u32 + <function_type_index>
+/// function_section = 0x03 + content_length:u32 + <type_index>
 ///
 /// 函数列表仅列出该函数的类型的索引，比如 function_types 里有 2 条记录：
 ///
@@ -214,9 +268,13 @@ pub enum ImportDescriptor {
 
 /// # 表类型
 ///
-/// 表用于存储元素项目，目前元素项目只支持函数引用（函数索引），
-/// 表和元素项用于列出一组函数的索引，然后在执行 `call_indirect` 指令时，
-/// 根据栈顶的操作数获取该列表中的指定的一个函数，从而实现 `动态` 选择被调用的函数。
+/// 表段只存储了 `表类型` 这一项数据
+///
+/// # 表段
+///
+/// `表` 用于存储 `元素项`，目前 `元素项` 只支持函数引用（函数索引），
+/// `表` 和 `元素项` 用于列出一组函数的索引，然后在执行 `call_indirect` 指令时，
+/// 根据栈顶的操作数获取该列表中的一个函数，从而实现 `动态` 选择被调用的函数。
 ///
 /// `动态函数调用` 相当于高级语言里的 `函数指针`（或者数据类型为 `函数` 的参数）
 ///
@@ -285,14 +343,18 @@ impl Limit {
     pub fn get_min(&self) -> u32 {
         match *self {
             Limit::AtLeast(min) => min,
-            Limit::Range(min, _) => min
+            Limit::Range(min, _) => min,
         }
     }
 }
 
 /// # 内存类型
 ///
-/// 内存项用于声明模块的内存块信息，内存块的初始化数据位于数据段里。
+/// 内存段里只存储了 `内存类型` 这一项数据
+///
+/// # 内存段
+///
+/// 内存段用于声明模块的内存块信息（即 `内存类型`），内存块的初始化数据位于数据段里。
 ///
 /// ## 二进制格式
 ///
@@ -323,6 +385,10 @@ pub struct MemoryType {
 
 /// # 全局变量项
 ///
+/// 全局段里所存储的数据
+///
+/// # 全局段
+///
 /// 全局段列出模块所有全局变量（包括全局常量），全局变量项
 /// 需要指出变量是否可变，以及初始值（使用常量表达式）。
 ///
@@ -332,7 +398,7 @@ pub struct MemoryType {
 /// global_item = global_type + initialize_expression
 /// global_type = val_type:byte + mut:byte
 /// mut = (0|1)                             // 0 表示不可变，1 表示可变
-/// initialize_expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// initialize_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 ///
 /// 全局项示例：
 ///
@@ -353,7 +419,7 @@ pub struct MemoryType {
 #[derive(Debug, PartialEq, Clone)]
 pub struct GlobalItem {
     pub global_type: GlobalType,
-    pub init_expression: Vec<Instruction>,
+    pub initialize_instruction_items: Vec<InstructionItem>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -365,6 +431,8 @@ pub struct GlobalType {
 /// # 导出项
 ///
 /// 一个模块可以导出：函数、表、内存、全局变量
+///
+/// # 导出段
 ///
 /// ## 二进制格式
 ///
@@ -400,20 +468,13 @@ pub struct ExportItem {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExportDescriptor {
-    /// 函数索引
-    FunctionIndex(u32),
-
-    /// 表项索引
-    TableIndex(u32),
-
-    /// 内存块索引
-    MemoryBlockIndex(u32),
-
-    /// 全局变量项目的索引
-    GlobalItemIndex(u32),
+    FunctionIndex(u32),    // 导出函数，参数为函数索引
+    TableIndex(u32),       // 导出表，参数为表的索引
+    MemoryBlockIndex(u32), // 导出内存块，参数为内存块索引
+    GlobalItemIndex(u32),  // 导出全局变量，参数为全局变量项目的索引
 }
 
-/// # 补充：起始函数索引
+/// # 补充 B：起始函数索引段
 ///
 /// 指定 wasm 加载后自动开始执行的函数（比如 main 函数）
 ///
@@ -430,13 +491,17 @@ pub enum ExportDescriptor {
 
 /// # 元素项
 ///
-/// 元素段用于存储表的初始化数据，元素项的内容目前只能是函数的索引。
+/// 元素项的内容目前只能是函数的索引。
+///
+/// # 元素段
+///
+/// 元素段用于存储表的初始化数据
 ///
 /// ## 二进制格式
 ///
 /// element_section = 0x09 + content_length:u32 + <element_item>
 /// element_item = table_index:u32 + offset_expression + <function_index>
-/// offset_expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// offset_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 ///
 /// 元素段里的每个项目的内容由 3 部分组成：
 /// 1. 表的索引，因为目前一个模块只支持一张表，所以它的值恒等于 0；
@@ -456,8 +521,8 @@ pub struct ElementItem {
     /// 表索引，目前 WebAssembly 标准只支持 0
     pub table_index: u32,
 
-    /// 偏移值表达式（指令/字节码）
-    pub offset_expression: Vec<Instruction>,
+    /// 偏移值表达式（指令列表）
+    pub offset_instruction_items: Vec<InstructionItem>,
 
     /// 函数索引列表
     /// function_indices 这个列表会从指定的偏移值开始，把一系列函数的索引紧密排列，
@@ -469,12 +534,14 @@ pub struct ElementItem {
 ///
 /// 一个函数对应这一项代码项
 ///
+/// # 代码段
+///
 /// ## 二进制格式
 ///
 /// code_section = 0x0a + content_length:u32 + <code_item>
 /// code_item = code_length:u32 + <local_group> + expression
 /// local_group = local_variable_count:u32 + value_type:byte
-/// expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 ///
 /// code_length 表示该项目的内容总大小，包括表达式结尾的 0x0B。
 ///
@@ -550,8 +617,14 @@ pub struct CodeItem {
     /// 局部变量组列表，连续多个相同类型的局部变量被分为一组
     pub local_groups: Vec<LocalGroup>,
 
-    /// 指令/字节码
-    pub expression: Vec<Instruction>,
+    /// 指令列表
+    pub instruction_items: Vec<InstructionItem>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct InstructionItem {
+    pub instruction: Instruction,
+    pub location: Location,
 }
 
 /// 局部变量信息组
@@ -561,15 +634,23 @@ pub struct LocalGroup {
     pub value_type: ValueType, // 数据类型
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct Location {
+    pub start: usize,
+    pub end: usize,
+}
+
 /// # 数据项
 ///
 /// 数据段存储着内存的初始化数据
+///
+/// # 数据段
 ///
 /// ## 二进制格式
 ///
 /// data_section = 0x0b + content_length:u32 + <data_item>
 /// data_item = memory_block_index:u32 + offset_expression + data:byte{*}
-/// offset_expression = = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// offset_expression = = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 ///
 /// 数据段每一项由 3 部分组成：
 /// 1. 内存块索引，因为目前一个模块只能有一块内存，所以这个值恒等于 0
@@ -598,8 +679,8 @@ pub struct DataItem {
     /// 内存块索引，目前 WebAssembly 标准只支持 0
     pub memory_index: u32,
 
-    /// 偏移值表达式（指令/字节码）
-    pub offset_expression: Vec<Instruction>,
+    /// 偏移值表达式（指令列表）
+    pub offset_instruction_items: Vec<InstructionItem>,
 
     /// 内容
     pub data: Vec<u8>,

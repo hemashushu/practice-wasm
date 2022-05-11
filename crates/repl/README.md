@@ -1,5 +1,5 @@
-# XiaoXuan Micro - REPL
+# XiaoXuan VM - REPL
 
 The REPL for WebAssembly VM.
 
-一个 WebAssembly 虚拟机的交互式执行界面（REPL）。
+WebAssembly 虚拟机的交互式执行界面（REPL）。

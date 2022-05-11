@@ -215,6 +215,46 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
 ///
 /// 自定义段的内容一般是记录函数的名称、局部变量的名称等信息，
 /// 不影响程序的运算过程，所以也可以直接忽略。
+///
+/// 当 custom section 的 name 值为 "name" 时，段的内容为：
+/// section_content = kind:u8 + content_length:u32 + (<function names>|<global names>)
+///
+/// 当 kind 为 1 时，项内容为 function names
+/// function_name = function_index:u32 + <string>
+///
+/// ```code
+/// 0x011e | 01 23       | function names
+/// 0x0120 | 0b          | 11 count
+/// 0x0121 | 00 01 30    | Naming { index: 0, name: "0" }
+/// 0x0124 | 01 01 31    | Naming { index: 1, name: "1" }
+/// 0x0127 | 02 01 32    | Naming { index: 2, name: "2" }
+/// 0x012a | 03 01 33    | Naming { index: 3, name: "3" }
+/// 0x012d | 04 01 34    | Naming { index: 4, name: "4" }
+/// 0x0130 | 05 01 35    | Naming { index: 5, name: "5" }
+/// 0x0133 | 06 01 36    | Naming { index: 6, name: "6" }
+/// 0x0136 | 07 01 37    | Naming { index: 7, name: "7" }
+/// 0x0139 | 08 01 38    | Naming { index: 8, name: "8" }
+/// 0x013c | 09 01 39    | Naming { index: 9, name: "9" }
+/// 0x013f | 0a 02 31 30 | Naming { index: 10, name: "10" }
+/// ```
+///
+/// 当 kind 为 7 时，项内容为 global names
+/// global_name = global_variable_index:u32 + <string>
+///
+/// 当 kind 为 4 时，项内容为 type names
+/// 当 kind 为 2 时，项内容为 <function local name>
+/// function_local_name = function_index:u32 + <local_name>
+/// local_name = local_variable_index:u32 + <string>
+///
+/// ```code
+/// 0x0143 | 02 0b       | local names
+/// 0x0145 | 01          | 1 count
+/// 0x0146 | 08          | function 8 locals
+/// 0x0147 | 02          | 2 count
+/// 0x0148 | 00 01 69    | Naming { index: 0, name: "i" }
+/// 0x014b | 01 03 73 75 | Naming { index: 1, name: "sum" }
+///        | 6d
+/// ```
 fn parse_custom_section(source: &[u8]) -> Result<&[u8], ParseError> {
     let (section_length, post_section_length) = read_u32(source)?;
     // 暂时不解析自定义段的内容
@@ -303,7 +343,7 @@ fn continue_parse_value_type(source: &[u8]) -> Result<(ValueType, &[u8]), ParseE
 ///
 /// import_section = 0x02 + content_length:u32 + <import_item>
 /// import_item = module_name:string + member_name:string + import_descriptor
-/// import_description = tag:byte + (function_type_index | table_type | memory_type | global_type)
+/// import_description = tag:byte + (type_index | table_type | memory_type | global_type)
 fn parse_import_section(source: &[u8]) -> Result<(Vec<ImportItem>, &[u8]), ParseError> {
     let (_section_length, post_section_length) = read_u32(source)?;
     let (item_count, post_item_count) = read_u32(post_section_length)?;
@@ -321,7 +361,7 @@ fn parse_import_section(source: &[u8]) -> Result<(Vec<ImportItem>, &[u8]), Parse
 }
 
 /// import_item = module_name:string + member_name:string + import_descriptor
-/// import_description = tag:byte + (function_type_index | table_type | memory_type | global_type)
+/// import_description = tag:byte + (type_index | table_type | memory_type | global_type)
 fn continue_parse_import_item(source: &[u8]) -> Result<(ImportItem, &[u8]), ParseError> {
     let (module_name, post_module_name) = read_string(source)?;
     let (name, post_name) = read_string(post_module_name)?;
@@ -331,9 +371,9 @@ fn continue_parse_import_item(source: &[u8]) -> Result<(ImportItem, &[u8]), Pars
 
     let import_descriptor = match tag {
         IMPORT_TAG_FUNCTION => {
-            let (function_type_index, post_function_type_index) = read_u32(remains)?;
-            remains = post_function_type_index;
-            ImportDescriptor::FunctionTypeIndex(function_type_index)
+            let (type_index, post_type_index) = read_u32(remains)?;
+            remains = post_type_index;
+            ImportDescriptor::FunctionTypeIndex(type_index)
         }
         IMPORT_TAG_TABLE => {
             let (table_type, post_table_type) = continue_parse_table_type(remains)?;
@@ -440,8 +480,8 @@ fn continue_parse_limit(source: &[u8]) -> Result<(Limit, &[u8]), ParseError> {
 
 /// # 解析函数（列表）段
 ///
-/// function_section = 0x03 + content_length:u32 + <function_type_index>
-/// function_type_index = u32
+/// function_section = 0x03 + content_length:u32 + <type_index>
+/// type_index = u32
 fn parse_function_list_section(source: &[u8]) -> Result<(Vec<u32>, &[u8]), ParseError> {
     let (_section_length, post_section_length) = read_u32(source)?;
     read_u32_vec(post_section_length)
@@ -516,7 +556,7 @@ fn parse_memory_section(source: &[u8]) -> Result<(Vec<MemoryType>, &[u8]), Parse
 /// global_item = global_type + initialize_expression
 /// global_type = val_type:byte + mut:byte
 /// mut = (0|1)                             // 0 表示不可变，1 表示可变
-/// initialize_expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// initialize_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn parse_global_section(source: &[u8]) -> Result<(Vec<GlobalItem>, &[u8]), ParseError> {
     let (_section_length, post_section_length) = read_u32(source)?;
     let (item_count, post_item_count) = read_u32(post_section_length)?;
@@ -683,11 +723,11 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
             Instruction::Call(function_index)
         }
         instruction::CALL_INDIRECT => {
-            // call_indirect = opcode_call_indirect + function_type_index:u32 + table_index:u32
-            let (function_type_index, post_function_type_index) = read_u32(remains)?;
-            let (table_index, post_table_index) = read_u32(post_function_type_index)?;
+            // call_indirect = opcode_call_indirect + type_index:u32 + table_index:u32
+            let (type_index, post_type_index) = read_u32(remains)?;
+            let (table_index, post_table_index) = read_u32(post_type_index)?;
             remains = post_table_index;
-            Instruction::CallIndirect(function_type_index, table_index)
+            Instruction::CallIndirect(type_index, table_index)
         }
         instruction::DROP => Instruction::Drop,
         instruction::SELECT => Instruction::Select,
@@ -1173,7 +1213,7 @@ fn parse_start_function_section(source: &[u8]) -> Result<(u32, &[u8]), ParseErro
 ///
 /// element_section = 0x09 + content_length:u32 + <element_item>
 /// element_item = table_index:u32 + offset_expression + <function_index>
-/// offset_expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// offset_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn parse_element_section(source: &[u8]) -> Result<(Vec<ElementItem>, &[u8]), ParseError> {
     let (_section_length, post_section_length) = read_u32(source)?;
     let (item_count, post_item_count) = read_u32(post_section_length)?;
@@ -1191,7 +1231,7 @@ fn parse_element_section(source: &[u8]) -> Result<(Vec<ElementItem>, &[u8]), Par
 }
 
 /// element_item = table_index:u32 + offset_expression + <function_index>
-/// offset_expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// offset_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn continue_parse_element_item(source: &[u8]) -> Result<(ElementItem, &[u8]), ParseError> {
     let (table_index, post_index) = read_u32(source)?; // table index 总是为 0
     let (offset_expression, post_expression) = continue_parse_expression(post_index)?;
@@ -1212,7 +1252,7 @@ fn continue_parse_element_item(source: &[u8]) -> Result<(ElementItem, &[u8]), Pa
 /// code_section = 0x0a + content_length:u32 + <code_item>
 /// code_item = code_length:u32 + <local_group> + expression
 /// local_group = local_variable_count:u32 + value_type:byte
-/// expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 ///
 /// code_length 表示该项目的内容总大小，包括表达式结尾的 0x0B。
 fn parse_function_code_section(source: &[u8]) -> Result<(Vec<CodeItem>, &[u8]), ParseError> {
@@ -1234,7 +1274,7 @@ fn parse_function_code_section(source: &[u8]) -> Result<(Vec<CodeItem>, &[u8]), 
 
 /// code_item = code_length:u32 + <local_group> + expression
 /// local_group = local_variable_count:u32 + value_type:byte
-/// expression = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn continue_parse_code_item(source: &[u8]) -> Result<(CodeItem, &[u8]), ParseError> {
     let (_code_length, post_code_length) = read_u32(source)?;
 
@@ -1270,7 +1310,7 @@ fn continue_parse_code_item(source: &[u8]) -> Result<(CodeItem, &[u8]), ParseErr
 ///
 /// data_section = 0x0b + content_length:u32 + <data_item>
 /// data_item = memory_block_index:u32 + offset_expression + data:byte{*}
-/// offset_expression = = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// offset_expression = = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn parse_data_section(source: &[u8]) -> Result<(Vec<DataItem>, &[u8]), ParseError> {
     let (_section_length, post_section_length) = read_u32(source)?;
     let (item_count, post_item_count) = read_u32(post_section_length)?;
@@ -1288,7 +1328,7 @@ fn parse_data_section(source: &[u8]) -> Result<(Vec<DataItem>, &[u8]), ParseErro
 }
 
 /// data_item = memory_block_index:u32 + offset_expression + data:byte{*}
-/// offset_expression = = byte{*} + 0x0B  // 表达式/字节码以 0x0B 结尾
+/// offset_expression = = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn continue_parse_data_item(source: &[u8]) -> Result<(DataItem, &[u8]), ParseError> {
     let (memory_block_index, post_index) = read_u32(source)?; // memory index 总是为 0
     let (offset_expression, post_expression) = continue_parse_expression(post_index)?;

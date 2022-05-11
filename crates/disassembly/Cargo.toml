@@ -1,7 +1,10 @@
 [package]
-name = "anvm-binary-parser"
+name = "anvm-disassembly"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 anvm-ast = { path = "../ast" }
+
+[dev-dependencies]
+pretty_assertions = "1.2.1"

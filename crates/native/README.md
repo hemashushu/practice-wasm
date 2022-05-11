@@ -1,4 +1,4 @@
-# XiaoXuan Micro - Native
+# XiaoXuan VM - Native
 
 Native functions provided to the WebAssembly VM, including
 

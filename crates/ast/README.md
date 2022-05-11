@@ -1,4 +1,4 @@
-# XiaoXuan Micro - AST
+# XiaoXuan VM - AST
 
 WebAssembly Module AST.
 

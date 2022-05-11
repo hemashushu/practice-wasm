@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/ast",
+    "crates/disassembly",
     # "crates/binary-parser",
     # "crates/engine",
     # "crates/native",
