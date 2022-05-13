@@ -4,14 +4,17 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{rc::Rc, vec};
+use std::vec;
 
 use anvm_ast::{
     ast::{
-        CodeItem, DataItem, ElementItem, ExportDescriptor, ExportItem, FunctionType, GlobalItem,
-        GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType, Module, TableType,
+        CodeItem, CustomItem, DataItem, ElementItem, ExportDescriptor, ExportItem,
+        FunctionIndexAndBlockLabelsPair, FunctionIndexAndLocalVariableNamesPair, FunctionType,
+        GlobalItem, GlobalType, ImportDescriptor, ImportItem, IndexNamePair, Limit, LocalGroup,
+        MemoryType, Module, NameCollection, TableType, TypeItem,
     },
-    instruction::{self, BlockType, Instruction, MemoryArgument},
+    instruction::{BlockType, Instruction, MemoryArgument},
+    opcode,
     types::ValueType,
 };
 
@@ -77,6 +80,14 @@ const EXPORT_TAG_TABLE: u8 = 1;
 const EXPORT_TAG_MEM: u8 = 2;
 const EXPORT_TAG_GLOBAL: u8 = 3;
 
+const NAME_COLLECTION_KIND_FUNCTION_NAMES: u8 = 0x01;
+const NAME_COLLECTION_KIND_FUNCTION_LOCAL_VARIABLE_NAMES: u8 = 0x02;
+const NAME_COLLECTION_KIND_FUNCTION_BLOCK_LABELS: u8 = 0x03;
+const NAME_COLLECTION_KIND_TYPE_NAMES: u8 = 0x04;
+const NAME_COLLECTION_KIND_TABLE_NAMES: u8 = 0x05;
+const NAME_COLLECTION_KIND_MEMORY_BLOCK_NAMES: u8 = 0x06;
+const NAME_COLLECTION_KIND_GLOBAL_VARIABLE_NAMES: u8 = 0x07;
+
 pub fn parse(source: &[u8]) -> Result<Module, ParseError> {
     parse_module(source)
 }
@@ -86,20 +97,25 @@ pub fn parse(source: &[u8]) -> Result<Module, ParseError> {
 /// module = magic_number:u32 + version:u32 + <section>
 fn parse_module(source: &[u8]) -> Result<Module, ParseError> {
     let mut remains = source;
+
+    // 读取幻数
     let (magic_number, post_magic_number) = read_fixed_u32(remains)?;
     if magic_number != MAGIC_NUMBER {
-        return Err(ParseError::SyntaxError("invalid magic number".to_string()));
+        return Err(ParseError::Unsupported(
+            "unsupported file format".to_string(),
+        ));
     }
     remains = post_magic_number;
 
-    let (version, post_version) = read_fixed_u32(remains)?;
-    if version != VERSION {
+    // 读取版本号
+    let (version_number, post_version_number) = read_fixed_u32(remains)?;
+    if version_number != VERSION {
         return Err(ParseError::Unsupported(format!(
             "unsupported version: {}",
-            version
+            version_number
         )));
     }
-    remains = post_version;
+    remains = post_version_number;
 
     parse_sections(remains)
 }
@@ -116,10 +132,10 @@ fn parse_module(source: &[u8]) -> Result<Module, ParseError> {
 fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
     let mut module = Module {
         custom_items: vec![],
-        function_types: vec![],
+        type_items: vec![],
         import_items: vec![],
         function_list: vec![],
-        table_types: vec![],
+        tables: vec![],
         memory_blocks: vec![],
         global_items: vec![],
         export_items: vec![],
@@ -131,162 +147,331 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
 
     let mut remains = source;
 
+    // 一个模块里的段的数量是未知的，所以需要不断地消耗（consume）段数据，直到
+    // 所有模块数据数据都被消耗光为止
     loop {
-        if let Some((section_id, rest)) = remains.split_first() {
-            remains = match *section_id {
-                SECTION_CUSTOM_ID => {
-                    let post_section = parse_custom_section(rest)?;
-                    post_section
-                }
-                SECTION_TYPE_ID => {
-                    let (function_types, post_section) = parse_function_type_section(rest)?;
-                    module.function_types = function_types;
-                    post_section
-                }
-                SECTION_IMPORT_ID => {
-                    let (import_items, post_section) = parse_import_section(rest)?;
-                    module.import_items = import_items;
-                    post_section
-                }
-                SECTION_FUNCTION_ID => {
-                    let (function_list, post_section) = parse_function_list_section(rest)?;
-                    module.function_list = function_list;
-                    post_section
-                }
-                SECTION_TABLE_ID => {
-                    let (table_types, post_section) = parse_table_section(rest)?;
-                    module.table_types = table_types;
-                    post_section
-                }
-                SECTION_MEMORY_ID => {
-                    let (memory_blocks, post_section) = parse_memory_section(rest)?;
-                    module.memory_blocks = memory_blocks;
-                    post_section
-                }
-                SECTION_GLOBAL_ID => {
-                    let (global_items, post_section) = parse_global_section(rest)?;
-                    module.global_items = global_items;
-                    post_section
-                }
-                SECTION_EXPORT_ID => {
-                    let (export_items, post_section) = parse_export_section(rest)?;
-                    module.export_items = export_items;
-                    post_section
-                }
-                SECTION_START_ID => {
-                    let (function_index, post_section) = parse_start_function_section(rest)?;
-                    module.start_function_index = Some(function_index);
-                    post_section
-                }
-                SECTION_ELEMENT_ID => {
-                    let (element_items, post_section) = parse_element_section(rest)?;
-                    module.element_items = element_items;
-                    post_section
-                }
-                SECTION_CODE_ID => {
-                    let (code_items, post_section) = parse_function_code_section(rest)?;
-                    module.code_items = code_items;
-                    post_section
-                }
-                SECTION_DATA_ID => {
-                    let (data_items, post_section) = parse_data_section(rest)?;
-                    module.data_items = data_items;
-                    post_section
-                }
-                _ => {
-                    return Err(ParseError::SyntaxError(format!(
-                        "invalid section id: {}",
-                        section_id
-                    )))
-                }
-            }
-        } else {
+        // 如果剩余的数据已消耗光，则退出循环
+        if remains.len() == 0 {
             break;
+        }
+
+        let (section_id, post_section_id) = read_byte(remains)?;
+        let (content_length, post_content_length) = read_u32(post_section_id)?;
+        let (section_data, post_section_data) =
+            post_content_length.split_at(content_length as usize);
+        remains = post_section_data;
+
+        match section_id {
+            SECTION_CUSTOM_ID => {
+                let custom_item = parse_custom_section(section_data)?;
+                module.custom_items.push(custom_item);
+            }
+            SECTION_TYPE_ID => {
+                module.type_items = parse_type_section(section_data)?;
+            }
+            SECTION_IMPORT_ID => {
+                module.import_items = parse_import_section(section_data)?;
+            }
+            SECTION_FUNCTION_ID => {
+                module.function_list = parse_function_list_section(section_data)?;
+            }
+            SECTION_TABLE_ID => {
+                module.tables = parse_table_section(section_data)?;
+            }
+            SECTION_MEMORY_ID => {
+                module.memory_blocks = parse_memory_section(section_data)?;
+            }
+            SECTION_GLOBAL_ID => {
+                module.global_items = parse_global_section(section_data)?;
+            }
+            SECTION_EXPORT_ID => {
+                module.export_items = parse_export_section(section_data)?;
+            }
+            SECTION_START_ID => {
+                let start_function_index = parse_start_function_section(section_data)?;
+                module.start_function_index = Some(start_function_index);
+            }
+            SECTION_ELEMENT_ID => {
+                module.element_items = parse_element_section(section_data)?;
+            }
+            SECTION_CODE_ID => {
+                module.code_items = parse_function_code_section(section_data)?;
+            }
+            SECTION_DATA_ID => {
+                module.data_items = parse_data_section(section_data)?;
+            }
+            _ => {
+                return Err(ParseError::SyntaxError(format!(
+                    "invalid section id: {}",
+                    section_id
+                )))
+            }
         }
     }
 
     Ok(module)
 }
 
-/// # 解析自定义段
+/// # 解析 `自定义段`
 ///
-/// custom_section = section_id:u8 + section_length:u32 + name + data
+/// custom_section = section_id:u8 + section_length:u32 + name + section_content
 /// name = byte_length:u32 + byte{*}
+/// section_content = byte{+}
 ///
-/// 自定义段的内容一般是记录函数的名称、局部变量的名称等信息，
-/// 不影响程序的运算过程，所以也可以直接忽略。
+/// 自定义段的内容一般是记录函数的名称、局部变量（包括参数）的名称等信息，
+/// 自定义段的内容不影响程序的运算过程，所以也可以直接忽略。
 ///
 /// 当 custom section 的 name 值为 "name" 时，段的内容为：
-/// section_content = kind:u8 + content_length:u32 + (<function names>|<global names>)
+/// section_content = name_collection_item{+}
 ///
-/// 当 kind 为 1 时，项内容为 function names
-/// function_name = function_index:u32 + <string>
+/// 注意上面是 name_collection_item{+} 而不是 <name_collection_item>，也就是说
+/// name_collection_item 的具体数量未知，需要不断地迭代消耗（consume）数据直到所有
+/// section_content 数据都被消耗完毕为止。
+///
+/// name_collection_item = kind:u8 + content_length:u32 + <type_name_item|function_name_item|global_name_item|...>
+///
+/// 当 kind 为 1 时，name_collection_item 的内容为 function_name_item
+///
+/// function_name_item = function_index:u32 + name:string
 ///
 /// ```code
-/// 0x011e | 01 23       | function names
+/// 0x011e | 01 23       | function names ;; kind == 0x01, content length = 0x23
 /// 0x0120 | 0b          | 11 count
 /// 0x0121 | 00 01 30    | Naming { index: 0, name: "0" }
 /// 0x0124 | 01 01 31    | Naming { index: 1, name: "1" }
 /// 0x0127 | 02 01 32    | Naming { index: 2, name: "2" }
-/// 0x012a | 03 01 33    | Naming { index: 3, name: "3" }
-/// 0x012d | 04 01 34    | Naming { index: 4, name: "4" }
-/// 0x0130 | 05 01 35    | Naming { index: 5, name: "5" }
-/// 0x0133 | 06 01 36    | Naming { index: 6, name: "6" }
-/// 0x0136 | 07 01 37    | Naming { index: 7, name: "7" }
-/// 0x0139 | 08 01 38    | Naming { index: 8, name: "8" }
-/// 0x013c | 09 01 39    | Naming { index: 9, name: "9" }
-/// 0x013f | 0a 02 31 30 | Naming { index: 10, name: "10" }
+/// ...
 /// ```
 ///
-/// 当 kind 为 7 时，项内容为 global names
-/// global_name = global_variable_index:u32 + <string>
+/// 当 kind 为下列数值时，name_collection_item 的内容结构跟 function_name_item 一致：
 ///
-/// 当 kind 为 4 时，项内容为 type names
-/// 当 kind 为 2 时，项内容为 <function local name>
-/// function_local_name = function_index:u32 + <local_name>
-/// local_name = local_variable_index:u32 + <string>
+/// - 4，项内容为 type name item
+/// - 5，项内容为 table name item
+/// - 6，项内容为 memory name item
+/// - 7，项内容为 global name item
+///
+/// 二进制格式均为
+///
+/// item = item_index:u32 + item_name:string
+///
+/// 当 kind 为 2 时，项内容为 <function_local_name_item>
+///
+/// function_local_name_item = function_index:u32 + <local_name_item>
+/// local_name_item = local_variable_index:u32 + local_variable_name:string
 ///
 /// ```code
 /// 0x0143 | 02 0b       | local names
 /// 0x0145 | 01          | 1 count
-/// 0x0146 | 08          | function 8 locals
+/// 0x0146 | 08          | function index 8 locals      ;; function_local_name_item 开始
 /// 0x0147 | 02          | 2 count
 /// 0x0148 | 00 01 69    | Naming { index: 0, name: "i" }
 /// 0x014b | 01 03 73 75 | Naming { index: 1, name: "sum" }
-///        | 6d
+/// ...
 /// ```
-fn parse_custom_section(source: &[u8]) -> Result<&[u8], ParseError> {
-    let (section_length, post_section_length) = read_u32(source)?;
-    // 暂时不解析自定义段的内容
-    Ok(&post_section_length[section_length as usize..])
+///
+/// 当 kind 为 3 时，项内容为 <function_block_label_item>，结构跟 <function_local_name_item>
+/// 一致，这里不再赘述。
+///
+fn parse_custom_section(source: &[u8]) -> Result<CustomItem, ParseError> {
+    let (name, post_name) = read_string(source)?;
+
+    // 目前只解析 `name` 为 "name" 的 custom_section
+    let custom_item = if name == "name" {
+        let name_collection_items = continue_parse_name_collection_items(post_name)?;
+        CustomItem::NameCollections(name_collection_items)
+    } else {
+        CustomItem::Other(name, post_name.to_vec())
+    };
+
+    Ok(custom_item)
 }
 
-/// # 解析（函数）类型段
-///
-/// type_section = 0x01:byte + content_length:u32 + <function_type>
-/// function_type = 0x60 + <value_type> + <value_type>
-///                      ^
-///                      |--- 目前 `类型项` 只支持函数类型， `0x60` 表示函数类型
-fn parse_function_type_section(
+fn continue_parse_name_collection_items(source: &[u8]) -> Result<Vec<NameCollection>, ParseError> {
+    let mut remains = source;
+
+    let mut name_collection_items: Vec<NameCollection> = vec![];
+
+    // name_collection_item 的数量是未知的，需要不断地消耗剩余数据，直到消耗光为止。
+    loop {
+        // 如果剩余的数据已消耗光，则退出循环
+        if remains.len() == 0 {
+            break;
+        }
+
+        let (kind, post_kind) = read_byte(remains)?;
+        let (content_length, post_content_length) = read_u32(post_kind)?;
+        let (item_data, post_item_data) = post_content_length.split_at(content_length as usize);
+        remains = post_item_data;
+
+        let name_collection_item = match kind {
+            NAME_COLLECTION_KIND_FUNCTION_NAMES => {
+                let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
+                NameCollection::FunctionNames(index_name_pairs)
+            }
+            NAME_COLLECTION_KIND_TYPE_NAMES => {
+                let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
+                NameCollection::TypeNames(index_name_pairs)
+            }
+            NAME_COLLECTION_KIND_TABLE_NAMES => {
+                let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
+                NameCollection::TableNames(index_name_pairs)
+            }
+            NAME_COLLECTION_KIND_MEMORY_BLOCK_NAMES => {
+                let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
+                NameCollection::MemoryBlockNames(index_name_pairs)
+            }
+            NAME_COLLECTION_KIND_GLOBAL_VARIABLE_NAMES => {
+                let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
+                NameCollection::GlobalVariableNames(index_name_pairs)
+            }
+            NAME_COLLECTION_KIND_FUNCTION_LOCAL_VARIABLE_NAMES => {
+                let local_variable_names_pairs =
+                    continue_parse_local_variable_names_pairs(item_data)?;
+                NameCollection::LocalVariableNamesPairList(local_variable_names_pairs)
+            }
+            NAME_COLLECTION_KIND_FUNCTION_BLOCK_LABELS => {
+                let block_labels_pairs = continue_parse_block_labels_pairs(item_data)?;
+                NameCollection::BlockLabelsPairList(block_labels_pairs)
+            }
+            _ => {
+                return Err(ParseError::Unsupported(format!(
+                    "unsupported custom name collection kind: {}",
+                    kind
+                )));
+            }
+        };
+
+        name_collection_items.push(name_collection_item);
+    }
+
+    Ok(name_collection_items)
+}
+
+fn continue_parse_index_name_pairs(
     source: &[u8],
-) -> Result<(Vec<Rc<FunctionType>>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+) -> Result<(Vec<IndexNamePair>, &[u8]), ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
+    let mut index_name_pairs = Vec::<IndexNamePair>::with_capacity(item_count as usize);
 
     let mut remains = post_item_count;
-    let mut function_types = Vec::<Rc<FunctionType>>::with_capacity(item_count as usize);
     for _ in 0..item_count {
-        let (function_type, post_function_type) = continue_parse_function_type(remains)?;
-        function_types.push(Rc::new(function_type));
-        remains = post_function_type;
+        let (index_name_pair, post_pair) = continue_parse_index_name_pair(remains)?;
+        index_name_pairs.push(index_name_pair);
+        remains = post_pair;
     }
-    Ok((function_types, remains))
+
+    Ok((index_name_pairs, remains))
 }
 
+fn continue_parse_index_name_pair(source: &[u8]) -> Result<(IndexNamePair, &[u8]), ParseError> {
+    let (index, post_index) = read_u32(source)?;
+    let (name, post_name) = read_string(post_index)?;
+    let index_name_pair = IndexNamePair { index, name };
+    Ok((index_name_pair, post_name))
+}
+
+fn continue_parse_local_variable_names_pairs(
+    source: &[u8],
+) -> Result<Vec<FunctionIndexAndLocalVariableNamesPair>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
+    let mut names_pairs =
+        Vec::<FunctionIndexAndLocalVariableNamesPair>::with_capacity(item_count as usize);
+
+    let mut remains = post_item_count;
+    for _ in 0..item_count {
+        let (function_index_and_local_variable_names_pair, post_pair) =
+            continue_parse_function_index_and_local_variable_names_pair(remains)?;
+        names_pairs.push(function_index_and_local_variable_names_pair);
+        remains = post_pair;
+    }
+
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"custom\" for local name segment".to_string(),
+        ))
+    } else {
+        Ok(names_pairs)
+    }
+}
+
+fn continue_parse_function_index_and_local_variable_names_pair(
+    source: &[u8],
+) -> Result<(FunctionIndexAndLocalVariableNamesPair, &[u8]), ParseError> {
+    let (function_index, post_function_index) = read_u32(source)?;
+    let (local_variable_names, post_names) = continue_parse_index_name_pairs(post_function_index)?;
+    let function_index_and_local_variable_names_pair = FunctionIndexAndLocalVariableNamesPair {
+        function_index,
+        local_variable_names,
+    };
+    Ok((function_index_and_local_variable_names_pair, post_names))
+}
+
+fn continue_parse_block_labels_pairs(
+    source: &[u8],
+) -> Result<Vec<FunctionIndexAndBlockLabelsPair>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
+    let mut labels_pairs =
+        Vec::<FunctionIndexAndBlockLabelsPair>::with_capacity(item_count as usize);
+
+    let mut remains = post_item_count;
+    for _ in 0..item_count {
+        let (function_index_and_block_labels_pair, post_pair) =
+            continue_parse_function_index_and_block_labels_pair(remains)?;
+        labels_pairs.push(function_index_and_block_labels_pair);
+        remains = post_pair;
+    }
+
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"custom\" for block label".to_string(),
+        ))
+    } else {
+        Ok(labels_pairs)
+    }
+}
+
+fn continue_parse_function_index_and_block_labels_pair(
+    source: &[u8],
+) -> Result<(FunctionIndexAndBlockLabelsPair, &[u8]), ParseError> {
+    let (function_index, post_function_index) = read_u32(source)?;
+    let (block_labels, post_names) = continue_parse_index_name_pairs(post_function_index)?;
+    let function_index_and_block_labels_pair = FunctionIndexAndBlockLabelsPair {
+        function_index,
+        block_labels,
+    };
+    Ok((function_index_and_block_labels_pair, post_names))
+}
+
+/// # 解析 `类型段`
+///
+/// type_section = 0x01:byte + content_length:u32 + <function_type|other_type>
 /// function_type = 0x60 + <value_type> + <value_type>
-///                      ^
-///                      |--- 目前 `类型项` 只支持函数类型， `0x60` 表示函数类型
-fn continue_parse_function_type(source: &[u8]) -> Result<(FunctionType, &[u8]), ParseError> {
+///                 ^
+///                 |--- 目前 `类型项` 只支持函数类型， `0x60` 表示函数类型
+fn parse_type_section(source: &[u8]) -> Result<Vec<TypeItem>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
+
+    let mut remains = post_item_count;
+    let mut type_items = Vec::<TypeItem>::with_capacity(item_count as usize);
+    for _ in 0..item_count {
+        let (type_item, post_type_item) = continue_parse_type_item(remains)?;
+        type_items.push(type_item);
+        remains = post_type_item;
+    }
+
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"type\"".to_string(),
+        ))
+    } else {
+        Ok(type_items)
+    }
+}
+
+/// type = 0x60 + <value_type> + <value_type>
+///        ^
+///        |--- 目前 `类型项` 只支持函数类型， `0x60` 表示函数类型
+fn continue_parse_type_item(source: &[u8]) -> Result<(TypeItem, &[u8]), ParseError> {
     let (tag, post_tag) = read_byte(source)?;
     if tag != FUNCTION_TYPE_TAG {
         return Err(ParseError::Unsupported(
@@ -297,12 +482,12 @@ fn continue_parse_function_type(source: &[u8]) -> Result<(FunctionType, &[u8]), 
     let (param_types, post_param_types) = continue_parse_value_types(post_tag)?;
     let (result_types, post_result_types) = continue_parse_value_types(post_param_types)?;
 
-    let function_type = FunctionType {
+    let type_item = TypeItem::FunctionType(FunctionType {
         params: param_types,
         results: result_types,
-    };
+    });
 
-    Ok((function_type, post_result_types))
+    Ok((type_item, post_result_types))
 }
 
 /// <value_type> = items_count:u32 + item{+}
@@ -344,9 +529,8 @@ fn continue_parse_value_type(source: &[u8]) -> Result<(ValueType, &[u8]), ParseE
 /// import_section = 0x02 + content_length:u32 + <import_item>
 /// import_item = module_name:string + member_name:string + import_descriptor
 /// import_description = tag:byte + (type_index | table_type | memory_type | global_type)
-fn parse_import_section(source: &[u8]) -> Result<(Vec<ImportItem>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+fn parse_import_section(source: &[u8]) -> Result<Vec<ImportItem>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
 
     let mut remains = post_item_count;
     let mut import_items = Vec::<ImportItem>::with_capacity(item_count as usize);
@@ -357,16 +541,22 @@ fn parse_import_section(source: &[u8]) -> Result<(Vec<ImportItem>, &[u8]), Parse
         remains = post_import_item;
     }
 
-    Ok((import_items, remains))
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"import\"".to_string(),
+        ))
+    } else {
+        Ok(import_items)
+    }
 }
 
 /// import_item = module_name:string + member_name:string + import_descriptor
 /// import_description = tag:byte + (type_index | table_type | memory_type | global_type)
 fn continue_parse_import_item(source: &[u8]) -> Result<(ImportItem, &[u8]), ParseError> {
     let (module_name, post_module_name) = read_string(source)?;
-    let (name, post_name) = read_string(post_module_name)?;
+    let (item_name, post_item_name) = read_string(post_module_name)?;
 
-    let (tag, post_tag) = read_byte(post_name)?;
+    let (tag, post_tag) = read_byte(post_item_name)?;
     let mut remains = post_tag;
 
     let import_descriptor = match tag {
@@ -399,9 +589,9 @@ fn continue_parse_import_item(source: &[u8]) -> Result<(ImportItem, &[u8]), Pars
     };
 
     let import_item = ImportItem {
-        module_name: module_name,
-        name: name,
-        import_descriptor: import_descriptor,
+        module_name,
+        item_name,
+        import_descriptor,
     };
 
     Ok((import_item, remains))
@@ -482,9 +672,16 @@ fn continue_parse_limit(source: &[u8]) -> Result<(Limit, &[u8]), ParseError> {
 ///
 /// function_section = 0x03 + content_length:u32 + <type_index>
 /// type_index = u32
-fn parse_function_list_section(source: &[u8]) -> Result<(Vec<u32>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-    read_u32_vec(post_section_length)
+fn parse_function_list_section(source: &[u8]) -> Result<Vec<u32>, ParseError> {
+    let (type_index_list, post_type_index_list) = read_u32_vec(source)?;
+
+    if post_type_index_list.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"function\"".to_string(),
+        ))
+    } else {
+        Ok(type_index_list)
+    }
 }
 
 /// # 解析表段
@@ -497,9 +694,8 @@ fn parse_function_list_section(source: &[u8]) -> Result<(Vec<u32>, &[u8]), Parse
 /// 注意，如果一个模块已经导入了一张表，而在表段再次定义一个表，
 /// 则应该视为错误，因为目前 WebAssembly 只允许一张表，
 /// 但在语法解析阶段不抛出错误，留到运行再抛出。
-fn parse_table_section(source: &[u8]) -> Result<(Vec<TableType>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+fn parse_table_section(source: &[u8]) -> Result<Vec<TableType>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
 
     if item_count > 1 {
         return Err(ParseError::Unsupported(
@@ -516,7 +712,13 @@ fn parse_table_section(source: &[u8]) -> Result<(Vec<TableType>, &[u8]), ParseEr
         remains = post_table_type;
     }
 
-    Ok((table_types, remains))
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"table\"".to_string(),
+        ))
+    } else {
+        Ok(table_types)
+    }
 }
 
 /// # 解析内存段
@@ -528,9 +730,8 @@ fn parse_table_section(source: &[u8]) -> Result<(Vec<TableType>, &[u8]), ParseEr
 /// 则应该视为错误，因为目前 WebAssembly 只允许一个内存块。
 ///
 /// 但在语法解析阶段不抛出错误，留到运行再抛出。
-fn parse_memory_section(source: &[u8]) -> Result<(Vec<MemoryType>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+fn parse_memory_section(source: &[u8]) -> Result<Vec<MemoryType>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
 
     if item_count > 1 {
         return Err(ParseError::Unsupported(
@@ -547,7 +748,13 @@ fn parse_memory_section(source: &[u8]) -> Result<(Vec<MemoryType>, &[u8]), Parse
         remains = post_memory_type;
     }
 
-    Ok((memory_types, remains))
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"memory\"".to_string(),
+        ))
+    } else {
+        Ok(memory_types)
+    }
 }
 
 /// # 解析全局（变量）段
@@ -557,26 +764,32 @@ fn parse_memory_section(source: &[u8]) -> Result<(Vec<MemoryType>, &[u8]), Parse
 /// global_type = val_type:byte + mut:byte
 /// mut = (0|1)                             // 0 表示不可变，1 表示可变
 /// initialize_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
-fn parse_global_section(source: &[u8]) -> Result<(Vec<GlobalItem>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+fn parse_global_section(source: &[u8]) -> Result<Vec<GlobalItem>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
 
     let mut remains = post_item_count;
     let mut global_items = Vec::<GlobalItem>::with_capacity(item_count as usize);
 
     for _ in 0..item_count {
         let (global_type, post_global_type) = continue_parse_global_type(remains)?;
-        let (initialize_expression, post_expression) = continue_parse_expression(post_global_type)?;
+        let (initialize_instruction_items, post_instruction_items) =
+            continue_parse_expression(post_global_type)?;
 
         global_items.push(GlobalItem {
-            global_type: global_type,
-            init_expression: initialize_expression,
+            global_type,
+            initialize_instruction_items,
         });
 
-        remains = post_expression;
+        remains = post_instruction_items;
     }
 
-    Ok((global_items, remains))
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"global\"".to_string(),
+        ))
+    } else {
+        Ok(global_items)
+    }
 }
 
 /// # 解析指令表达式
@@ -584,63 +797,40 @@ fn parse_global_section(source: &[u8]) -> Result<(Vec<GlobalItem>, &[u8]), Parse
 /// 指令表达式一般用在 `全局项的初始值` 以及 `数据项的偏移值`。
 /// 指令表达式一般由一个 `const` 指令加一个 `end` 指令构成。
 fn continue_parse_expression(source: &[u8]) -> Result<(Vec<Instruction>, &[u8]), ParseError> {
-    continue_parse_instructions_until_opcode_end(source)
-}
-
-/// # 解析指令序列
-///
-/// 不断解析下一个指令，直到遇到 `end` 指令为止
-/// 注意解析指令序列过程中，如果遇到流程控制结构块，会进入递归解析，
-/// 所以这个 `end` 指令必然是完成的一个结构的结束指令。
-fn continue_parse_instructions_until_opcode_end(
-    source: &[u8],
-) -> Result<(Vec<Instruction>, &[u8]), ParseError> {
-    let mut instructions: Vec<Instruction> = vec![];
+    let mut instruction_items: Vec<Instruction> = vec![];
     let mut remains = source;
+    let mut block_index: u32 = 0;
 
+    // 表达式的指令数量是未知的，需要不断地解析剩余的数据，直到找到 `end` 指令为止。
     loop {
-        let (instruction, post_instruction) = continue_parse_instruction(remains)?;
-        let found_end = instruction == Instruction::End;
-        instructions.push(instruction);
+        let (instruction_item, post_instruction, next_block_index) =
+            continue_parse_instruction_item(remains, block_index)?;
+
+        let found_end_instruction = instruction_item == Instruction::End;
+
+        instruction_items.push(instruction_item);
+        block_index = next_block_index;
         remains = post_instruction;
 
-        if found_end {
+        if found_end_instruction {
             break;
         }
     }
 
-    Ok((instructions, remains))
+    Ok((instruction_items, remains))
 }
 
-/// # 解析指令序列
+/// # 解析一个指令
 ///
-/// 不断解析下一个指令，直到遇到 `else` 指令或者 `end` 指令为止。
-/// 这个解析过程是专门为解析 `if` 指令使用。
-///
-/// 注意解析指令序列过程中，如果遇到流程控制结构块，会进入递归解析，
-/// 所以找到的 `else` 或者 `end` 指令必然是完成的一个结构的结束指令。
-fn continue_parse_instructions_until_opcode_else_or_end(
+/// location_start 表示指令在二进制文件当中的开始位置，用于记录指令对应的位置，
+/// 如果不需要记录指令的位置，可以传入 0.
+/// block_index 表示当前结构块开始的索引，在一个函数主体里，可能存在 0 个或多个
+/// 结构块，作为初始值应该传入 0，然后在当前函数的返回值的第三个值获得下一个结构块的开始索引。
+fn continue_parse_instruction_item(
     source: &[u8],
-) -> Result<(Vec<Instruction>, bool, &[u8]), ParseError> {
-    let mut instructions: Vec<Instruction> = vec![];
-    let mut remains = source;
-
-    let is_else = loop {
-        let (instruction, post_instruction) = continue_parse_instruction(remains)?;
-        let found_end = instruction == Instruction::End;
-        let found_else = instruction == Instruction::Else;
-        instructions.push(instruction);
-        remains = post_instruction;
-
-        if found_end || found_else {
-            break found_else;
-        }
-    };
-
-    Ok((instructions, is_else, remains))
-}
-
-fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), ParseError> {
+    // location_start: usize,
+    block_index: u32,
+) -> Result<(Instruction, &[u8], u32), ParseError> {
     let mut remains = source;
 
     let (opcode, post_opcode) = read_byte(remains)?;
@@ -648,116 +838,98 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
 
     let instruction = match opcode {
         // 控制指令
-        instruction::UNREACHABLE => Instruction::Unreachable,
-        instruction::NOP => Instruction::Nop,
-        instruction::BLOCK => {
-            // block = opcode_block + block_type:i32 + instructions + opcode_end
+        opcode::UNREACHABLE => Instruction::Unreachable,
+        opcode::NOP => Instruction::Nop,
+        opcode::BLOCK => {
+            // block = opcode_block + block_type:i32
             let (block_type_value, post_block_type) = read_i32(remains)?;
+            remains = post_block_type;
+
             let block_type = get_block_type(block_type_value)?;
-            let (body, post_body) = continue_parse_instructions_until_opcode_end(post_block_type)?;
-            remains = post_body;
-            Instruction::Block {
-                block_type,
-                body: Rc::new(body),
-            }
+            Instruction::Block(block_type, block_index)
         }
-        instruction::LOOP => {
+        opcode::LOOP => {
             // loop = opcode_loop + block_type:i32 + instructions + opcode_end
             let (block_type_value, post_block_type_value) = read_i32(remains)?;
+            remains = post_block_type_value;
+
             let block_type = get_block_type(block_type_value)?;
-            let (body, post_body) =
-                continue_parse_instructions_until_opcode_end(post_block_type_value)?;
-            remains = post_body;
-            Instruction::Loop {
-                block_type,
-                body: Rc::new(body),
-            }
+            Instruction::Loop(block_type, block_index)
         }
-        instruction::IF => {
+        opcode::IF => {
             // if = opcode_if + block_type:i32 + (instructions + opcode_else){?} + instructions + opcode_end
             let (block_type_value, post_block_type) = read_i32(remains)?;
+            remains = post_block_type;
+
             let block_type = get_block_type(block_type_value)?;
-            let (consequent_body, is_else, post_then_body) =
-                continue_parse_instructions_until_opcode_else_or_end(post_block_type)?;
-            let (alternate_body, post_else_body) = if is_else {
-                continue_parse_instructions_until_opcode_end(post_then_body)?
-            } else {
-                (vec![], post_then_body)
-            };
-            remains = post_else_body;
-            Instruction::If {
-                block_type,
-                consequet_body: Rc::new(consequent_body),
-                alternate_body: Rc::new(alternate_body),
-            }
+            Instruction::If(block_type, block_index)
         }
-        instruction::ELSE => Instruction::Else,
-        instruction::END => Instruction::End,
-        instruction::BR => {
+        opcode::ELSE => Instruction::Else,
+        opcode::END => Instruction::End,
+        opcode::BR => {
             // br = opcode_br + relative_depth:u32
             let (relative_depth, post_relative_depth) = read_u32(remains)?;
             remains = post_relative_depth;
             Instruction::Br(relative_depth)
         }
-        instruction::BR_IF => {
+        opcode::BR_IF => {
             // br_if = opcode_br_if + relative_depth:u32
             let (relative_depth, post_relative_depth) = read_u32(remains)?;
             remains = post_relative_depth;
             Instruction::BrIf(relative_depth)
         }
-        instruction::BR_TABLE => {
+        opcode::BR_TABLE => {
             // br_table = opcode_br_table + <relative_depth> + relative_depth:u32
-            let (branch_relative_depths, post_branch) = read_u32_vec(remains)?;
-            let (default_relative_depth, post_default) = read_u32(post_branch)?;
-            remains = post_default;
-            Instruction::BrTable {
-                relative_depths: branch_relative_depths,
-                default_relative_depth,
-            }
+            let (relative_depths, post_relative_depths) = read_u32_vec(remains)?;
+            let (default_relative_depth, post_default_relative_depth) =
+                read_u32(post_relative_depths)?;
+            remains = post_default_relative_depth;
+
+            Instruction::BrTable(relative_depths, default_relative_depth)
         }
-        instruction::RETURN => Instruction::Return,
-        instruction::CALL => {
+        opcode::RETURN => Instruction::Return,
+        opcode::CALL => {
             // call = opcode_call + function_index:u32
             let (function_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::Call(function_index)
         }
-        instruction::CALL_INDIRECT => {
+        opcode::CALL_INDIRECT => {
             // call_indirect = opcode_call_indirect + type_index:u32 + table_index:u32
             let (type_index, post_type_index) = read_u32(remains)?;
             let (table_index, post_table_index) = read_u32(post_type_index)?;
             remains = post_table_index;
             Instruction::CallIndirect(type_index, table_index)
         }
-        instruction::DROP => Instruction::Drop,
-        instruction::SELECT => Instruction::Select,
+        opcode::DROP => Instruction::Drop,
+        opcode::SELECT => Instruction::Select,
 
         // 变量指令
-        instruction::LOCAL_GET => {
+        opcode::LOCAL_GET => {
             // local.get = opcode_local.get + local_index:u32
             let (local_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::LocalGet(local_index)
         }
-        instruction::LOCAL_SET => {
+        opcode::LOCAL_SET => {
             // local.set = opcode_local.set + local_index:u32
             let (local_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::LocalSet(local_index)
         }
-        instruction::LOCAL_TEE => {
+        opcode::LOCAL_TEE => {
             // local.tee = opcode_local.tee + local_index:u32
             let (local_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::LocalTee(local_index)
         }
-        instruction::GLOBAL_GET => {
+        opcode::GLOBAL_GET => {
             // global.get = opcode_global.get + global_index:u32
             let (global_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::GlobalGet(global_index)
         }
-        instruction::GLOBAL_SET => {
+        opcode::GLOBAL_SET => {
             // global.set = opcode_global.set + global_index:u32
             let (global_index, post_index) = read_u32(remains)?;
             remains = post_index;
@@ -765,152 +937,152 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
         }
 
         // 内存指令
-        instruction::I32_LOAD => {
-            // i32.load = opcode_i32.load + memory_arg
-            let (memory_arg, post_memory_arg) =
+        opcode::I32_LOAD => {
+            // i32.load = opcode_i32.load + memory_argument
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I32Load(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I32Load(memory_argument)
         }
-        instruction::I64_LOAD => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_LOAD => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Load(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Load(memory_argument)
         }
-        instruction::F32_LOAD => {
-            let (memory_arg, post_memory_arg) =
+        opcode::F32_LOAD => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::F32Load(memory_arg)
+            remains = post_memory_argument;
+            Instruction::F32Load(memory_argument)
         }
-        instruction::F64_LOAD => {
-            let (memory_arg, post_memory_arg) =
+        opcode::F64_LOAD => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::F64Load(memory_arg)
+            remains = post_memory_argument;
+            Instruction::F64Load(memory_argument)
         }
-        instruction::I32_LOAD8_S => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I32_LOAD8_S => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I32Load8S(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I32Load8S(memory_argument)
         }
-        instruction::I32_LOAD8_U => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I32_LOAD8_U => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I32Load8U(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I32Load8U(memory_argument)
         }
-        instruction::I32_LOAD16_S => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I32_LOAD16_S => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I32Load16S(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I32Load16S(memory_argument)
         }
-        instruction::I32_LOAD16_U => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I32_LOAD16_U => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I32Load16U(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I32Load16U(memory_argument)
         }
-        instruction::I64_LOAD8_S => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_LOAD8_S => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Load8S(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Load8S(memory_argument)
         }
-        instruction::I64_LOAD8_U => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_LOAD8_U => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Load8U(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Load8U(memory_argument)
         }
-        instruction::I64_LOAD16_S => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_LOAD16_S => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Load16S(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Load16S(memory_argument)
         }
-        instruction::I64_LOAD16_U => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_LOAD16_U => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Load16U(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Load16U(memory_argument)
         }
-        instruction::I64_LOAD32_S => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_LOAD32_S => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Load32S(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Load32S(memory_argument)
         }
-        instruction::I64_LOAD32_U => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_LOAD32_U => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Load32U(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Load32U(memory_argument)
         }
-        instruction::I32_STORE => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I32_STORE => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I32Store(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I32Store(memory_argument)
         }
-        instruction::I64_STORE => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_STORE => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Store(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Store(memory_argument)
         }
-        instruction::F32_STORE => {
-            let (memory_arg, post_memory_arg) =
+        opcode::F32_STORE => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::F32Store(memory_arg)
+            remains = post_memory_argument;
+            Instruction::F32Store(memory_argument)
         }
-        instruction::F64_STORE => {
-            let (memory_arg, post_memory_arg) =
+        opcode::F64_STORE => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::F64Store(memory_arg)
+            remains = post_memory_argument;
+            Instruction::F64Store(memory_argument)
         }
-        instruction::I32_STORE8 => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I32_STORE8 => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I32Store8(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I32Store8(memory_argument)
         }
-        instruction::I32_STORE16 => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I32_STORE16 => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I32Store16(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I32Store16(memory_argument)
         }
-        instruction::I64_STORE8 => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_STORE8 => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Store8(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Store8(memory_argument)
         }
-        instruction::I64_STORE16 => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_STORE16 => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Store16(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Store16(memory_argument)
         }
-        instruction::I64_STORE32 => {
-            let (memory_arg, post_memory_arg) =
+        opcode::I64_STORE32 => {
+            let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
-            remains = post_memory_arg;
-            Instruction::I64Store32(memory_arg)
+            remains = post_memory_argument;
+            Instruction::I64Store32(memory_argument)
         }
-        instruction::MEMORY_SIZE => {
+        opcode::MEMORY_SIZE => {
             // memory.size = opcode_memory.size + memory_block_index:u32
             let (memory_block_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::MemorySize(memory_block_index)
         }
-        instruction::MEMORY_GROW => {
+        opcode::MEMORY_GROW => {
             // memory.grow = opcode_memory.grow + memory_block_index:u32
             let (memory_block_index, post_index) = read_u32(remains)?;
             remains = post_index;
@@ -918,25 +1090,25 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
         }
 
         // 常量指令
-        instruction::I32_CONST => {
+        opcode::I32_CONST => {
             // i32.const = opcode_i32.const + number:(signed)i32
             let (number, post_number) = read_i32(remains)?;
             remains = post_number;
             Instruction::I32Const(number)
         }
-        instruction::I64_CONST => {
+        opcode::I64_CONST => {
             // i64.const = opcode_i64.const + number:(signed)i64
             let (number, post_number) = read_i64(remains)?;
             remains = post_number;
             Instruction::I64Const(number)
         }
-        instruction::F32_CONST => {
+        opcode::F32_CONST => {
             // f32.const = opcode_f32.const + number:(signed)f32
             let (number, post_number) = read_f32(remains)?;
             remains = post_number;
             Instruction::F32Const(number)
         }
-        instruction::F64_CONST => {
+        opcode::F64_CONST => {
             // f64.const = opcode_f64.const + number:(signed)f64
             let (number, post_number) = read_f64(remains)?;
             remains = post_number;
@@ -944,147 +1116,140 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
         }
 
         // 数值指令
-        instruction::I32_EQZ => Instruction::I32Eqz,
-        instruction::I32_EQ => Instruction::I32Eq,
-        instruction::I32_NE => Instruction::I32Ne,
-        instruction::I32_LT_S => Instruction::I32LtS,
-        instruction::I32_LT_U => Instruction::I32LtU,
-        instruction::I32_GT_S => Instruction::I32GtS,
-        instruction::I32_GT_U => Instruction::I32GtU,
-        instruction::I32_LE_S => Instruction::I32LeS,
-        instruction::I32_LE_U => Instruction::I32LeU,
-        instruction::I32_GE_S => Instruction::I32GeS,
-        instruction::I32_GE_U => Instruction::I32GeU,
-        instruction::I64_EQZ => Instruction::I64Eqz,
-        instruction::I64_EQ => Instruction::I64Eq,
-        instruction::I64_NE => Instruction::I64Ne,
-        instruction::I64_LT_S => Instruction::I64LtS,
-        instruction::I64_LT_U => Instruction::I64LtU,
-        instruction::I64_GT_S => Instruction::I64GtS,
-        instruction::I64_GT_U => Instruction::I64GtU,
-        instruction::I64_LE_S => Instruction::I64LeS,
-        instruction::I64_LE_U => Instruction::I64LeU,
-        instruction::I64_GE_S => Instruction::I64GeS,
-        instruction::I64_GE_U => Instruction::I64GeU,
-        instruction::F32_EQ => Instruction::F32Eq,
-        instruction::F32_NE => Instruction::F32Ne,
-        instruction::F32_LT => Instruction::F32Lt,
-        instruction::F32_GT => Instruction::F32Gt,
-        instruction::F32_LE => Instruction::F32Le,
-        instruction::F32_GE => Instruction::F32Ge,
-        instruction::F64_EQ => Instruction::F64Eq,
-        instruction::F64_NE => Instruction::F64Ne,
-        instruction::F64_LT => Instruction::F64Lt,
-        instruction::F64_GT => Instruction::F64Gt,
-        instruction::F64_LE => Instruction::F64Le,
-        instruction::F64_GE => Instruction::F64Ge,
-        instruction::I32_CLZ => Instruction::I32Clz,
-        instruction::I32_CTZ => Instruction::I32Ctz,
-        instruction::I32_POP_CNT => Instruction::I32PopCnt,
-        instruction::I32_ADD => Instruction::I32Add,
-        instruction::I32_SUB => Instruction::I32Sub,
-        instruction::I32_MUL => Instruction::I32Mul,
-        instruction::I32_DIV_S => Instruction::I32DivS,
-        instruction::I32_DIV_U => Instruction::I32DivU,
-        instruction::I32_REM_S => Instruction::I32RemS,
-        instruction::I32_REM_U => Instruction::I32RemU,
-        instruction::I32_AND => Instruction::I32And,
-        instruction::I32_OR => Instruction::I32Or,
-        instruction::I32_XOR => Instruction::I32Xor,
-        instruction::I32_SHL => Instruction::I32Shl,
-        instruction::I32_SHR_S => Instruction::I32ShrS,
-        instruction::I32_SHR_U => Instruction::I32ShrU,
-        instruction::I32_ROTL => Instruction::I32Rotl,
-        instruction::I32_ROTR => Instruction::I32Rotr,
-        instruction::I64_CLZ => Instruction::I64Clz,
-        instruction::I64_CTZ => Instruction::I64Ctz,
-        instruction::I64_POP_CNT => Instruction::I64PopCnt,
-        instruction::I64_ADD => Instruction::I64Add,
-        instruction::I64_SUB => Instruction::I64Sub,
-        instruction::I64_MUL => Instruction::I64Mul,
-        instruction::I64_DIV_S => Instruction::I64DivS,
-        instruction::I64_DIV_U => Instruction::I64DivU,
-        instruction::I64_REM_S => Instruction::I64RemS,
-        instruction::I64_REM_U => Instruction::I64RemU,
-        instruction::I64_AND => Instruction::I64And,
-        instruction::I64_OR => Instruction::I64Or,
-        instruction::I64_XOR => Instruction::I64Xor,
-        instruction::I64_SHL => Instruction::I64Shl,
-        instruction::I64_SHR_S => Instruction::I64ShrS,
-        instruction::I64_SHR_U => Instruction::I64ShrU,
-        instruction::I64_ROTL => Instruction::I64Rotl,
-        instruction::I64_ROTR => Instruction::I64Rotr,
-        instruction::F32_ABS => Instruction::F32Abs,
-        instruction::F32_NEG => Instruction::F32Neg,
-        instruction::F32_CEIL => Instruction::F32Ceil,
-        instruction::F32_FLOOR => Instruction::F32Floor,
-        instruction::F32_TRUNC => Instruction::F32Trunc,
-        instruction::F32_NEAREST => Instruction::F32Nearest,
-        instruction::F32_SQRT => Instruction::F32Sqrt,
-        instruction::F32_ADD => Instruction::F32Add,
-        instruction::F32_SUB => Instruction::F32Sub,
-        instruction::F32_MUL => Instruction::F32Mul,
-        instruction::F32_DIV => Instruction::F32Div,
-        instruction::F32_MIN => Instruction::F32Min,
-        instruction::F32_MAX => Instruction::F32Max,
-        instruction::F32_COPY_SIGN => Instruction::F32CopySign,
-        instruction::F64_ABS => Instruction::F64Abs,
-        instruction::F64_NEG => Instruction::F64Neg,
-        instruction::F64_CEIL => Instruction::F64Ceil,
-        instruction::F64_FLOOR => Instruction::F64Floor,
-        instruction::F64_TRUNC => Instruction::F64Trunc,
-        instruction::F64_NEAREST => Instruction::F64Nearest,
-        instruction::F64_SQRT => Instruction::F64Sqrt,
-        instruction::F64_ADD => Instruction::F64Add,
-        instruction::F64_SUB => Instruction::F64Sub,
-        instruction::F64_MUL => Instruction::F64Mul,
-        instruction::F64_DIV => Instruction::F64Div,
-        instruction::F64_MIN => Instruction::F64Min,
-        instruction::F64_MAX => Instruction::F64Max,
-        instruction::F64_COPY_SIGN => Instruction::F64CopySign,
-        instruction::I32_WRAP_I64 => Instruction::I32WrapI64,
-        instruction::I32_TRUNC_F32_S => Instruction::I32TruncF32S,
-        instruction::I32_TRUNC_F32_U => Instruction::I32TruncF32U,
-        instruction::I32_TRUNC_F64_S => Instruction::I32TruncF64S,
-        instruction::I32_TRUNC_F64_U => Instruction::I32TruncF64U,
-        instruction::I64_EXTEND_I32_S => Instruction::I64ExtendI32S,
-        instruction::I64_EXTEND_I32_U => Instruction::I64ExtendI32U,
-        instruction::I64_TRUNC_F32_S => Instruction::I64TruncF32S,
-        instruction::I64_TRUNC_F32_U => Instruction::I64TruncF32U,
-        instruction::I64_TRUNC_F64_S => Instruction::I64TruncF64S,
-        instruction::I64_TRUNC_F64_U => Instruction::I64TruncF64U,
-        instruction::F32_CONVERT_I32_S => Instruction::F32ConvertI32S,
-        instruction::F32_CONVERT_I32_U => Instruction::F32ConvertI32U,
-        instruction::F32_CONVERT_I64_S => Instruction::F32ConvertI64S,
-        instruction::F32_CONVERT_I64_U => Instruction::F32ConvertI64U,
-        instruction::F32_DEMOTE_F64 => Instruction::F32DemoteF64,
-        instruction::F64_CONVERT_I32_S => Instruction::F64ConvertI32S,
-        instruction::F64_CONVERT_I32_U => Instruction::F64ConvertI32U,
-        instruction::F64_CONVERT_I64_S => Instruction::F64ConvertI64S,
-        instruction::F64_CONVERT_I64_U => Instruction::F64ConvertI64U,
-        instruction::F64_PROMOTE_F32 => Instruction::F64PromoteF32,
-        instruction::I32_REINTERPRET_F32 => Instruction::I32ReinterpretF32,
-        instruction::I64_REINTERPRET_F64 => Instruction::I64ReinterpretF64,
-        instruction::F32_REINTERPRET_I32 => Instruction::F32ReinterpretI32,
-        instruction::F64_REINTERPRET_I64 => Instruction::F64ReinterpretI64,
-        instruction::I32_EXTEND8_S => Instruction::I32Extend8S,
-        instruction::I32_EXTEND16_S => Instruction::I32Extend16S,
-        instruction::I64_EXTEND8_S => Instruction::I64Extend8S,
-        instruction::I64_EXTEND16_S => Instruction::I64Extend16S,
-        instruction::I64_EXTEND32_S => Instruction::I64Extend32S,
-        instruction::TRUNC_SAT => {
+        opcode::I32_EQZ => Instruction::I32Eqz,
+        opcode::I32_EQ => Instruction::I32Eq,
+        opcode::I32_NE => Instruction::I32Ne,
+        opcode::I32_LT_S => Instruction::I32LtS,
+        opcode::I32_LT_U => Instruction::I32LtU,
+        opcode::I32_GT_S => Instruction::I32GtS,
+        opcode::I32_GT_U => Instruction::I32GtU,
+        opcode::I32_LE_S => Instruction::I32LeS,
+        opcode::I32_LE_U => Instruction::I32LeU,
+        opcode::I32_GE_S => Instruction::I32GeS,
+        opcode::I32_GE_U => Instruction::I32GeU,
+        opcode::I64_EQZ => Instruction::I64Eqz,
+        opcode::I64_EQ => Instruction::I64Eq,
+        opcode::I64_NE => Instruction::I64Ne,
+        opcode::I64_LT_S => Instruction::I64LtS,
+        opcode::I64_LT_U => Instruction::I64LtU,
+        opcode::I64_GT_S => Instruction::I64GtS,
+        opcode::I64_GT_U => Instruction::I64GtU,
+        opcode::I64_LE_S => Instruction::I64LeS,
+        opcode::I64_LE_U => Instruction::I64LeU,
+        opcode::I64_GE_S => Instruction::I64GeS,
+        opcode::I64_GE_U => Instruction::I64GeU,
+        opcode::F32_EQ => Instruction::F32Eq,
+        opcode::F32_NE => Instruction::F32Ne,
+        opcode::F32_LT => Instruction::F32Lt,
+        opcode::F32_GT => Instruction::F32Gt,
+        opcode::F32_LE => Instruction::F32Le,
+        opcode::F32_GE => Instruction::F32Ge,
+        opcode::F64_EQ => Instruction::F64Eq,
+        opcode::F64_NE => Instruction::F64Ne,
+        opcode::F64_LT => Instruction::F64Lt,
+        opcode::F64_GT => Instruction::F64Gt,
+        opcode::F64_LE => Instruction::F64Le,
+        opcode::F64_GE => Instruction::F64Ge,
+        opcode::I32_CLZ => Instruction::I32Clz,
+        opcode::I32_CTZ => Instruction::I32Ctz,
+        opcode::I32_POP_CNT => Instruction::I32PopCnt,
+        opcode::I32_ADD => Instruction::I32Add,
+        opcode::I32_SUB => Instruction::I32Sub,
+        opcode::I32_MUL => Instruction::I32Mul,
+        opcode::I32_DIV_S => Instruction::I32DivS,
+        opcode::I32_DIV_U => Instruction::I32DivU,
+        opcode::I32_REM_S => Instruction::I32RemS,
+        opcode::I32_REM_U => Instruction::I32RemU,
+        opcode::I32_AND => Instruction::I32And,
+        opcode::I32_OR => Instruction::I32Or,
+        opcode::I32_XOR => Instruction::I32Xor,
+        opcode::I32_SHL => Instruction::I32Shl,
+        opcode::I32_SHR_S => Instruction::I32ShrS,
+        opcode::I32_SHR_U => Instruction::I32ShrU,
+        opcode::I32_ROTL => Instruction::I32Rotl,
+        opcode::I32_ROTR => Instruction::I32Rotr,
+        opcode::I64_CLZ => Instruction::I64Clz,
+        opcode::I64_CTZ => Instruction::I64Ctz,
+        opcode::I64_POP_CNT => Instruction::I64PopCnt,
+        opcode::I64_ADD => Instruction::I64Add,
+        opcode::I64_SUB => Instruction::I64Sub,
+        opcode::I64_MUL => Instruction::I64Mul,
+        opcode::I64_DIV_S => Instruction::I64DivS,
+        opcode::I64_DIV_U => Instruction::I64DivU,
+        opcode::I64_REM_S => Instruction::I64RemS,
+        opcode::I64_REM_U => Instruction::I64RemU,
+        opcode::I64_AND => Instruction::I64And,
+        opcode::I64_OR => Instruction::I64Or,
+        opcode::I64_XOR => Instruction::I64Xor,
+        opcode::I64_SHL => Instruction::I64Shl,
+        opcode::I64_SHR_S => Instruction::I64ShrS,
+        opcode::I64_SHR_U => Instruction::I64ShrU,
+        opcode::I64_ROTL => Instruction::I64Rotl,
+        opcode::I64_ROTR => Instruction::I64Rotr,
+        opcode::F32_ABS => Instruction::F32Abs,
+        opcode::F32_NEG => Instruction::F32Neg,
+        opcode::F32_CEIL => Instruction::F32Ceil,
+        opcode::F32_FLOOR => Instruction::F32Floor,
+        opcode::F32_TRUNC => Instruction::F32Trunc,
+        opcode::F32_NEAREST => Instruction::F32Nearest,
+        opcode::F32_SQRT => Instruction::F32Sqrt,
+        opcode::F32_ADD => Instruction::F32Add,
+        opcode::F32_SUB => Instruction::F32Sub,
+        opcode::F32_MUL => Instruction::F32Mul,
+        opcode::F32_DIV => Instruction::F32Div,
+        opcode::F32_MIN => Instruction::F32Min,
+        opcode::F32_MAX => Instruction::F32Max,
+        opcode::F32_COPY_SIGN => Instruction::F32CopySign,
+        opcode::F64_ABS => Instruction::F64Abs,
+        opcode::F64_NEG => Instruction::F64Neg,
+        opcode::F64_CEIL => Instruction::F64Ceil,
+        opcode::F64_FLOOR => Instruction::F64Floor,
+        opcode::F64_TRUNC => Instruction::F64Trunc,
+        opcode::F64_NEAREST => Instruction::F64Nearest,
+        opcode::F64_SQRT => Instruction::F64Sqrt,
+        opcode::F64_ADD => Instruction::F64Add,
+        opcode::F64_SUB => Instruction::F64Sub,
+        opcode::F64_MUL => Instruction::F64Mul,
+        opcode::F64_DIV => Instruction::F64Div,
+        opcode::F64_MIN => Instruction::F64Min,
+        opcode::F64_MAX => Instruction::F64Max,
+        opcode::F64_COPY_SIGN => Instruction::F64CopySign,
+        opcode::I32_WRAP_I64 => Instruction::I32WrapI64,
+        opcode::I32_TRUNC_F32_S => Instruction::I32TruncF32S,
+        opcode::I32_TRUNC_F32_U => Instruction::I32TruncF32U,
+        opcode::I32_TRUNC_F64_S => Instruction::I32TruncF64S,
+        opcode::I32_TRUNC_F64_U => Instruction::I32TruncF64U,
+        opcode::I64_EXTEND_I32_S => Instruction::I64ExtendI32S,
+        opcode::I64_EXTEND_I32_U => Instruction::I64ExtendI32U,
+        opcode::I64_TRUNC_F32_S => Instruction::I64TruncF32S,
+        opcode::I64_TRUNC_F32_U => Instruction::I64TruncF32U,
+        opcode::I64_TRUNC_F64_S => Instruction::I64TruncF64S,
+        opcode::I64_TRUNC_F64_U => Instruction::I64TruncF64U,
+        opcode::F32_CONVERT_I32_S => Instruction::F32ConvertI32S,
+        opcode::F32_CONVERT_I32_U => Instruction::F32ConvertI32U,
+        opcode::F32_CONVERT_I64_S => Instruction::F32ConvertI64S,
+        opcode::F32_CONVERT_I64_U => Instruction::F32ConvertI64U,
+        opcode::F32_DEMOTE_F64 => Instruction::F32DemoteF64,
+        opcode::F64_CONVERT_I32_S => Instruction::F64ConvertI32S,
+        opcode::F64_CONVERT_I32_U => Instruction::F64ConvertI32U,
+        opcode::F64_CONVERT_I64_S => Instruction::F64ConvertI64S,
+        opcode::F64_CONVERT_I64_U => Instruction::F64ConvertI64U,
+        opcode::F64_PROMOTE_F32 => Instruction::F64PromoteF32,
+        opcode::I32_REINTERPRET_F32 => Instruction::I32ReinterpretF32,
+        opcode::I64_REINTERPRET_F64 => Instruction::I64ReinterpretF64,
+        opcode::F32_REINTERPRET_I32 => Instruction::F32ReinterpretI32,
+        opcode::F64_REINTERPRET_I64 => Instruction::F64ReinterpretI64,
+        opcode::I32_EXTEND8_S => Instruction::I32Extend8S,
+        opcode::I32_EXTEND16_S => Instruction::I32Extend16S,
+        opcode::I64_EXTEND8_S => Instruction::I64Extend8S,
+        opcode::I64_EXTEND16_S => Instruction::I64Extend16S,
+        opcode::I64_EXTEND32_S => Instruction::I64Extend32S,
+        opcode::TRUNC_SAT => {
             // trunc_sat = opcode_trunc_sat:byte + opcode_trunc_sat_sub_opcode:byte
             let (sub_opcode, post_sub_opcode) = read_byte(remains)?;
-
-            if sub_opcode > instruction::I64_TRUNC_SAT_F64_U {
-                return Err(ParseError::Unsupported(format!(
-                    "unsupported trunc_sat sub-opcode: {}",
-                    sub_opcode
-                )));
-            }
-
             remains = post_sub_opcode;
-            Instruction::TruncSat(sub_opcode)
+
+            get_trunc_sat_instruction(sub_opcode)?
         }
         _ => {
             return Err(ParseError::Unsupported(format!(
@@ -1094,7 +1259,32 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
         }
     };
 
-    Ok((instruction, remains))
+    // 如果指令是 `block`，`loop` 和 `if`，则让 `block_index` 递增
+    let next_block_index = match instruction {
+        Instruction::Block(_, _) | Instruction::Loop(_, _) | Instruction::If(_, _) => {
+            block_index + 1
+        }
+        _ => block_index,
+    };
+
+    Ok((instruction, remains, next_block_index))
+}
+
+fn get_trunc_sat_instruction(sub_opcode: u8) -> Result<Instruction, ParseError> {
+    match sub_opcode {
+        opcode::I32_TRUNC_SAT_F32_S => Ok(Instruction::I32TruncSatF32S),
+        opcode::I32_TRUNC_SAT_F32_U => Ok(Instruction::I32TruncSatF32U),
+        opcode::I32_TRUNC_SAT_F64_S => Ok(Instruction::I32TruncSatF64S),
+        opcode::I32_TRUNC_SAT_F64_U => Ok(Instruction::I32TruncSatF64U),
+        opcode::I64_TRUNC_SAT_F32_S => Ok(Instruction::I64TruncSatF32S),
+        opcode::I64_TRUNC_SAT_F32_U => Ok(Instruction::I64TruncSatF32U),
+        opcode::I64_TRUNC_SAT_F64_S => Ok(Instruction::I64TruncSatF64S),
+        opcode::I64_TRUNC_SAT_F64_U => Ok(Instruction::I64TruncSatF64U),
+        _ => Err(ParseError::Unsupported(format!(
+            "unsupported trunc_sat sub-opcode: {}",
+            sub_opcode
+        ))),
+    }
 }
 
 /// 将流程控制结构块的返回类型转换为函数返回类型
@@ -1103,12 +1293,12 @@ fn continue_parse_instruction(source: &[u8]) -> Result<(Instruction, &[u8]), Par
 /// block_type = (signed) i32
 fn get_block_type(value: i32) -> Result<BlockType, ParseError> {
     match value {
-        BLOCK_TYPE_I32 => Ok(BlockType::ResultOnly(Some(ValueType::I32))),
-        BLOCK_TYPE_I64 => Ok(BlockType::ResultOnly(Some(ValueType::I64))),
-        BLOCK_TYPE_F32 => Ok(BlockType::ResultOnly(Some(ValueType::F32))),
-        BLOCK_TYPE_F64 => Ok(BlockType::ResultOnly(Some(ValueType::F64))),
-        BLOCK_TYPE_EMPTY => Ok(BlockType::ResultOnly(None)),
-        _ if value >= 0 => Ok(BlockType::FunctionTypeIndex(value as u32)),
+        BLOCK_TYPE_I32 => Ok(BlockType::Builtin(Some(ValueType::I32))),
+        BLOCK_TYPE_I64 => Ok(BlockType::Builtin(Some(ValueType::I64))),
+        BLOCK_TYPE_F32 => Ok(BlockType::Builtin(Some(ValueType::F32))),
+        BLOCK_TYPE_F64 => Ok(BlockType::Builtin(Some(ValueType::F64))),
+        BLOCK_TYPE_EMPTY => Ok(BlockType::Builtin(None)),
+        _ if value >= 0 => Ok(BlockType::TypeIndex(value as u32)),
         _ => Err(ParseError::Unsupported(format!(
             "unsupported block type: {}",
             value
@@ -1145,7 +1335,8 @@ fn continue_parse_memory_load_and_store_argument(
 ) -> Result<(MemoryArgument, &[u8]), ParseError> {
     let (align, post_align) = read_u32(source)?;
     let (offset, post_offset) = read_u32(post_align)?;
-    Ok((MemoryArgument { align, offset }, post_offset))
+    let memory_argument = MemoryArgument { align, offset };
+    Ok((memory_argument, post_offset))
 }
 
 /// # 解析导出段
@@ -1153,10 +1344,8 @@ fn continue_parse_memory_load_and_store_argument(
 /// export_section = 0x07 + content_length:u32 + <export_item>
 /// export_item = name:string + export_descriptor
 /// export_descriptor = tag:byte + (function_index | table_index | memory_block_index | global_item_index)
-fn parse_export_section(source: &[u8]) -> Result<(Vec<ExportItem>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+fn parse_export_section(source: &[u8]) -> Result<Vec<ExportItem>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
 
     let mut remains = post_item_count;
     let mut export_items = Vec::<ExportItem>::with_capacity(item_count as usize);
@@ -1167,7 +1356,13 @@ fn parse_export_section(source: &[u8]) -> Result<(Vec<ExportItem>, &[u8]), Parse
         remains = post_export_item;
     }
 
-    Ok((export_items, remains))
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"export\"".to_string(),
+        ))
+    } else {
+        Ok(export_items)
+    }
 }
 
 /// export_item = name:string + export_descriptor
@@ -1191,22 +1386,26 @@ fn continue_parse_export_item(source: &[u8]) -> Result<(ExportItem, &[u8]), Pars
         }
     };
 
-    Ok((
-        ExportItem {
-            name,
-            export_descriptor,
-        },
-        post_index,
-    ))
+    let export_item = ExportItem {
+        name,
+        export_descriptor,
+    };
+
+    Ok((export_item, post_index))
 }
 
 /// # 解析起始函数索引段
 ///
 /// start_section: 0x08 + content_length:u32 + function_index
-fn parse_start_function_section(source: &[u8]) -> Result<(u32, &[u8]), ParseError> {
-    let (_, post_section_length) = read_u32(source)?;
-    let (function_index, post_function_index) = read_u32(post_section_length)?;
-    Ok((function_index as u32, post_function_index))
+fn parse_start_function_section(source: &[u8]) -> Result<u32, ParseError> {
+    let (function_index, post_function_index) = read_u32(source)?;
+    if post_function_index.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"start\"".to_string(),
+        ))
+    } else {
+        Ok(function_index as u32)
+    }
 }
 
 /// # 解析元素段
@@ -1214,9 +1413,8 @@ fn parse_start_function_section(source: &[u8]) -> Result<(u32, &[u8]), ParseErro
 /// element_section = 0x09 + content_length:u32 + <element_item>
 /// element_item = table_index:u32 + offset_expression + <function_index>
 /// offset_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
-fn parse_element_section(source: &[u8]) -> Result<(Vec<ElementItem>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+fn parse_element_section(source: &[u8]) -> Result<Vec<ElementItem>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
 
     let mut remains = post_item_count;
     let mut element_items = Vec::<ElementItem>::with_capacity(item_count as usize);
@@ -1227,38 +1425,41 @@ fn parse_element_section(source: &[u8]) -> Result<(Vec<ElementItem>, &[u8]), Par
         remains = post_element_item;
     }
 
-    Ok((element_items, remains))
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"element\"".to_string(),
+        ))
+    } else {
+        Ok(element_items)
+    }
 }
 
 /// element_item = table_index:u32 + offset_expression + <function_index>
 /// offset_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn continue_parse_element_item(source: &[u8]) -> Result<(ElementItem, &[u8]), ParseError> {
     let (table_index, post_index) = read_u32(source)?; // table index 总是为 0
-    let (offset_expression, post_expression) = continue_parse_expression(post_index)?;
-    let (function_indices, post_indices) = read_u32_vec(post_expression)?;
+    let (offset_instruction_items, post_instruction_items) = continue_parse_expression(post_index)?;
+    let (function_indices, post_indices) = read_u32_vec(post_instruction_items)?;
 
-    Ok((
-        ElementItem {
-            table_index: table_index,
-            offset_expression,
-            function_indices,
-        },
-        post_indices,
-    ))
+    let element_item = ElementItem {
+        table_index: table_index,
+        offset_instruction_items,
+        function_indices,
+    };
+
+    Ok((element_item, post_indices))
 }
 
 /// # 解析代码段
 ///
 /// code_section = 0x0a + content_length:u32 + <code_item>
-/// code_item = code_length:u32 + <local_group> + expression
+/// code_item = code_content_length:u32 + <local_group> + expression
 /// local_group = local_variable_count:u32 + value_type:byte
 /// expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 ///
-/// code_length 表示该项目的内容总大小，包括表达式结尾的 0x0B。
-fn parse_function_code_section(source: &[u8]) -> Result<(Vec<CodeItem>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+/// code_content_length 表示该项目的内容总大小，包括了局部变量声明列表以及指令序列，指令序列结尾的 0x0B。
+fn parse_function_code_section(source: &[u8]) -> Result<Vec<CodeItem>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
 
     let mut remains = post_item_count;
     let mut code_items = Vec::<CodeItem>::with_capacity(item_count as usize);
@@ -1269,16 +1470,36 @@ fn parse_function_code_section(source: &[u8]) -> Result<(Vec<CodeItem>, &[u8]), 
         remains = post_code_item;
     }
 
-    Ok((code_items, remains))
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"code\"".to_string(),
+        ))
+    } else {
+        Ok(code_items)
+    }
 }
 
-/// code_item = code_length:u32 + <local_group> + expression
+/// code_item = code_content_length:u32 + <local_group> + expression
 /// local_group = local_variable_count:u32 + value_type:byte
 /// expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn continue_parse_code_item(source: &[u8]) -> Result<(CodeItem, &[u8]), ParseError> {
-    let (_code_length, post_code_length) = read_u32(source)?;
+    // code_content_length 表示该项目的内容总大小，包括了局部变量声明列表以及指令序列，指令序列结尾的 0x0B。
+    let (code_content_length, post_code_content_length) = read_u32(source)?;
+    let (code_data, post_code_data) =
+        post_code_content_length.split_at(code_content_length as usize);
 
-    let (local_group_count, post_local_group_count) = read_u32(post_code_length)?;
+    let (local_groups, post_local_groups) = continue_parse_local_groups(code_data)?;
+    let instruction_items = continue_parse_instruction_items(post_local_groups)?;
+    let code_item = CodeItem {
+        local_groups,
+        instruction_items,
+    };
+
+    Ok((code_item, post_code_data))
+}
+
+fn continue_parse_local_groups(source: &[u8]) -> Result<(Vec<LocalGroup>, &[u8]), ParseError> {
+    let (local_group_count, post_local_group_count) = read_u32(source)?;
 
     let mut remains = post_local_group_count;
     let mut local_groups = Vec::<LocalGroup>::with_capacity(local_group_count as usize);
@@ -1295,15 +1516,38 @@ fn continue_parse_code_item(source: &[u8]) -> Result<(CodeItem, &[u8]), ParseErr
         remains = post_value_type;
     }
 
-    let (expression, post_expression) = continue_parse_expression(remains)?;
+    Ok((local_groups, remains))
+}
 
-    Ok((
-        CodeItem {
-            local_groups,
-            expression: Rc::new(expression),
-        },
-        post_expression,
-    ))
+fn continue_parse_instruction_items(source: &[u8]) -> Result<Vec<Instruction>, ParseError> {
+    let mut instruction_items: Vec<Instruction> = vec![];
+    let mut remains = source;
+
+    let mut block_index: u32 = 0;
+
+    // 指令序列的指令数量是未知的，需要不断地解析/消耗剩余的数据，直到消耗光所有的数据为止。
+    loop {
+        if remains.len() == 0 {
+            break;
+        }
+
+        let (instruction_item, post_instruction, next_block_index) =
+            continue_parse_instruction_item(remains, block_index)?;
+        instruction_items.push(instruction_item);
+
+        block_index = next_block_index;
+        remains = post_instruction;
+    }
+
+    if let Some(last) = instruction_items.last() {
+        if last != &Instruction::End {
+            return Err(ParseError::SyntaxError(
+                "instruction sequence should end with the \"end\" instruction".to_string(),
+            ));
+        }
+    }
+
+    Ok(instruction_items)
 }
 
 /// # 解析数据段
@@ -1311,9 +1555,8 @@ fn continue_parse_code_item(source: &[u8]) -> Result<(CodeItem, &[u8]), ParseErr
 /// data_section = 0x0b + content_length:u32 + <data_item>
 /// data_item = memory_block_index:u32 + offset_expression + data:byte{*}
 /// offset_expression = = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
-fn parse_data_section(source: &[u8]) -> Result<(Vec<DataItem>, &[u8]), ParseError> {
-    let (_section_length, post_section_length) = read_u32(source)?;
-    let (item_count, post_item_count) = read_u32(post_section_length)?;
+fn parse_data_section(source: &[u8]) -> Result<Vec<DataItem>, ParseError> {
+    let (item_count, post_item_count) = read_u32(source)?;
 
     let mut remains = post_item_count;
     let mut data_items = Vec::<DataItem>::with_capacity(item_count as usize);
@@ -1324,36 +1567,42 @@ fn parse_data_section(source: &[u8]) -> Result<(Vec<DataItem>, &[u8]), ParseErro
         remains = post_data_item;
     }
 
-    Ok((data_items, remains))
+    if remains.len() != 0 {
+        Err(ParseError::SyntaxError(
+            "unexpected data in section \"data\"".to_string(),
+        ))
+    } else {
+        Ok(data_items)
+    }
 }
 
 /// data_item = memory_block_index:u32 + offset_expression + data:byte{*}
 /// offset_expression = = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn continue_parse_data_item(source: &[u8]) -> Result<(DataItem, &[u8]), ParseError> {
     let (memory_block_index, post_index) = read_u32(source)?; // memory index 总是为 0
-    let (offset_expression, post_expression) = continue_parse_expression(post_index)?;
-    let (data, post_data) = read_byte_vec(post_expression)?;
+    let (offset_instruction_items, post_instruction_items) = continue_parse_expression(post_index)?;
+    let (data, post_data) = read_byte_vec(post_instruction_items)?;
 
-    Ok((
-        DataItem {
-            memory_index: memory_block_index,
-            offset_expression,
-            data,
-        },
-        post_data,
-    ))
+    let data_item = DataItem {
+        memory_block_index,
+        offset_instruction_items,
+        data,
+    };
+
+    Ok((data_item, post_data))
 }
 
 #[derive(Debug)]
 pub enum ParseError {
-    //Something(&'static str),
-    /// 语法错误
-    /// 比如不符合规范的数值
-    SyntaxError(String), //&'static str),
-
     /// 不支持的功能
     /// 比如读取索引值为非 0 的内存块或者表
-    Unsupported(String), //&'static str),
+    Unsupported(String),
+
+    /// 语法错误
+    /// 比如不符合规范的数值，
+    /// 对于暂时无法解析或者不支持的数据一般情况下使用 ParseError::Unsupported，仅当非常明确
+    /// 是语法的错误才使用 ParseError::SyntaxError
+    SyntaxError(String),
 
     /// leb128 编码或者 UTF-8 编码错误
     DecodingError,
@@ -1478,15 +1727,16 @@ fn read_string(source: &[u8]) -> Result<(String, &[u8]), ParseError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs, rc::Rc};
+    use std::{env, fs};
 
     use anvm_ast::{
         ast::{
-            CodeItem, DataItem, ElementItem, ExportDescriptor, ExportItem, FunctionType,
-            GlobalItem, GlobalType, ImportDescriptor, ImportItem, Limit, LocalGroup, MemoryType,
-            Module, TableType,
+            CodeItem, CustomItem, DataItem, ElementItem, ExportDescriptor, ExportItem,
+            FunctionIndexAndBlockLabelsPair, FunctionIndexAndLocalVariableNamesPair, FunctionType,
+            GlobalItem, GlobalType, ImportDescriptor, ImportItem, IndexNamePair, Limit, LocalGroup,
+            MemoryType, Module, NameCollection, TableType, TypeItem,
         },
-        instruction::{self, BlockType, Instruction, MemoryArgument},
+        instruction::{BlockType, Instruction, MemoryArgument},
         types::ValueType,
     };
 
@@ -1519,27 +1769,44 @@ mod tests {
         fs::read(fullname).expect(&format!("failed to read the specified file: {}", fullname))
     }
 
+    /// 移除暂时不支持的 custom section item
+    fn remove_unsupported_custom_section(mut module: Module) -> Module {
+        let custom_items = module
+            .custom_items
+            .iter()
+            .filter(|item| {
+                if let CustomItem::NameCollections(_) = item {
+                    true
+                } else {
+                    false
+                }
+            })
+            .map(|item| item.to_owned())
+            .collect::<Vec<CustomItem>>();
+        module.custom_items = custom_items;
+        module
+    }
+
     #[test]
-    fn test_parse_module_sections() {
-        // 测试 test-section-1.wasm
-        let s0 = get_test_binary_resource("test-section-1.wasm");
-        let m0 = parse(&s0).unwrap();
-        let e0 = Module {
+    fn test_parse_module_section_1() {
+        let binary = get_test_binary_resource("test-section-1.wasm");
+        let module = parse(&binary).unwrap();
+        let expected = Module {
             custom_items: vec![],
 
-            function_types: vec![Rc::new(FunctionType {
+            type_items: vec![TypeItem::FunctionType(FunctionType {
                 params: vec![],
                 results: vec![ValueType::I32],
             })],
             import_items: vec![ImportItem {
                 module_name: "env".to_string(),
-                name: "__linear_memory".to_string(),
+                item_name: "__linear_memory".to_string(),
                 import_descriptor: ImportDescriptor::MemoryType(MemoryType {
                     limit: Limit::AtLeast(0),
                 }),
             }],
             function_list: vec![0],
-            table_types: vec![],
+            tables: vec![],
             memory_blocks: vec![],
             global_items: vec![],
             export_items: vec![],
@@ -1550,41 +1817,66 @@ mod tests {
                     variable_count: 1,
                     value_type: ValueType::I32,
                 }],
-                expression: Rc::new(vec![
+                instruction_items: vec![
                     Instruction::I32Const(100),
                     Instruction::LocalSet(0),
                     Instruction::LocalGet(0),
                     Instruction::Return,
                     Instruction::End,
-                ]),
+                ],
             }],
             data_items: vec![],
         };
-        assert_eq!(e0, m0);
+        assert_eq!(expected, remove_unsupported_custom_section(module));
+    }
 
-        // 测试 test-section-2.wasm
-        let s1 = get_test_binary_resource("test-section-2.wasm");
-        let m1 = parse(&s1).unwrap();
-        let e1 = Module {
-            custom_items: vec![],
+    #[test]
+    fn test_parse_module_section_2() {
+        let binary = get_test_binary_resource("test-section-2.wasm");
+        let module = parse(&binary).unwrap();
+        let expected = Module {
+            custom_items: vec![CustomItem::NameCollections(vec![
+                NameCollection::FunctionNames(vec![
+                    IndexNamePair {
+                        index: 0,
+                        name: "add".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 1,
+                        name: "sub".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 2,
+                        name: "inc".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 3,
+                        name: "show".to_string(),
+                    },
+                ]),
+                NameCollection::GlobalVariableNames(vec![IndexNamePair {
+                    index: 0,
+                    name: "__stack_pointer".to_string(),
+                }]),
+            ])],
 
-            function_types: vec![
-                Rc::new(FunctionType {
+            type_items: vec![
+                TypeItem::FunctionType(FunctionType {
                     params: vec![ValueType::I32, ValueType::I32],
                     results: vec![ValueType::I32],
                 }),
-                Rc::new(FunctionType {
+                TypeItem::FunctionType(FunctionType {
                     params: vec![ValueType::I32],
                     results: vec![ValueType::I32],
                 }),
-                Rc::new(FunctionType {
+                TypeItem::FunctionType(FunctionType {
                     params: vec![],
                     results: vec![],
                 }),
             ],
             import_items: vec![],
             function_list: vec![0, 0, 1, 2],
-            table_types: vec![],
+            tables: vec![],
             memory_blocks: vec![MemoryType {
                 limit: Limit::AtLeast(16),
             }],
@@ -1594,21 +1886,30 @@ mod tests {
                         mutable: true,
                         value_type: ValueType::I32,
                     },
-                    init_expression: vec![Instruction::I32Const(1048576), Instruction::End],
+                    initialize_instruction_items: vec![
+                        Instruction::I32Const(1048576),
+                        Instruction::End,
+                    ],
                 },
                 GlobalItem {
                     global_type: GlobalType {
                         mutable: false,
                         value_type: ValueType::I32,
                     },
-                    init_expression: vec![Instruction::I32Const(1048576), Instruction::End],
+                    initialize_instruction_items: vec![
+                        Instruction::I32Const(1048576),
+                        Instruction::End,
+                    ],
                 },
                 GlobalItem {
                     global_type: GlobalType {
                         mutable: false,
                         value_type: ValueType::I32,
                     },
-                    init_expression: vec![Instruction::I32Const(1048576), Instruction::End],
+                    initialize_instruction_items: vec![
+                        Instruction::I32Const(1048576),
+                        Instruction::End,
+                    ],
                 },
             ],
             export_items: vec![
@@ -1646,52 +1947,75 @@ mod tests {
             code_items: vec![
                 CodeItem {
                     local_groups: vec![],
-                    expression: Rc::new(vec![
+                    instruction_items: vec![
                         Instruction::LocalGet(1),
                         Instruction::LocalGet(0),
                         Instruction::I32Add,
                         Instruction::End,
-                    ]),
+                    ],
                 },
                 CodeItem {
                     local_groups: vec![],
-                    expression: Rc::new(vec![
+                    instruction_items: vec![
                         Instruction::LocalGet(0),
                         Instruction::LocalGet(1),
                         Instruction::I32Sub,
                         Instruction::End,
-                    ]),
+                    ],
                 },
                 CodeItem {
                     local_groups: vec![],
-                    expression: Rc::new(vec![
+                    instruction_items: vec![
                         Instruction::LocalGet(0),
                         Instruction::I32Const(1),
                         Instruction::I32Add,
                         Instruction::End,
-                    ]),
+                    ],
                 },
                 CodeItem {
                     local_groups: vec![],
-                    expression: Rc::new(vec![Instruction::End]),
+                    instruction_items: vec![Instruction::End],
                 },
             ],
             data_items: vec![],
         };
-        assert_eq!(e1, m1);
+        assert_eq!(expected, remove_unsupported_custom_section(module));
+    }
 
-        // 测试 test-section-3.wasm
-        let s2 = get_test_binary_resource("test-section-3.wasm");
-        let m2 = parse(&s2).unwrap();
-        let e2 = Module {
-            custom_items: vec![],
+    #[test]
+    fn test_parse_module_section_3() {
+        let binary = get_test_binary_resource("test-section-3.wasm");
+        let module = parse(&binary).unwrap();
+        let expected = Module {
+            custom_items: vec![CustomItem::NameCollections(vec![
+                NameCollection::FunctionNames(vec![
+                    IndexNamePair {
+                        index: 2,
+                        name: "f2".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 3,
+                        name: "f3".to_string(),
+                    },
+                ]),
+                NameCollection::TypeNames(vec![
+                    IndexNamePair {
+                        index: 0,
+                        name: "ft0".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 1,
+                        name: "ft1".to_string(),
+                    },
+                ]),
+            ])],
 
-            function_types: vec![
-                Rc::new(FunctionType {
+            type_items: vec![
+                TypeItem::FunctionType(FunctionType {
                     params: vec![],
                     results: vec![ValueType::I32],
                 }),
-                Rc::new(FunctionType {
+                TypeItem::FunctionType(FunctionType {
                     params: vec![],
                     results: vec![],
                 }),
@@ -1699,17 +2023,17 @@ mod tests {
             import_items: vec![
                 ImportItem {
                     module_name: "env".to_string(),
-                    name: "putc".to_string(),
+                    item_name: "putc".to_string(),
                     import_descriptor: ImportDescriptor::FunctionTypeIndex(0),
                 },
                 ImportItem {
                     module_name: "env".to_string(),
-                    name: "print".to_string(),
+                    item_name: "print".to_string(),
                     import_descriptor: ImportDescriptor::FunctionTypeIndex(0),
                 },
             ],
             function_list: vec![1, 1],
-            table_types: vec![TableType {
+            tables: vec![TableType {
                 limit: Limit::Range(2, 4),
             }],
             memory_blocks: vec![MemoryType {
@@ -1721,29 +2045,29 @@ mod tests {
             element_items: vec![
                 ElementItem {
                     table_index: 0,
-                    offset_expression: vec![Instruction::I32Const(1), Instruction::End],
+                    offset_instruction_items: vec![Instruction::I32Const(1), Instruction::End],
                     function_indices: vec![2],
                 },
                 ElementItem {
                     table_index: 0,
-                    offset_expression: vec![Instruction::I32Const(3), Instruction::End],
+                    offset_instruction_items: vec![Instruction::I32Const(3), Instruction::End],
                     function_indices: vec![3],
                 },
             ],
             code_items: vec![
                 CodeItem {
                     local_groups: vec![],
-                    expression: Rc::new(vec![
+                    instruction_items: vec![
                         Instruction::I32Load(MemoryArgument {
                             align: 2,
                             offset: 100,
                         }),
                         Instruction::End,
-                    ]),
+                    ],
                 },
                 CodeItem {
                     local_groups: vec![],
-                    expression: Rc::new(vec![
+                    instruction_items: vec![
                         Instruction::I32Load(MemoryArgument {
                             align: 3,
                             offset: 200,
@@ -1753,80 +2077,252 @@ mod tests {
                             offset: 400,
                         }),
                         Instruction::End,
-                    ]),
+                    ],
                 },
             ],
             data_items: vec![
                 DataItem {
-                    memory_index: 0,
-                    offset_expression: vec![Instruction::I32Const(100), Instruction::End],
+                    memory_block_index: 0,
+                    offset_instruction_items: vec![Instruction::I32Const(100), Instruction::End],
                     data: vec![104, 101, 108, 108, 111],
                 },
                 DataItem {
-                    memory_index: 0,
-                    offset_expression: vec![Instruction::I32Const(200), Instruction::End],
+                    memory_block_index: 0,
+                    offset_instruction_items: vec![Instruction::I32Const(200), Instruction::End],
                     data: vec![80, 96, 112],
                 },
             ],
         };
-        assert_eq!(e2, m2);
+        assert_eq!(expected, remove_unsupported_custom_section(module));
+    }
+
+    #[test]
+    fn test_parse_module_section_custom() {
+        let binary = get_test_binary_resource("test-section-custom.wasm");
+        let module = parse(&binary).unwrap();
+        let expected = Module {
+            custom_items: vec![CustomItem::NameCollections(vec![
+                NameCollection::FunctionNames(vec![
+                    IndexNamePair {
+                        index: 0,
+                        name: "fun0".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 1,
+                        name: "fun1".to_string(),
+                    },
+                ]),
+                NameCollection::LocalVariableNamesPairList(vec![
+                    FunctionIndexAndLocalVariableNamesPair {
+                        function_index: 0,
+                        local_variable_names: vec![
+                            IndexNamePair {
+                                index: 0,
+                                name: "a".to_string(),
+                            },
+                            IndexNamePair {
+                                index: 1,
+                                name: "b".to_string(),
+                            },
+                            IndexNamePair {
+                                index: 2,
+                                name: "var2".to_string(),
+                            },
+                        ],
+                    },
+                    FunctionIndexAndLocalVariableNamesPair {
+                        function_index: 1,
+                        local_variable_names: vec![
+                            IndexNamePair {
+                                index: 0,
+                                name: "var0".to_string(),
+                            },
+                            IndexNamePair {
+                                index: 1,
+                                name: "var1".to_string(),
+                            },
+                        ],
+                    },
+                ]),
+                NameCollection::BlockLabelsPairList(vec![
+                    FunctionIndexAndBlockLabelsPair {
+                        function_index: 0,
+                        block_labels: vec![
+                            IndexNamePair {
+                                index: 0,
+                                name: "b0".to_string(),
+                            },
+                            IndexNamePair {
+                                index: 1,
+                                name: "b1".to_string(),
+                            },
+                            IndexNamePair {
+                                index: 2,
+                                name: "b2".to_string(),
+                            },
+                            IndexNamePair {
+                                index: 4,
+                                name: "4".to_string(),
+                            },
+                            IndexNamePair {
+                                index: 5,
+                                name: "5".to_string(),
+                            },
+                        ],
+                    },
+                    FunctionIndexAndBlockLabelsPair {
+                        function_index: 1,
+                        block_labels: vec![IndexNamePair {
+                            index: 0,
+                            name: "l0".to_string(),
+                        }],
+                    },
+                ]),
+                NameCollection::TypeNames(vec![IndexNamePair {
+                    index: 0,
+                    name: "type0".to_string(),
+                }]),
+                NameCollection::TableNames(vec![IndexNamePair {
+                    index: 0,
+                    name: "tab0".to_string(),
+                }]),
+                NameCollection::MemoryBlockNames(vec![IndexNamePair {
+                    index: 0,
+                    name: "mem0".to_string(),
+                }]),
+            ])],
+
+            type_items: vec![
+                TypeItem::FunctionType(FunctionType {
+                    params: vec![ValueType::I32, ValueType::I32],
+                    results: vec![ValueType::I32, ValueType::I64],
+                }),
+                TypeItem::FunctionType(FunctionType {
+                    params: vec![ValueType::I32, ValueType::I64],
+                    results: vec![ValueType::I32],
+                }),
+            ],
+            import_items: vec![],
+            function_list: vec![1, 0],
+            tables: vec![TableType {
+                limit: Limit::Range(2, 4),
+            }],
+            memory_blocks: vec![MemoryType {
+                limit: Limit::Range(1, 2),
+            }],
+            global_items: vec![],
+            export_items: vec![],
+            start_function_index: None,
+            element_items: vec![],
+            code_items: vec![
+                CodeItem {
+                    local_groups: vec![LocalGroup {
+                        value_type: ValueType::F32,
+                        variable_count: 1,
+                    }],
+                    instruction_items: vec![
+                        Instruction::Block(BlockType::Builtin(None), 0),
+                        Instruction::Block(BlockType::Builtin(None), 1),
+                        Instruction::Block(BlockType::Builtin(None), 2),
+                        Instruction::I32Const(2),
+                        Instruction::Br(1),
+                        Instruction::End,
+                        Instruction::End,
+                        Instruction::If(BlockType::Builtin(None), 3),
+                        Instruction::I32Const(3),
+                        Instruction::Else,
+                        Instruction::I32Const(4),
+                        Instruction::End,
+                        Instruction::End,
+                        Instruction::Block(BlockType::Builtin(None), 4),
+                        Instruction::Block(BlockType::Builtin(None), 5),
+                        Instruction::Br(1),
+                        Instruction::End,
+                        Instruction::End,
+                        Instruction::End,
+                    ],
+                },
+                CodeItem {
+                    local_groups: vec![
+                        LocalGroup {
+                            value_type: ValueType::I32,
+                            variable_count: 1,
+                        },
+                        LocalGroup {
+                            value_type: ValueType::I64,
+                            variable_count: 1,
+                        },
+                    ],
+                    instruction_items: vec![
+                        Instruction::I32Const(100),
+                        Instruction::Loop(BlockType::TypeIndex(0), 0),
+                        Instruction::Nop,
+                        Instruction::Br(0),
+                        Instruction::End,
+                        Instruction::End,
+                    ],
+                },
+            ],
+            data_items: vec![],
+        };
+        assert_eq!(expected, remove_unsupported_custom_section(module));
     }
 
     #[test]
     fn test_parse_instruction_const() {
-        let s0 = get_test_binary_resource("test-instruction-const.wasm");
-        let m0 = parse(&s0).unwrap();
+        let binary = get_test_binary_resource("test-instruction-const.wasm");
+        let module = parse(&binary).unwrap();
         assert_eq!(
-            m0.code_items[0],
+            module.code_items[0],
             CodeItem {
                 local_groups: vec![],
-                expression: Rc::new(vec![
+                instruction_items: vec![
                     Instruction::F32Const(12.3),
                     Instruction::F32Const(45.6),
                     Instruction::F32Add,
-                    Instruction::TruncSat(instruction::I32_TRUNC_SAT_F32_S),
+                    Instruction::I32TruncSatF32S,
                     Instruction::Drop,
                     Instruction::End
-                ])
+                ]
             }
         );
     }
 
     #[test]
     fn test_parse_instruction_variable() {
-        let s0 = get_test_binary_resource("test-instruction-variable.wasm");
-        let m0 = parse(&s0).unwrap();
+        let binary = get_test_binary_resource("test-instruction-variable.wasm");
+        let module = parse(&binary).unwrap();
 
         assert_eq!(
-            m0.global_items,
+            module.global_items,
             vec![
                 GlobalItem {
                     global_type: GlobalType {
                         value_type: ValueType::I32,
                         mutable: true
                     },
-                    init_expression: vec![Instruction::I32Const(1), Instruction::End]
+                    initialize_instruction_items: vec![Instruction::I32Const(1), Instruction::End]
                 },
                 GlobalItem {
                     global_type: GlobalType {
                         value_type: ValueType::I32,
                         mutable: true
                     },
-                    init_expression: vec![Instruction::I32Const(2), Instruction::End]
+                    initialize_instruction_items: vec![Instruction::I32Const(2), Instruction::End]
                 }
             ]
         );
 
         assert_eq!(
-            m0.function_types,
-            vec![Rc::new(FunctionType {
+            module.type_items,
+            vec![TypeItem::FunctionType(FunctionType {
                 params: vec![ValueType::I32, ValueType::I32],
                 results: vec![]
             })]
         );
 
         assert_eq!(
-            m0.code_items[0],
+            module.code_items[0],
             CodeItem {
                 local_groups: vec![
                     LocalGroup {
@@ -1838,43 +2334,43 @@ mod tests {
                         variable_count: 2
                     },
                 ],
-                expression: Rc::new(vec![
+                instruction_items: vec![
                     Instruction::GlobalGet(0),
                     Instruction::GlobalSet(1),
                     Instruction::LocalGet(0),
                     Instruction::LocalSet(1),
                     Instruction::End
-                ])
+                ]
             }
         );
     }
 
     #[test]
     fn test_parse_instruction_memory() {
-        let s0 = get_test_binary_resource("test-instruction-memory.wasm");
-        let m0 = parse(&s0).unwrap();
+        let binary = get_test_binary_resource("test-instruction-memory.wasm");
+        let module = parse(&binary).unwrap();
 
         assert_eq!(
-            m0.memory_blocks,
+            module.memory_blocks,
             vec![MemoryType {
                 limit: Limit::Range(1, 8)
             }]
         );
 
         assert_eq!(
-            m0.data_items,
+            module.data_items,
             vec![DataItem {
-                memory_index: 0,
-                offset_expression: vec![Instruction::I32Const(100), Instruction::End],
+                memory_block_index: 0,
+                offset_instruction_items: vec![Instruction::I32Const(100), Instruction::End],
                 data: vec!['h' as u8, 'e' as u8, 'l' as u8, 'l' as u8, 'o' as u8]
             }]
         );
 
         assert_eq!(
-            m0.code_items[0],
+            module.code_items[0],
             CodeItem {
                 local_groups: vec![],
-                expression: Rc::new(vec![
+                instruction_items: vec![
                     Instruction::I32Const(1),
                     Instruction::I32Const(2),
                     Instruction::I32Load(MemoryArgument {
@@ -1891,7 +2387,7 @@ mod tests {
                     Instruction::MemoryGrow(0),
                     Instruction::Drop,
                     Instruction::End
-                ])
+                ]
             }
         );
     }
@@ -1905,35 +2401,21 @@ mod tests {
             m0.code_items[0],
             CodeItem {
                 local_groups: vec![],
-                expression: Rc::new(vec![
-                    Instruction::Block {
-                        block_type: BlockType::ResultOnly(Some(ValueType::I32)),
-                        body: Rc::new(vec![
-                            Instruction::I32Const(1),
-                            Instruction::Loop {
-                                block_type: BlockType::ResultOnly(Some(ValueType::I32)),
-                                body: Rc::new(vec![
-                                    Instruction::I32Const(2),
-                                    Instruction::If {
-                                        block_type: BlockType::ResultOnly(Some(ValueType::I32)),
-                                        consequet_body: Rc::new(vec![
-                                            Instruction::I32Const(3),
-                                            Instruction::Else
-                                        ]),
-                                        alternate_body: Rc::new(vec![
-                                            Instruction::I32Const(4),
-                                            Instruction::End
-                                        ])
-                                    },
-                                    Instruction::End
-                                ])
-                            },
-                            Instruction::End
-                        ])
-                    },
+                instruction_items: vec![
+                    Instruction::Block(BlockType::Builtin(Some(ValueType::I32)), 0),
+                    Instruction::I32Const(1),
+                    Instruction::Loop(BlockType::Builtin(Some(ValueType::I32)), 1),
+                    Instruction::I32Const(2),
+                    Instruction::If(BlockType::Builtin(Some(ValueType::I32)), 2),
+                    Instruction::I32Const(3),
+                    Instruction::Else,
+                    Instruction::I32Const(4),
+                    Instruction::End,
+                    Instruction::End,
+                    Instruction::End,
                     Instruction::Drop,
-                    Instruction::End
-                ])
+                    Instruction::End,
+                ]
             }
         );
     }
@@ -1944,8 +2426,8 @@ mod tests {
         let m0 = parse(&s0).unwrap();
 
         assert_eq!(
-            m0.function_types,
-            vec![Rc::new(FunctionType {
+            m0.type_items,
+            vec![TypeItem::FunctionType(FunctionType {
                 params: vec![],
                 results: vec![]
             })]
@@ -1954,7 +2436,7 @@ mod tests {
         assert_eq!(m0.function_list, vec![0, 0]);
 
         assert_eq!(
-            m0.table_types,
+            m0.tables,
             vec![TableType {
                 limit: Limit::Range(3, 3)
             }]
@@ -1964,7 +2446,7 @@ mod tests {
             m0.element_items,
             vec![ElementItem {
                 table_index: 0,
-                offset_expression: vec![Instruction::I32Const(0), Instruction::End],
+                offset_instruction_items: vec![Instruction::I32Const(0), Instruction::End],
                 function_indices: vec![1, 1, 1]
             }]
         );
@@ -1974,16 +2456,16 @@ mod tests {
             vec![
                 CodeItem {
                     local_groups: vec![],
-                    expression: Rc::new(vec![
+                    instruction_items: vec![
                         Instruction::Call(1),
                         Instruction::I32Const(2),
                         Instruction::CallIndirect(0, 0),
                         Instruction::End
-                    ])
+                    ]
                 },
                 CodeItem {
                     local_groups: vec![],
-                    expression: Rc::new(vec![Instruction::I32Const(100), Instruction::End])
+                    instruction_items: vec![Instruction::I32Const(100), Instruction::End]
                 }
             ]
         );
@@ -1994,66 +2476,65 @@ mod tests {
         let s0 = get_test_binary_resource("test-instruction-branch.wasm");
         let m0 = parse(&s0).unwrap();
         assert_eq!(
-            m0.code_items[0],
-            CodeItem {
-                local_groups: vec![],
-                expression: Rc::new(vec![
-                    Instruction::Block {
-                        block_type: BlockType::ResultOnly(None),
-                        body: Rc::new(vec![
-                            Instruction::I32Const(100),
-                            Instruction::Br(0),
-                            Instruction::I32Const(101),
-                            Instruction::End
-                        ])
-                    },
-                    Instruction::Loop {
-                        block_type: BlockType::ResultOnly(None),
-                        body: Rc::new(vec![
-                            Instruction::I32Const(200),
-                            Instruction::Br(0),
-                            Instruction::I32Const(201),
-                            Instruction::End
-                        ])
-                    },
-                    Instruction::I32Const(300),
-                    Instruction::I32Eqz,
-                    Instruction::If {
-                        block_type: BlockType::ResultOnly(None),
-                        consequet_body: Rc::new(vec![
-                            Instruction::I32Const(400),
-                            Instruction::Br(0),
-                            Instruction::I32Const(401),
-                            Instruction::Else
-                        ]),
-                        alternate_body: Rc::new(vec![
-                            Instruction::I32Const(500),
-                            Instruction::Br(0),
-                            Instruction::I32Const(501),
-                            Instruction::End
-                        ]),
-                    },
-                    Instruction::End
-                ])
-            }
-        );
-
-        assert_eq!(
-            m0.code_items[2],
-            CodeItem {
-                local_groups: vec![],
-                expression: Rc::new(vec![
-                    Instruction::Block {
-                        block_type: BlockType::ResultOnly(Some(ValueType::I32)),
-                        body: Rc::new(vec![Instruction::I32Const(10), Instruction::End])
-                    },
-                    Instruction::Block {
-                        block_type: BlockType::FunctionTypeIndex(1),
-                        body: Rc::new(vec![Instruction::I32Const(20), Instruction::End])
-                    },
-                    Instruction::End
-                ])
-            }
-        );
+            m0.code_items,
+            vec![
+                CodeItem {
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        Instruction::Block(BlockType::Builtin(None), 0),
+                        Instruction::I32Const(100),
+                        Instruction::Br(0),
+                        Instruction::I32Const(101),
+                        Instruction::End,
+                        Instruction::Loop(BlockType::Builtin(None), 1),
+                        Instruction::I32Const(200),
+                        Instruction::Br(0),
+                        Instruction::I32Const(201),
+                        Instruction::End,
+                        Instruction::I32Const(300),
+                        Instruction::I32Eqz,
+                        Instruction::If(BlockType::Builtin(None), 2),
+                        Instruction::I32Const(400),
+                        Instruction::Br(0),
+                        Instruction::I32Const(401),
+                        Instruction::Else,
+                        Instruction::I32Const(500),
+                        Instruction::Br(0),
+                        Instruction::I32Const(501),
+                        Instruction::End,
+                        Instruction::End
+                    ]
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        Instruction::Block(BlockType::Builtin(None), 0),
+                        Instruction::Block(BlockType::Builtin(None), 1),
+                        Instruction::Block(BlockType::Builtin(None), 2),
+                        Instruction::Br(1),
+                        Instruction::I32Const(100),
+                        Instruction::BrIf(2),
+                        Instruction::BrTable(vec![0, 1, 2], 3),
+                        Instruction::Return,
+                        Instruction::End,
+                        Instruction::End,
+                        Instruction::End,
+                        Instruction::End
+                    ]
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        Instruction::Block(BlockType::Builtin(Some(ValueType::I32)), 0),
+                        Instruction::I32Const(10),
+                        Instruction::End,
+                        Instruction::Block(BlockType::TypeIndex(1), 1),
+                        Instruction::I32Const(20),
+                        Instruction::End,
+                        Instruction::End
+                    ]
+                }
+            ]
+        )
     }
 }

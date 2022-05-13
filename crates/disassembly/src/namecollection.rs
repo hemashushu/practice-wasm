@@ -4,6 +4,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+//! WebAssembly 二进制格式将诸如函数名称、局部变量（包括参数）名称、结构块的标签等信息
+//! 存储在 `自定义段` 里，这些信息对于反汇编、追踪调试过程都很有价值。
+//! 当前模块用于从 `自定义段` 里搜寻符号的名称信息。
+
 use anvm_ast::ast::{
     CustomItem, FunctionIndexAndBlockLabelsPair, FunctionIndexAndLocalVariableNamesPair,
     IndexNamePair, Module, NameCollection,
@@ -140,7 +144,7 @@ fn find_name_collections(module: &Module) -> Vec<&NameCollection> {
         .custom_items
         .iter()
         .filter_map(|item| match item {
-            CustomItem::NameCollection(ncs) => Some(ncs),
+            CustomItem::NameCollections(ncs) => Some(ncs),
             _ => None,
         })
         .flatten()

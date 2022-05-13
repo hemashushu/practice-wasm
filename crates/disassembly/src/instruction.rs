@@ -11,7 +11,7 @@ use anvm_ast::{
 };
 use std::fmt::Write;
 
-use crate::namemapper::{
+use crate::namecollection::{
     get_block_lable, get_function_name, get_global_variable_name, get_local_variable_name,
     get_type_name,
 };
@@ -536,12 +536,12 @@ mod tests {
     };
     use pretty_assertions::assert_eq;
 
-    use crate::disassembler::instruction_to_string;
+    use crate::instruction::instruction_to_string;
 
     #[test]
     fn test_instruction_display() {
         let module = Module {
-            custom_items: vec![CustomItem::NameCollection(vec![
+            custom_items: vec![CustomItem::NameCollections(vec![
                 NameCollection::TypeNames(vec![IndexNamePair {
                     index: 1,
                     name: "t1".to_string(),
@@ -577,7 +577,7 @@ mod tests {
                     name: "g1".to_string(),
                 }]),
             ])],
-            types: vec![],
+            type_items: vec![],
             import_items: vec![],
             function_list: vec![],
             tables: vec![],

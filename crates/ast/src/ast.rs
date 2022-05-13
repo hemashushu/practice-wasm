@@ -22,7 +22,7 @@ pub struct Module {
     /// 类型列表，（section id 1）
     /// 目前类型列表只支持列出函数类型（即函数签名），
     /// 需注意不同的函数可能有相同的签名，所以类型列表的数量并不等于函数的数量
-    pub types: Vec<TypeItem>,
+    pub type_items: Vec<TypeItem>,
 
     /// 导入项列表，（section id 2）
     pub import_items: Vec<ImportItem>,
@@ -87,7 +87,7 @@ pub struct Module {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum CustomItem {
-    NameCollection(Vec<NameCollection>),
+    NameCollections(Vec<NameCollection>),
     Other(String, Vec<u8>), // params: (name, data)
 }
 
@@ -419,7 +419,7 @@ pub struct MemoryType {
 #[derive(Debug, PartialEq, Clone)]
 pub struct GlobalItem {
     pub global_type: GlobalType,
-    pub initialize_instruction_items: Vec<InstructionItem>,
+    pub initialize_instruction_items: Vec<Instruction>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -522,7 +522,7 @@ pub struct ElementItem {
     pub table_index: u32,
 
     /// 偏移值表达式（指令列表）
-    pub offset_instruction_items: Vec<InstructionItem>,
+    pub offset_instruction_items: Vec<Instruction>,
 
     /// 函数索引列表
     /// function_indices 这个列表会从指定的偏移值开始，把一系列函数的索引紧密排列，
@@ -618,9 +618,12 @@ pub struct CodeItem {
     pub local_groups: Vec<LocalGroup>,
 
     /// 指令列表
-    pub instruction_items: Vec<InstructionItem>,
+    pub instruction_items: Vec<Instruction>,
 }
 
+/// 指令项
+///
+/// 指令项包括了指令本身（类型和参数）以及指令的位置等信息
 #[derive(Debug, PartialEq, Clone)]
 pub struct InstructionItem {
     pub instruction: Instruction,
@@ -634,10 +637,17 @@ pub struct LocalGroup {
     pub value_type: ValueType, // 数据类型
 }
 
+/// 指令在源码（包括二进制和文本格式）当中的位置
 #[derive(Debug, PartialEq, Clone)]
 pub struct Location {
     pub start: usize,
     pub end: usize,
+}
+
+impl Location {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
 }
 
 /// # 数据项
@@ -677,10 +687,10 @@ pub struct Location {
 #[derive(Debug, PartialEq, Clone)]
 pub struct DataItem {
     /// 内存块索引，目前 WebAssembly 标准只支持 0
-    pub memory_index: u32,
+    pub memory_block_index: u32,
 
     /// 偏移值表达式（指令列表）
-    pub offset_instruction_items: Vec<InstructionItem>,
+    pub offset_instruction_items: Vec<Instruction>,
 
     /// 内容
     pub data: Vec<u8>,
