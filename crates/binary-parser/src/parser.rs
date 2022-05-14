@@ -18,7 +18,7 @@ use anvm_ast::{
     types::ValueType,
 };
 
-use crate::leb128decoder;
+use crate::{leb128decoder, error::ParseError};
 
 /// 二进制模块以一个 4 个字节的幻数 `0x00 0x61 0x73 0x6d` 开始。
 /// 转成 ascii 则是 `0x00` 和 `asm`
@@ -1592,26 +1592,6 @@ fn continue_parse_data_item(source: &[u8]) -> Result<(DataItem, &[u8]), ParseErr
     Ok((data_item, post_data))
 }
 
-#[derive(Debug)]
-pub enum ParseError {
-    /// 不支持的功能
-    /// 比如读取索引值为非 0 的内存块或者表
-    Unsupported(String),
-
-    /// 语法错误
-    /// 比如不符合规范的数值，
-    /// 对于暂时无法解析或者不支持的数据一般情况下使用 ParseError::Unsupported，仅当非常明确
-    /// 是语法的错误才使用 ParseError::SyntaxError
-    SyntaxError(String),
-
-    /// leb128 编码或者 UTF-8 编码错误
-    DecodingError,
-
-    /// 未预料的结束，即预期的内容不完整
-    /// 比如解析一个函数时，尚未到达末尾源文件就已经到末尾了。
-    UnexpectedEnd,
-}
-
 // 辅助函数
 
 /// 读取一个字节的内容
@@ -1990,6 +1970,10 @@ mod tests {
             custom_items: vec![CustomItem::NameCollections(vec![
                 NameCollection::FunctionNames(vec![
                     IndexNamePair {
+                        index: 0,
+                        name: "fputc".to_string(),
+                    },
+                    IndexNamePair {
                         index: 2,
                         name: "f2".to_string(),
                     },
@@ -2040,7 +2024,16 @@ mod tests {
                 limit: Limit::Range(1, 8),
             }],
             global_items: vec![],
-            export_items: vec![],
+            export_items: vec![
+                ExportItem {
+                    name: "i_f2".to_string(),
+                    export_descriptor: ExportDescriptor::FunctionIndex(2)
+                },
+                ExportItem {
+                    name: "re_putc".to_string(),
+                    export_descriptor: ExportDescriptor::FunctionIndex(0)
+                }
+            ],
             start_function_index: Some(3),
             element_items: vec![
                 ElementItem {
@@ -2062,6 +2055,8 @@ mod tests {
                             align: 2,
                             offset: 100,
                         }),
+                        Instruction::Call(0),
+                        Instruction::Call(3),
                         Instruction::End,
                     ],
                 },

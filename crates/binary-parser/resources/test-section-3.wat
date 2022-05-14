@@ -3,7 +3,7 @@
   (type $ft0 (func (result i32)))
   (type $ft1 (func))
 
-  (import "env" "putc" (func (type $ft0)))
+  (import "env" "putc" (func $fputc (type $ft0)))
   (import "env" "print" (func (type $ft0)))
 
   (memory 1 8)
@@ -16,6 +16,8 @@
 
   (func $f2 (type 1)
     (i32.load offset=100)
+    (call $fputc)
+    (call $f3)
   )
 
   (func $f3 (type 1)
@@ -24,4 +26,7 @@
   )
 
   (start $f3)
+
+  (export "i_f2" (func $f2))
+  (export "re_putc" (func $fputc)) ;; 导入的函数可以再次导出
 )

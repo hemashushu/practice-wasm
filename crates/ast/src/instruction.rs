@@ -36,7 +36,10 @@ pub enum Instruction {
     Unreachable,
     Nop,
 
-    // 注意，block label index 是结构块的索引，是由解析器自动产生的，不属于指令的一部分，
+    // 注意，block label index 是结构块的索引，即结构块出现的次序，比如第一个出现的
+    // 结构块其索引值为 0，第三个出现的结构块其索引值为 2。索引值仅跟出现次序有关，跟结构块
+    // 的层次结构关系无关。
+    // 结构块的索引值是由解析器自动产生的，不属于指令的一部分，
     // 之所以记录这个索引值，是为了方便跟结构块的 block label name 关联起来。
     Block(BlockType, u32), // params: (block_type, block_label_index)
     Loop(BlockType, u32),  // params: (block_type, block_label_index)
