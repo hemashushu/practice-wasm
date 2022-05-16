@@ -63,7 +63,7 @@ pub enum Control {
 
     /// 调用模块外的函数
     CallExternal(
-        /* module_index */ usize,
+        /* ast_module_index */ usize,
         /* type_index */ usize,
         /* function_index */ usize,
         /* internal_function_index */ usize,
@@ -72,7 +72,7 @@ pub enum Control {
 
     /// 调用本地函数（native function）模块的本地函数
     CallNative(
-        /* module_index */ usize,
+        /* native_module_index */ usize,
         /* type_index */ usize,
         /* function_index */ usize,
     ),

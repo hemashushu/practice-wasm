@@ -60,15 +60,19 @@ impl NativeModule {
         &mut self,
         name: &str,
         params: Vec<ValueType>,
-        param_names: Vec<String>,
+        param_names: Vec<&str>,
         results: Vec<ValueType>,
         native_function: NativeFunction,
     ) {
         let type_index = self.add_function_type(params, results);
+
         let function_item = NativeFunctionItem {
             name: name.to_string(),
             type_index,
-            param_names,
+            param_names: param_names
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>(),
             native_function,
         };
 

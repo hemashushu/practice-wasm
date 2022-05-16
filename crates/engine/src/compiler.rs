@@ -305,7 +305,7 @@ pub fn compile(
                         //
                         let target_depth = block_index_stack.len() - *relative_depth as usize;
 
-                        if target_depth < 0 {
+                        if (target_depth as isize) < 0 {
                             // 目标层级超出了范围
                             return Err(EngineError::OutOfIndex(
                                 "target depth out of index for instruction \"br\"".to_string(),
@@ -337,7 +337,7 @@ pub fn compile(
                     instruction::Instruction::BrIf(relative_depth) => {
                         let target_depth = block_index_stack.len() - *relative_depth as usize;
 
-                        if target_depth < 0 {
+                        if (target_depth as isize) < 0 {
                             // 目标层级超出了范围
                             return Err(EngineError::OutOfIndex(
                                 "target depth out of index for instruction \"br\"".to_string(),
@@ -664,13 +664,14 @@ fn get_function_block_locations(code_item: &CodeItem) -> Vec<BlockLocation> {
 mod tests {
     use super::{compile, NamedAstModule};
     use crate::{
-        native_module::NativeModule,
+        error::NativeError,
+        native_module::{NativeFunction, NativeModule},
         object::{Control, Instruction},
     };
     use anvm_ast::{
         ast::{self, CodeItem, ExportItem, FunctionType, ImportItem, TypeItem},
         instruction::{self, BlockType},
-        types::ValueType,
+        types::{Value, ValueType},
     };
 
     use pretty_assertions::assert_eq;
@@ -710,6 +711,36 @@ mod tests {
         code_items: Vec<CodeItem>,
     ) -> NamedAstModule {
         create_test_ast_module(name, vec![], function_list, vec![], code_items)
+    }
+
+    fn test_native_function_add(params: &[Value]) -> Result<Vec<Value>, NativeError> {
+        todo!()
+    }
+
+    fn test_native_function_sub(params: &[Value]) -> Result<Vec<Value>, NativeError> {
+        todo!()
+    }
+
+    fn create_test_native_module() -> NativeModule {
+        let mut module = NativeModule::new("m0");
+
+        module.add_function(
+            "add",
+            vec![ValueType::I32, ValueType::I32],
+            vec!["left", "right"],
+            vec![ValueType::I32],
+            test_native_function_add,
+        );
+
+        module.add_function(
+            "sub",
+            vec![ValueType::I32, ValueType::I32],
+            vec!["left", "right"],
+            vec![ValueType::I32],
+            test_native_function_sub,
+        );
+
+        module
     }
 
     #[test]
@@ -1023,6 +1054,430 @@ mod tests {
             Instruction::Control(Control::Jump(0, 85)), // #84
             Instruction::Original(instruction::Instruction::End), // #85
         ]];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_function_call_module_internal() {
+        let native_modules: Vec<NativeModule> = vec![];
+        let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
+            "m0",
+            vec![0, 0, 0],
+            vec![
+                CodeItem {
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        instruction::Instruction::I32Const(0),  // #00
+                        instruction::Instruction::I32Const(1),  // #01
+                        instruction::Instruction::Call(1),      // #02
+                        instruction::Instruction::I32Const(10), // #03
+                        instruction::Instruction::Call(2),      // #04
+                        instruction::Instruction::I32Const(11), // #05
+                        instruction::Instruction::End,          // #06
+                    ],
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        instruction::Instruction::I32Const(2), // #07
+                        instruction::Instruction::I32Const(3), // #08
+                        instruction::Instruction::End,         // #09
+                    ],
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        instruction::Instruction::I32Const(4), // #10
+                        instruction::Instruction::I32Const(5), // #11
+                        instruction::Instruction::Call(1),     // #12
+                        instruction::Instruction::End,         // #13
+                    ],
+                },
+            ],
+        )];
+
+        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let expected: Vec<Vec<Instruction>> = vec![vec![
+            // function 0
+            Instruction::Original(instruction::Instruction::I32Const(0)), // #00
+            Instruction::Original(instruction::Instruction::I32Const(1)), // #01
+            Instruction::Control(Control::CallInternal(0, 1, 1, 7)),      // #02
+            Instruction::Original(instruction::Instruction::I32Const(10)), // #03
+            Instruction::Control(Control::CallInternal(0, 2, 2, 10)),     // #04
+            Instruction::Original(instruction::Instruction::I32Const(11)), // #05
+            Instruction::Original(instruction::Instruction::End),         // #06
+            // function 1
+            Instruction::Original(instruction::Instruction::I32Const(2)), // #07
+            Instruction::Original(instruction::Instruction::I32Const(3)), // #08
+            Instruction::Original(instruction::Instruction::End),         // #09
+            // function 2
+            Instruction::Original(instruction::Instruction::I32Const(4)), // #10
+            Instruction::Original(instruction::Instruction::I32Const(5)), // #11
+            Instruction::Control(Control::CallInternal(0, 1, 1, 7)),      // #12
+            Instruction::Original(instruction::Instruction::End),         // #13
+        ]];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_function_call_module_external() {
+        let native_modules: Vec<NativeModule> = vec![];
+        let named_ast_modules: Vec<NamedAstModule> = vec![
+            create_test_ast_module(
+                "m0",
+                vec![],
+                vec![0, 0],
+                vec![
+                    ExportItem {
+                        name: "f0".to_string(),
+                        export_descriptor: ast::ExportDescriptor::FunctionIndex(0),
+                    },
+                    ExportItem {
+                        name: "f1".to_string(),
+                        export_descriptor: ast::ExportDescriptor::FunctionIndex(1),
+                    },
+                ],
+                vec![
+                    CodeItem {
+                        local_groups: vec![],
+                        instruction_items: vec![
+                            instruction::Instruction::I32Const(0), // #00
+                            instruction::Instruction::I32Const(1), // #01
+                            instruction::Instruction::End,         // #02
+                        ],
+                    },
+                    CodeItem {
+                        local_groups: vec![],
+                        instruction_items: vec![
+                            instruction::Instruction::I32Const(2), // #03
+                            instruction::Instruction::I32Const(3), // #04
+                            instruction::Instruction::Call(0),     // #05
+                            instruction::Instruction::End,         // #06
+                        ],
+                    },
+                ],
+            ),
+            create_test_ast_module(
+                "m1",
+                vec![
+                    ImportItem {
+                        module_name: "m0".to_string(),
+                        item_name: "f0".to_string(),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                    },
+                    ImportItem {
+                        module_name: "m0".to_string(),
+                        item_name: "f1".to_string(),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                    },
+                ],
+                vec![0, 0],
+                vec![],
+                vec![
+                    CodeItem {
+                        // function index 2
+                        local_groups: vec![],
+                        instruction_items: vec![
+                            instruction::Instruction::I32Const(0),  // #00
+                            instruction::Instruction::I32Const(1),  // #01
+                            instruction::Instruction::Call(0),      // #02
+                            instruction::Instruction::I32Const(10), // #03
+                            instruction::Instruction::Call(1),      // #04
+                            instruction::Instruction::I32Const(11), // #05
+                            instruction::Instruction::Call(3),      // #06
+                            instruction::Instruction::I32Const(12), // #07
+                            instruction::Instruction::End,          // #08
+                        ],
+                    },
+                    CodeItem {
+                        // function index 3
+                        local_groups: vec![],
+                        instruction_items: vec![
+                            instruction::Instruction::I32Const(2),  // #09
+                            instruction::Instruction::I32Const(3),  // #10
+                            instruction::Instruction::Call(0),      // #11
+                            instruction::Instruction::I32Const(20), // #12
+                            instruction::Instruction::Call(1),      // #13
+                            instruction::Instruction::I32Const(21), // #14
+                            instruction::Instruction::End,          // #15
+                        ],
+                    },
+                ],
+            ),
+        ];
+
+        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let expected: Vec<Vec<Instruction>> = vec![
+            vec![
+                // function 0
+                Instruction::Original(instruction::Instruction::I32Const(0)), // #00
+                Instruction::Original(instruction::Instruction::I32Const(1)), // #01
+                Instruction::Original(instruction::Instruction::End),         // #02
+                // function 1
+                Instruction::Original(instruction::Instruction::I32Const(2)), // #03
+                Instruction::Original(instruction::Instruction::I32Const(3)), // #04
+                Instruction::Control(Control::CallInternal(0, 0, 0, 0)),      // #05
+                Instruction::Original(instruction::Instruction::End),         // #06
+            ],
+            vec![
+                // function index 2
+                Instruction::Original(instruction::Instruction::I32Const(0)), // #00
+                Instruction::Original(instruction::Instruction::I32Const(1)), // #01
+                Instruction::Control(Control::CallExternal(0, 0, 0, 0, 0)),   // #02
+                Instruction::Original(instruction::Instruction::I32Const(10)), // #03
+                Instruction::Control(Control::CallExternal(0, 0, 1, 1, 3)),   // #04
+                Instruction::Original(instruction::Instruction::I32Const(11)), // #05
+                Instruction::Control(Control::CallInternal(0, 3, 1, 9)),      // #06
+                Instruction::Original(instruction::Instruction::I32Const(12)), // #07
+                Instruction::Original(instruction::Instruction::End),         // #08
+                // function index 3
+                Instruction::Original(instruction::Instruction::I32Const(2)), // #09
+                Instruction::Original(instruction::Instruction::I32Const(3)), // #10
+                Instruction::Control(Control::CallExternal(0, 0, 0, 0, 0)),   // #11
+                Instruction::Original(instruction::Instruction::I32Const(20)), // #12
+                Instruction::Control(Control::CallExternal(0, 0, 1, 1, 3)),   // #13
+                Instruction::Original(instruction::Instruction::I32Const(21)), // #14
+                Instruction::Original(instruction::Instruction::End),         // #15
+            ],
+        ];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_function_call_module_native() {
+        let native_modules: Vec<NativeModule> = vec![create_test_native_module()];
+
+        let named_ast_modules: Vec<NamedAstModule> = vec![create_test_ast_module(
+            "m1",
+            vec![
+                ImportItem {
+                    module_name: "m0".to_string(),
+                    item_name: "add".to_string(),
+                    import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                },
+                ImportItem {
+                    module_name: "m0".to_string(),
+                    item_name: "sub".to_string(),
+                    import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                },
+            ],
+            vec![0, 0],
+            vec![],
+            vec![
+                CodeItem {
+                    // function index 2
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        instruction::Instruction::I32Const(0),  // #00
+                        instruction::Instruction::I32Const(1),  // #01
+                        instruction::Instruction::Call(0),      // #02
+                        instruction::Instruction::I32Const(10), // #03
+                        instruction::Instruction::Call(1),      // #04
+                        instruction::Instruction::I32Const(11), // #05
+                        instruction::Instruction::Call(3),      // #06
+                        instruction::Instruction::I32Const(12), // #07
+                        instruction::Instruction::End,          // #08
+                    ],
+                },
+                CodeItem {
+                    // function index 3
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        instruction::Instruction::I32Const(2),  // #09
+                        instruction::Instruction::I32Const(3),  // #10
+                        instruction::Instruction::Call(0),      // #11
+                        instruction::Instruction::I32Const(20), // #12
+                        instruction::Instruction::Call(1),      // #13
+                        instruction::Instruction::I32Const(21), // #14
+                        instruction::Instruction::End,          // #15
+                    ],
+                },
+            ],
+        )];
+
+        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let expected: Vec<Vec<Instruction>> = vec![vec![
+            // function index 2
+            Instruction::Original(instruction::Instruction::I32Const(0)), // #00
+            Instruction::Original(instruction::Instruction::I32Const(1)), // #01
+            Instruction::Control(Control::CallNative(0, 0, 0)),           // #02
+            Instruction::Original(instruction::Instruction::I32Const(10)), // #03
+            Instruction::Control(Control::CallNative(0, 0, 1)),           // #04
+            Instruction::Original(instruction::Instruction::I32Const(11)), // #05
+            Instruction::Control(Control::CallInternal(0, 3, 1, 9)),      // #06
+            Instruction::Original(instruction::Instruction::I32Const(12)), // #07
+            Instruction::Original(instruction::Instruction::End),         // #08
+            // function index 3
+            Instruction::Original(instruction::Instruction::I32Const(2)), // #09
+            Instruction::Original(instruction::Instruction::I32Const(3)), // #10
+            Instruction::Control(Control::CallNative(0, 0, 0)),           // #11
+            Instruction::Original(instruction::Instruction::I32Const(20)), // #12
+            Instruction::Control(Control::CallNative(0, 0, 1)),           // #13
+            Instruction::Original(instruction::Instruction::I32Const(21)), // #14
+            Instruction::Original(instruction::Instruction::End),         // #15
+        ]];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_function_call_module_external_complex() {
+        // 本测试一共 4 个模块：
+        // - m0 为本地函数模块；
+        // - m1 为普通模块，定义了函数 f0 和 bottom，并导出函数 bottom；
+        // - m2 为普通模块，从 m0 导入了函数 add，从 m1 导入了函数 bottom，定义了个函数 f1 和 middle，
+        //      然后导出了 add, bottom, middle
+        // - m3 为普通模块，从 m2 导入了 3 个函数，定义了函数 test
+
+        let native_modules: Vec<NativeModule> = vec![create_test_native_module()];
+
+        let named_ast_modules: Vec<NamedAstModule> = vec![
+            create_test_ast_module(
+                "m1",
+                vec![],
+                vec![0, 0],
+                vec![ExportItem {
+                    name: "bottom".to_string(),
+                    export_descriptor: ast::ExportDescriptor::FunctionIndex(1),
+                }],
+                vec![
+                    CodeItem {
+                        // function index 0
+                        local_groups: vec![],
+                        instruction_items: vec![
+                            instruction::Instruction::I32Const(0), // #00
+                            instruction::Instruction::End,         // #01
+                        ],
+                    },
+                    CodeItem {
+                        // function index 1 - bottom
+                        local_groups: vec![],
+                        instruction_items: vec![
+                            instruction::Instruction::I32Const(1), // #02
+                            instruction::Instruction::End,         // #03
+                        ],
+                    },
+                ],
+            ),
+            create_test_ast_module(
+                "m2",
+                vec![
+                    ImportItem {
+                        module_name: "m0".to_string(),
+                        item_name: "add".to_string(),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                    },
+                    ImportItem {
+                        module_name: "m1".to_string(),
+                        item_name: "bottom".to_string(),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                    },
+                ],
+                vec![0, 0],
+                vec![
+                    ExportItem {
+                        name: "f0".to_string(),
+                        export_descriptor: ast::ExportDescriptor::FunctionIndex(0),
+                    },
+                    ExportItem {
+                        name: "f1".to_string(),
+                        export_descriptor: ast::ExportDescriptor::FunctionIndex(1),
+                    },
+                    ExportItem {
+                        name: "f2".to_string(),
+                        export_descriptor: ast::ExportDescriptor::FunctionIndex(3),
+                    },
+                ],
+                vec![
+                    CodeItem {
+                        // function index 2, internal index 0
+                        local_groups: vec![],
+                        instruction_items: vec![
+                            instruction::Instruction::I32Const(2), // #00
+                            instruction::Instruction::Drop,        // #01
+                            instruction::Instruction::End,         // #02
+                        ],
+                    },
+                    CodeItem {
+                        // function index 3, internal index 1
+                        local_groups: vec![],
+                        instruction_items: vec![
+                            instruction::Instruction::I32Const(3), // #03
+                            instruction::Instruction::End,         // #04
+                        ],
+                    },
+                ],
+            ),
+            create_test_ast_module(
+                "m3",
+                vec![
+                    ImportItem {
+                        module_name: "m2".to_string(),
+                        item_name: "f0".to_string(),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                    },
+                    ImportItem {
+                        module_name: "m2".to_string(),
+                        item_name: "f1".to_string(),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                    },
+                    ImportItem {
+                        module_name: "m2".to_string(),
+                        item_name: "f2".to_string(),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                    },
+                ],
+                vec![0],
+                vec![],
+                vec![CodeItem {
+                    // function index 3
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        instruction::Instruction::I32Const(0), // #00
+                        instruction::Instruction::Call(0),     // #01
+                        instruction::Instruction::I32Const(1), // #02
+                        instruction::Instruction::Call(1),     // #03
+                        instruction::Instruction::I32Const(2), // #04
+                        instruction::Instruction::Call(2),     // #05
+                        instruction::Instruction::End,         // #06
+                    ],
+                }],
+            ),
+        ];
+
+        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let expected: Vec<Vec<Instruction>> = vec![
+            vec![
+                // function index 0
+                Instruction::Original(instruction::Instruction::I32Const(0)), // #00
+                Instruction::Original(instruction::Instruction::End),         // #01
+                // function index 1
+                Instruction::Original(instruction::Instruction::I32Const(1)), // #02
+                Instruction::Original(instruction::Instruction::End),         // #03
+            ],
+            vec![
+                // function index 2
+                Instruction::Original(instruction::Instruction::I32Const(2)), // #00
+                Instruction::Original(instruction::Instruction::Drop),        // #01
+                Instruction::Original(instruction::Instruction::End),         // #02
+                // function index 3
+                Instruction::Original(instruction::Instruction::I32Const(3)), // #03
+                Instruction::Original(instruction::Instruction::End),         // #04
+            ],
+            vec![
+                // function index 3
+                Instruction::Original(instruction::Instruction::I32Const(0)), // #00
+                Instruction::Control(Control::CallNative(0, 0, 0)),           // #01
+                Instruction::Original(instruction::Instruction::I32Const(1)), // #02
+                Instruction::Control(Control::CallExternal(0, 0, 1, 1, 2)),   // #03
+                Instruction::Original(instruction::Instruction::I32Const(2)), // #04
+                Instruction::Control(Control::CallExternal(1, 0, 3, 1, 3)),   // #05
+                Instruction::Original(instruction::Instruction::End),         // #06
+            ],
+        ];
 
         assert_eq!(actual, expected);
     }
