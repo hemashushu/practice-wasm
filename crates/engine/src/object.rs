@@ -4,7 +4,23 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use anvm_ast::ast;
 use anvm_ast::instruction::{self, BlockType};
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct NamedAstModule {
+    pub name: String,
+    pub module: ast::Module,
+}
+
+impl NamedAstModule {
+    pub fn new(name: &str, module: ast::Module) -> Self {
+        Self {
+            name: name.to_string(),
+            module,
+        }
+    }
+}
 
 /// 函数信息
 #[derive(Debug, PartialEq, Clone)]
@@ -64,17 +80,19 @@ pub enum Control {
     /// 调用模块外的函数
     CallExternal(
         /* ast_module_index */ usize,
-        /* type_index */ usize,
-        /* function_index */ usize,
-        /* internal_function_index */ usize,
+        /* type_index 在原模块当中的类型索引 */ usize,
+        /* function_index 在原模块当中的函数索引（索引包括导入的外部函数，也包括模块内部函数，此索引值为 call 指令参数所指定的值）*/
+        usize,
+        /* internal_function_index 在原模块当中的内部函数列表里的函数索引 */
+        usize,
         /* addr */ usize,
     ),
 
     /// 调用本地函数（native function）模块的本地函数
     CallNative(
         /* native_module_index */ usize,
-        /* type_index */ usize,
-        /* function_index */ usize,
+        /* type_index 在原模块当中的类型索引 */ usize,
+        /* function_index 在原模块当中的函数索引 */ usize,
     ),
 }
 

@@ -6,7 +6,7 @@
 
 use anvm_ast::ast::{Limit, MemoryType};
 
-use crate::object::{EngineError, Memory};
+use crate::error::EngineError;
 
 /// 内存的容量单位是 `页`（`page`）
 /// 一页内存为 65536 个字节
@@ -33,16 +33,12 @@ impl VMMemory {
     }
 
     /// 创建指定页面数（且不限最大值的）内存块
-    pub fn new_with_min_page(min: u32) -> Self {
+    pub fn new_by_min_page(min: u32) -> Self {
         let memory_type = MemoryType {
             limit: Limit::AtLeast(min),
         };
-        let byte_len = min * PAGE_SIZE;
 
-        VMMemory {
-            memory_type: memory_type,
-            data: vec![0; byte_len as usize],
-        }
+        VMMemory::new(memory_type)
     }
 
     /// 以给定的初始数据来创建 VMMemory 对象
@@ -63,14 +59,13 @@ impl VMMemory {
             data: data,
         }
     }
-}
 
-impl Memory for VMMemory {
-    fn get_page_count(&self) -> u32 {
+    pub fn get_page_count(&self) -> u32 {
         self.data.len() as u32 / PAGE_SIZE
     }
 
-    fn incrase_page(&mut self, increase_number: u32) -> Result<u32, EngineError> {
+    /// 返回原先的页面数
+    pub fn increase_page(&mut self, increase_number: u32) -> Result<u32, EngineError> {
         let old_page_count = self.get_page_count();
         let new_page_count = old_page_count + increase_number;
 
@@ -79,92 +74,91 @@ impl Memory for VMMemory {
         if let Limit::Range(_, max) = self.memory_type.limit {
             if new_page_count > max {
                 return Err(EngineError::Overflow(
-                    "exceeded the maximum page of the memory".to_string(),
+                    "memory page exceeds the specified maximum value".to_string(),
                 ));
             }
         }
 
         if new_page_count >= MAX_PAGES {
             return Err(EngineError::Overflow(
-                "exceeded the maximum number of pages allowed in memory".to_string(),
+                "memory pages exceeds the maximum allowed value".to_string(),
             ));
         }
 
         self.data.resize((new_page_count * PAGE_SIZE) as usize, 0u8);
-
         Ok(old_page_count)
     }
 
-    fn get_memory_type(&self) -> MemoryType {
+    pub fn get_memory_type(&self) -> MemoryType {
         self.memory_type.clone()
     }
 
-    fn read_bytes(&self, address: usize, length: usize) -> &[u8] {
+    pub fn read_bytes(&self, address: usize, length: usize) -> &[u8] {
         &self.data[address..(address + length)]
     }
 
-    fn write_bytes(&mut self, address: usize, data: &[u8]) {
+    pub fn write_bytes(&mut self, address: usize, data: &[u8]) {
         for index in 0..data.len() {
             self.data[address + index] = data[index]
         }
     }
 
-    fn read_i8(&self, address: usize) -> i8 {
+    pub fn read_i8(&self, address: usize) -> i8 {
         let bytes = self.read_bytes(address, 1);
         bytes[0] as i8
     }
 
-    fn read_i16(&self, address: usize) -> i16 {
+    pub fn read_i16(&self, address: usize) -> i16 {
         let bytes = self.read_bytes(address, 2);
         i16::from_le_bytes(bytes.try_into().unwrap())
     }
 
-    fn read_i32(&self, address: usize) -> i32 {
+    pub fn read_i32(&self, address: usize) -> i32 {
         let bytes = self.read_bytes(address, 4);
         i32::from_le_bytes(bytes.try_into().unwrap())
     }
 
-    fn read_i64(&self, address: usize) -> i64 {
+    pub fn read_i64(&self, address: usize) -> i64 {
         let bytes = self.read_bytes(address, 8);
         i64::from_le_bytes(bytes.try_into().unwrap())
     }
 
-    fn read_f32(&self, address: usize) -> f32 {
+    pub fn read_f32(&self, address: usize) -> f32 {
         let bytes = self.read_bytes(address, 4);
         f32::from_le_bytes(bytes.try_into().unwrap())
     }
 
-    fn read_f64(&self, address: usize) -> f64 {
+    pub fn read_f64(&self, address: usize) -> f64 {
         let bytes = self.read_bytes(address, 8);
         f64::from_le_bytes(bytes.try_into().unwrap())
     }
 
-    fn write_i8(&mut self, address: usize, value: i8) {
+    pub fn write_i8(&mut self, address: usize, value: i8) {
         let data = i8::to_le_bytes(value);
         self.write_bytes(address, &data);
     }
 
-    fn write_i16(&mut self, address: usize, value: i16) {
+    pub fn write_i16(&mut self, address: usize, value: i16) {
         let data = i16::to_le_bytes(value);
         self.write_bytes(address, &data);
     }
 
-    fn write_i32(&mut self, address: usize, value: i32) {
+    pub fn write_i32(&mut self, address: usize, value: i32) {
         let data = i32::to_le_bytes(value);
         self.write_bytes(address, &data);
     }
 
-    fn write_i64(&mut self, address: usize, value: i64) {
+    pub fn write_i64(&mut self, address: usize, value: i64) {
         let data = i64::to_le_bytes(value);
         self.write_bytes(address, &data);
     }
 
-    fn write_f32(&mut self, address: usize, value: f32) {
+    pub fn write_f32(&mut self, address: usize, value: f32) {
         let data = f32::to_le_bytes(value);
         self.write_bytes(address, &data);
     }
 
-    fn write_f64(&mut self, address: usize, value: f64) {
+    pub fn write_f64(&mut self, address: usize, value: f64) {
         let data = f64::to_le_bytes(value);
         self.write_bytes(address, &data);
     }
@@ -174,7 +168,7 @@ impl Memory for VMMemory {
 mod tests {
     use anvm_ast::ast::{Limit, MemoryType};
 
-    use crate::object::{EngineError, Memory};
+    use crate::error::EngineError;
 
     use super::VMMemory;
 
@@ -183,24 +177,28 @@ mod tests {
         let mut m0 = VMMemory::new(MemoryType {
             limit: Limit::new(4, None),
         });
-
         assert_eq!(m0.get_page_count(), 4);
 
-        let n0 = m0.incrase_page(2).unwrap();
-        assert_eq!(n0, 4);
+        assert_eq!(m0.increase_page(2).unwrap(), 4);
         assert_eq!(m0.get_page_count(), 6);
 
-        let n1 = m0.incrase_page(3).unwrap();
-        assert_eq!(n1, 6);
+        assert_eq!(m0.increase_page(3).unwrap(), 6);
         assert_eq!(m0.get_page_count(), 9);
 
+        // 创建一个只有 min page 值的内存块
+        let mut m1 = VMMemory::new_by_min_page(2);
+        assert_eq!(m1.get_page_count(), 2);
+
+        assert_eq!(m1.increase_page(4).unwrap(), 2);
+        assert_eq!(m1.get_page_count(), 6);
+
         // 创建一个有 max page 值的内存块
-        let mut m1 = VMMemory::new(MemoryType {
+        let mut m2 = VMMemory::new(MemoryType {
             limit: Limit::new(2, Some(4)),
         });
-        assert_eq!(m1.get_page_count(), 2);
-        assert!(matches!(m1.incrase_page(2), Ok(_)));
-        assert!(matches!(m1.incrase_page(1), Err(EngineError::Overflow(_))));
+        assert_eq!(m2.get_page_count(), 2);
+        assert!(matches!(m2.increase_page(2), Ok(_)));
+        assert!(matches!(m2.increase_page(1), Err(EngineError::Overflow(_))));
     }
 
     #[test]
@@ -220,9 +218,7 @@ mod tests {
 
     #[test]
     fn test_read_write_numbers() {
-        let mut m0 = VMMemory::new(MemoryType {
-            limit: Limit::new(1, None),
-        });
+        let mut m0 = VMMemory::new_by_min_page(1);
 
         m0.write_i8(0, 0x11);
         m0.write_i8(8 * 1, 0x99u8 as i8);

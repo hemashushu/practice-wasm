@@ -26,17 +26,16 @@
 //
 // 注意，`表` 可以被导出导入，一张表的内容，即函数引用有可能来自多个不同的模块。
 
-use std::rc::Rc;
-
 use anvm_ast::ast::{Limit, TableType};
 
-use crate::object::{EngineError, Function, Table};
+use crate::error::EngineError;
 
 pub struct VMTable {
     /// TableType 的信息包含表的类型（目前只有函数引用类型）以及限制值（范围值）
     table_type: TableType,
 
-    elements: Vec<Option<Rc<dyn Function>>>,
+    /// 函数索引列表
+    elements: Vec<Option<u32>>,
 }
 
 impl VMTable {
@@ -44,64 +43,123 @@ impl VMTable {
         let min = table_type.limit.get_min();
         VMTable {
             table_type: table_type,
-            elements: vec![None; min as usize], //Vec::<Option<Rc<dyn Function>>>::with_capacity(min as usize),
+            elements: vec![None; min as usize],
         }
     }
-}
 
-impl Table for VMTable {
-    fn get_size(&self) -> u32 {
+    /// 创建指定项目数量（且不限最大值的）的表
+    pub fn new_by_min(min: u32) -> Self {
+        let table_type = TableType {
+            limit: Limit::AtLeast(min),
+        };
+
+        VMTable::new(table_type)
+    }
+
+    pub fn get_size(&self) -> u32 {
         self.elements.len() as u32
     }
 
-    fn increase_size(&mut self, increase_number: u32) -> Result<u32, EngineError> {
+    /// 返回原先的大小
+    pub fn increase_size(&mut self, increase_number: u32) -> Result<u32, EngineError> {
+        let old_len = self.get_size();
         let new_len = self.get_size() + increase_number;
 
+        // 如果 TableType 的 limit 成员不指定 max 值，则可以
+        // 增长到 u32 的最大值
         if let Limit::Range(_, max) = self.table_type.limit {
             if new_len > max {
                 return Err(EngineError::Overflow(
-                    "exceeded the maximum size of the table".to_string(),
+                    "the size exceeds the specified maximum of the table".to_string(),
                 ));
             }
         }
 
         self.elements.resize(new_len as usize, None);
-        Ok(new_len)
+        Ok(old_len)
     }
 
-    fn get_element(&self, index: usize) -> Result<Option<Rc<dyn Function>>, EngineError> {
+    pub fn get_element(&self, index: usize) -> Result<Option<u32>, EngineError> {
         if index >= self.elements.len() {
             return Err(EngineError::OutOfIndex(
-                "element index out of the range of the table".to_string(),
+                "element index value is out of the range of the table".to_string(),
             ));
         }
 
-        match &self.elements[index] {
-            Some(r) => Ok(Some(Rc::clone(r))),
-            None => Ok(None),
-        }
+        Ok(self.elements[index])
     }
 
-    fn set_element(&mut self, index: usize, func: Rc<dyn Function>) -> Result<(), EngineError> {
+    pub fn set_element(&mut self, index: usize, function_index: u32) -> Result<(), EngineError> {
         if index >= self.elements.len() {
             return Err(EngineError::OutOfIndex(
-                "element index out of the range of the table".to_string(),
+                "element index value is out of the range of the table".to_string(),
             ));
         }
 
-        self.elements[index] = Some(func);
+        self.elements[index] = Some(function_index);
         Ok(())
     }
 
-    fn get_table_type(&self) -> TableType {
+    pub fn get_table_type(&self) -> TableType {
         self.table_type.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use anvm_ast::ast::{Limit, TableType};
+
+    use crate::{error::EngineError, vm_table::VMTable};
+
     #[test]
     fn test_increase_size() {
-        // todo
+        let mut t0 = VMTable::new(TableType {
+            limit: Limit::new(4, None),
+        });
+        assert_eq!(t0.get_size(), 4);
+
+        assert_eq!(t0.increase_size(2).unwrap(), 4);
+        assert_eq!(t0.get_size(), 6);
+
+        assert_eq!(t0.increase_size(3).unwrap(), 6);
+        assert_eq!(t0.get_size(), 9);
+
+        // 创建一个只有 min page 值的表格
+        let mut m1 = VMTable::new_by_min(2);
+        assert_eq!(m1.get_size(), 2);
+
+        assert_eq!(m1.increase_size(4).unwrap(), 2);
+        assert_eq!(m1.get_size(), 6);
+
+        // 创建一个有 max page 值的表格
+        let mut m2 = VMTable::new(TableType {
+            limit: Limit::new(2, Some(4)),
+        });
+        assert_eq!(m2.get_size(), 2);
+        assert!(matches!(m2.increase_size(2), Ok(_)));
+        assert!(matches!(m2.increase_size(1), Err(EngineError::Overflow(_))));
+    }
+
+    #[test]
+    fn test_read_write_element() {
+        let mut t0 = VMTable::new_by_min(10);
+
+        t0.set_element(0, 10).unwrap();
+        t0.set_element(1, 11).unwrap();
+        t0.set_element(2, 12).unwrap();
+        t0.set_element(3, 13).unwrap();
+
+        assert_eq!(t0.get_element(0).unwrap(), Some(10));
+        assert_eq!(t0.get_element(1).unwrap(), Some(11));
+        assert_eq!(t0.get_element(2).unwrap(), Some(12));
+        assert_eq!(t0.get_element(3).unwrap(), Some(13));
+
+        assert_eq!(t0.get_element(4).unwrap(), None);
+        assert_eq!(t0.get_element(9).unwrap(), None);
+
+        assert!(matches!(
+            t0.get_element(20),
+            Err(EngineError::OutOfIndex(_))
+        ));
     }
 }

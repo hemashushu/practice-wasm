@@ -4,10 +4,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! 将一个模块的所有函数的指令序列合并成一个序列，
-//! 并且将诸如 `call`、`br`、`if`、`else` 等指令转换为相应的跳转指令。
+//! # 函数指令 "编译器"
 //!
-//! # 转换规则
+//! 将一个模块的所有函数的指令序列合并成一个序列，并且将诸如 `call`、`br`、`if`、`else` 等
+//! 流程控制类指令转换为当前的 VM 引擎可以直接解析执行的指令。
+//!
+//! ## 指令转换规则
 //!
 //! 大部分指令都不需要转换，仅对流程控制（分支）和函数调用等指令需要转换为 `控制指令`：
 //!
@@ -28,9 +30,7 @@
 //!   * 对于目标为模块外的函数，转为 `call_external 控制指令`；
 //!   * 对于目标为本地的函数（native function），转为 `call_native 控制指令`；
 //!
-//! 注：当前假设 br, br_if, return 等指令不允许出现在函数首层
-//!
-//! # 控制指令列表
+//! 控制指令列表
 //!
 //! - block (block_type)
 //! - block_jump_eq_zero (block_type, alternate_addr)
@@ -40,46 +40,12 @@
 //! - call_external (module_index, type_index, function_index, addr)
 //! - call_native (module_index, type_index, function_index)
 
-use anvm_ast::{
-    ast::{self, CodeItem},
-    instruction,
-};
+use anvm_ast::{ast::CodeItem, instruction};
 
 use crate::{
     error::EngineError,
-    native_module::NativeModule,
-    object::{Control, FunctionItem, Instruction},
+    object::{Control, FunctionItem, Instruction, NamedAstModule},
 };
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum FunctionLocation {
-    External {
-        type_index: usize,
-        module_name: String,
-        function_name: String,
-    },
-    Internal {
-        internal_function_index: usize,
-        type_index: usize,
-        start_index: usize,
-        end_index: usize, // 函数 `end 指令` 所在的位置
-    },
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct NamedAstModule {
-    name: String,
-    module: ast::Module,
-}
-
-impl NamedAstModule {
-    pub fn new(name: &str, module: ast::Module) -> Self {
-        Self {
-            name: name.to_string(),
-            module,
-        }
-    }
-}
 
 /// 将 AST 模块当中的函数指令序列编译为虚拟机能直接解析运行的指令
 ///
@@ -94,160 +60,10 @@ impl NamedAstModule {
 /// 不过为了便于追踪和调试，当前编译模块仅对一个模块里的所有函数指令序列进行合并，
 /// 而不会合并所有模块。
 pub fn compile(
-    native_modules: &[NativeModule],
+    // native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
+    function_items_list: &Vec<Vec<FunctionItem>>,
 ) -> Result<Vec<Vec<Instruction>>, EngineError> {
-    // 第 1 步：
-    // - 获取每个外部函数的模块名称和函数名称
-    // - 获取每个内部函数指令序列的开始和结束位置
-    // - 合并以上两项信息，得到每个模块的函数位置信息列表
-
-    // function_locations_list 仅包含 AST 模块的函数位置信息，
-    // 包括导入函数和模块内部函数。
-    // 不包括本地函数（native function）模块的函数信息。
-    let mut function_locations_list: Vec<Vec<FunctionLocation>> = vec![];
-
-    for named_ast_module in named_ast_modules {
-        // 注：内部函数的索引值并非总是从 0 开始，当一个模块有
-        // 导入的函数时，索引值优先从导入函数开始计算，所以第一个内部函数的索引值
-        // 等于导入函数的数量。
-        let import_function_locations =
-            get_ast_module_import_function_locations(&named_ast_module.module);
-        let internal_function_locations =
-            get_ast_module_internal_function_locations(&named_ast_module.module);
-
-        let mut function_locations: Vec<FunctionLocation> = vec![];
-        function_locations.extend_from_slice(&import_function_locations);
-        function_locations.extend_from_slice(&internal_function_locations);
-
-        function_locations_list.push(function_locations);
-    }
-
-    // 第 2 步：
-    // 将 FunctionLocation 转换为 FunctionItem
-    // 具体来说，因为一个模块里的导入函数（即对应的 FunctionLocation::External）即有可能
-    // 是另外一个模块的函数，也可能是另外一个模块的导入函数再次导出的函数，
-    // 还有可能是本地模块的本地函数。
-    // 这一个步骤主要就是为了解析 FunctionLocation::External 到
-    // FunctionItem::Native 和 FunctionItem::External。
-
-    let module_names = get_module_names(native_modules, named_ast_modules);
-    let native_module_count = native_modules.len();
-    let mut function_items_list: Vec<Vec<FunctionItem>> = vec![];
-
-    for function_locations in &function_locations_list {
-        let mut function_items: Vec<FunctionItem> = vec![];
-
-        for function_location in function_locations {
-            let function_item = match function_location {
-                FunctionLocation::External {
-                    type_index,
-                    module_name,
-                    function_name,
-                } => {
-                    let mut target_module_name = module_name;
-                    let mut target_function_name = function_name;
-
-                    loop {
-                        let target_module_index =
-                            get_module_index_by_name(&module_names, target_module_name).ok_or(
-                                EngineError::ObjectNotFound(format!(
-                                    "cannot found the module: {}",
-                                    target_module_name
-                                )),
-                            )?;
-
-                        if target_module_index < native_module_count {
-                            // 目标是本地函数模块的本地函数
-                            let target_native_module_index = target_module_index;
-                            let target_native_module = &native_modules[target_native_module_index];
-                            let target_function_index = get_native_module_function_index_by_name(
-                                target_native_module,
-                                target_function_name,
-                            )
-                            .ok_or(EngineError::ObjectNotFound(format!(
-                                "cannot found the native function: {} in native module: {}",
-                                target_function_name, target_module_name
-                            )))?;
-
-                            let function_item = FunctionItem::Native {
-                                type_index: *type_index,
-                                native_module_index: target_native_module_index,
-                                function_index: target_function_index,
-                            };
-
-                            break function_item;
-                        } else {
-                            // 目标是 AST 模块的函数
-
-                            let target_ast_module_index = target_module_index - native_module_count;
-                            let target_ast_module =
-                                &named_ast_modules[target_ast_module_index].module;
-
-                            let target_function_index = get_ast_module_function_index_by_name(
-                                target_ast_module,
-                                target_function_name,
-                            )
-                            .ok_or(EngineError::ObjectNotFound(format!(
-                                "cannot found the exported function: {} in module: {}",
-                                target_function_name, target_module_name
-                            )))?;
-
-                            let target_function_location = &function_locations_list
-                                [target_ast_module_index][target_function_index];
-
-                            match target_function_location {
-                                FunctionLocation::External {
-                                    type_index,
-                                    module_name,
-                                    function_name,
-                                } => {
-                                    // 目标函数是外部模块 "从外部导入然后再重新导出" 的函数，
-                                    // 所需需要再解析一遍，直到目标函数是 "AST 模块的内部函数" 和 "本地函数模块的本地函数"
-                                    // 这两者之中的一个为止。
-                                    target_module_name = module_name;
-                                    target_function_name = function_name;
-                                }
-                                FunctionLocation::Internal {
-                                    internal_function_index,
-                                    type_index,
-                                    start_index,
-                                    end_index,
-                                } => {
-                                    // 目标函数是外部模块的内部函数
-                                    let function_item = FunctionItem::External {
-                                        type_index: *type_index,
-                                        ast_module_index: target_ast_module_index,
-                                        function_index: target_function_index,
-                                        internal_function_index: *internal_function_index,
-                                        start_index: *start_index,
-                                        end_index: *end_index,
-                                    };
-                                    break function_item;
-                                }
-                            }
-                        }
-                    }
-                }
-                FunctionLocation::Internal {
-                    internal_function_index,
-                    type_index,
-                    start_index,
-                    end_index,
-                } => FunctionItem::Internal {
-                    type_index: *type_index,
-                    internal_function_index: *internal_function_index,
-                    start_index: *start_index,
-                    end_index: *end_index,
-                },
-            };
-
-            function_items.push(function_item);
-        }
-
-        function_items_list.push(function_items);
-    }
-
     // 第 3 步：
     // - 将 AST 的 Instruction 转换为虚拟机可直接解析运行的 Instruction
     // - 合并一个模块里的所有内部函数的指令序列
@@ -442,102 +258,6 @@ pub fn compile(
     Ok(instructions_list)
 }
 
-fn get_ast_module_import_function_locations(ast_module: &ast::Module) -> Vec<FunctionLocation> {
-    ast_module
-        .import_items
-        .iter()
-        .filter_map(|item| {
-            if let ast::ImportDescriptor::FunctionTypeIndex(type_index) = item.import_descriptor {
-                let temp_item = FunctionLocation::External {
-                    type_index: type_index as usize,
-                    module_name: item.module_name.clone(),
-                    function_name: item.item_name.clone(),
-                };
-                Some(temp_item)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<FunctionLocation>>()
-}
-
-fn get_ast_module_internal_function_locations(ast_module: &ast::Module) -> Vec<FunctionLocation> {
-    let mut function_addr_offset: usize = 0;
-    let mut function_locations: Vec<FunctionLocation> = vec![];
-
-    for (internal_function_index, type_index) in ast_module.function_list.iter().enumerate() {
-        let instruction_count = ast_module.code_items[internal_function_index]
-            .instruction_items
-            .len();
-        let function_location = FunctionLocation::Internal {
-            internal_function_index,
-            type_index: *type_index as usize,
-            start_index: function_addr_offset,
-            end_index: function_addr_offset + instruction_count - 1,
-        };
-        function_locations.push(function_location);
-
-        // 递增函数开始位置的偏移值
-        // 因为同一个模块里的所有内部函数的指令序列将会被合并
-        function_addr_offset += instruction_count;
-    }
-
-    function_locations
-}
-
-fn get_module_names(
-    native_modules: &[NativeModule],
-    named_ast_modules: &[NamedAstModule],
-) -> Vec<String> {
-    let native_module_names = native_modules
-        .iter()
-        .map(|m| m.name.clone())
-        .collect::<Vec<String>>();
-    let ast_module_names = named_ast_modules
-        .iter()
-        .map(|m| m.name.clone())
-        .collect::<Vec<String>>();
-    let mut module_names: Vec<String> = vec![];
-
-    module_names.extend_from_slice(&native_module_names);
-    module_names.extend_from_slice(&ast_module_names);
-    module_names
-}
-
-fn get_module_index_by_name(module_names: &[String], name: &str) -> Option<usize> {
-    module_names
-        .iter()
-        .enumerate()
-        .find(|(_, module_name)| *module_name == name)
-        .map(|(index, _)| index)
-}
-
-fn get_native_module_function_index_by_name(
-    native_modules: &NativeModule,
-    name: &str,
-) -> Option<usize> {
-    native_modules
-        .function_items
-        .iter()
-        .enumerate()
-        .find(|(_, item)| item.name == name)
-        .map(|(index, _)| index)
-}
-
-fn get_ast_module_function_index_by_name(ast_modules: &ast::Module, name: &str) -> Option<usize> {
-    ast_modules.export_items.iter().find_map(|item| {
-        if item.name == name {
-            if let ast::ExportDescriptor::FunctionIndex(function_index) = item.export_descriptor {
-                Some(function_index as usize)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    })
-}
-
 #[derive(Debug, PartialEq, Clone)]
 enum BlockStructureType {
     Block,
@@ -664,9 +384,10 @@ fn get_function_block_locations(code_item: &CodeItem) -> Vec<BlockLocation> {
 mod tests {
     use super::{compile, NamedAstModule};
     use crate::{
-        error::NativeError,
-        native_module::{NativeFunction, NativeModule},
-        object::{Control, Instruction},
+        error::{EngineError, NativeError},
+        linker,
+        native_module::NativeModule,
+        object::{Control, FunctionItem, Instruction},
     };
     use anvm_ast::{
         ast::{self, CodeItem, ExportItem, FunctionType, ImportItem, TypeItem},
@@ -680,8 +401,9 @@ mod tests {
     /// 跟测试无关的成员均以空列表顶替。
     fn create_test_ast_module(
         name: &str,
-        import_items: Vec<ImportItem>,
+        type_items: Vec<TypeItem>,
         function_list: Vec<u32>,
+        import_items: Vec<ImportItem>,
         export_items: Vec<ExportItem>,
         code_items: Vec<CodeItem>,
     ) -> NamedAstModule {
@@ -689,7 +411,7 @@ mod tests {
             name: name.to_string(),
             module: ast::Module {
                 custom_items: vec![],
-                type_items: vec![], // 目前 compiler 不检查函数的类型，所以可以传入一个空的类型列表
+                type_items,
                 import_items,
                 function_list,
                 tables: vec![],
@@ -707,18 +429,21 @@ mod tests {
     /// 创建最小化的 AST Module
     fn create_simple_test_ast_module(
         name: &str,
+        type_items: Vec<TypeItem>,
         function_list: Vec<u32>,
         code_items: Vec<CodeItem>,
     ) -> NamedAstModule {
-        create_test_ast_module(name, vec![], function_list, vec![], code_items)
+        create_test_ast_module(name, type_items, function_list, vec![], vec![], code_items)
     }
 
     fn test_native_function_add(params: &[Value]) -> Result<Vec<Value>, NativeError> {
-        todo!()
+        // 返回值不是单元测试的检测项目，所以随便返回一个常量
+        Ok(vec![Value::I32(10)])
     }
 
     fn test_native_function_sub(params: &[Value]) -> Result<Vec<Value>, NativeError> {
-        todo!()
+        // 返回值不是单元测试的检测项目，所以随便返回一个常量
+        Ok(vec![Value::I32(10)])
     }
 
     fn create_test_native_module() -> NativeModule {
@@ -743,12 +468,25 @@ mod tests {
         module
     }
 
+    fn link_and_compile_functions(
+        native_modules: &[NativeModule],
+        named_ast_modules: &[NamedAstModule],
+    ) -> Result<Vec<Vec<Instruction>>, EngineError> {
+        let function_items_list: Vec<Vec<FunctionItem>> =
+            linker::link_functions(native_modules, named_ast_modules)?;
+        compile(named_ast_modules, &function_items_list)
+    }
+
     #[test]
     fn test_instruction_combine() {
         let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![
             create_simple_test_ast_module(
                 "m0",
+                vec![TypeItem::FunctionType(FunctionType {
+                    params: vec![ValueType::I32],
+                    results: vec![ValueType::I32],
+                })],
                 vec![0, 0, 0],
                 vec![
                     CodeItem {
@@ -776,6 +514,10 @@ mod tests {
             ),
             create_simple_test_ast_module(
                 "m1",
+                vec![TypeItem::FunctionType(FunctionType {
+                    params: vec![ValueType::I32],
+                    results: vec![ValueType::I32],
+                })],
                 vec![0, 0],
                 vec![
                     CodeItem {
@@ -798,7 +540,7 @@ mod tests {
             ),
         ];
 
-        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 Instruction::Original(instruction::Instruction::I32Const(1)),
@@ -826,6 +568,10 @@ mod tests {
         let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
             "m0",
+            vec![TypeItem::FunctionType(FunctionType {
+                params: vec![ValueType::I32],
+                results: vec![ValueType::I32],
+            })],
             vec![0, 0],
             vec![
                 CodeItem {
@@ -960,7 +706,7 @@ mod tests {
             ],
         )];
 
-        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Original(instruction::Instruction::I32Const(0)),
@@ -1063,6 +809,10 @@ mod tests {
         let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
             "m0",
+            vec![TypeItem::FunctionType(FunctionType {
+                params: vec![ValueType::I32],
+                results: vec![ValueType::I32],
+            })],
             vec![0, 0, 0],
             vec![
                 CodeItem {
@@ -1097,7 +847,7 @@ mod tests {
             ],
         )];
 
-        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Original(instruction::Instruction::I32Const(0)), // #00
@@ -1127,8 +877,12 @@ mod tests {
         let named_ast_modules: Vec<NamedAstModule> = vec![
             create_test_ast_module(
                 "m0",
-                vec![],
+                vec![TypeItem::FunctionType(FunctionType {
+                    params: vec![ValueType::I32],
+                    results: vec![ValueType::I32],
+                })],
                 vec![0, 0],
+                vec![],
                 vec![
                     ExportItem {
                         name: "f0".to_string(),
@@ -1161,6 +915,11 @@ mod tests {
             ),
             create_test_ast_module(
                 "m1",
+                vec![TypeItem::FunctionType(FunctionType {
+                    params: vec![ValueType::I32],
+                    results: vec![ValueType::I32],
+                })],
+                vec![0, 0],
                 vec![
                     ImportItem {
                         module_name: "m0".to_string(),
@@ -1173,7 +932,6 @@ mod tests {
                         import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
                     },
                 ],
-                vec![0, 0],
                 vec![],
                 vec![
                     CodeItem {
@@ -1208,7 +966,7 @@ mod tests {
             ),
         ];
 
-        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function 0
@@ -1252,6 +1010,11 @@ mod tests {
 
         let named_ast_modules: Vec<NamedAstModule> = vec![create_test_ast_module(
             "m1",
+            vec![TypeItem::FunctionType(FunctionType {
+                params: vec![ValueType::I32, ValueType::I32],
+                results: vec![ValueType::I32],
+            })],
+            vec![0, 0],
             vec![
                 ImportItem {
                     module_name: "m0".to_string(),
@@ -1264,7 +1027,6 @@ mod tests {
                     import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
                 },
             ],
-            vec![0, 0],
             vec![],
             vec![
                 CodeItem {
@@ -1298,7 +1060,7 @@ mod tests {
             ],
         )];
 
-        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function index 2
             Instruction::Original(instruction::Instruction::I32Const(0)), // #00
@@ -1337,8 +1099,12 @@ mod tests {
         let named_ast_modules: Vec<NamedAstModule> = vec![
             create_test_ast_module(
                 "m1",
-                vec![],
+                vec![TypeItem::FunctionType(FunctionType {
+                    params: vec![],
+                    results: vec![],
+                })],
                 vec![0, 0],
+                vec![],
                 vec![ExportItem {
                     name: "bottom".to_string(),
                     export_descriptor: ast::ExportDescriptor::FunctionIndex(1),
@@ -1365,6 +1131,21 @@ mod tests {
             create_test_ast_module(
                 "m2",
                 vec![
+                    TypeItem::FunctionType(FunctionType {
+                        params: vec![ValueType::I32, ValueType::I32],
+                        results: vec![ValueType::I32],
+                    }),
+                    TypeItem::FunctionType(FunctionType {
+                        params: vec![],
+                        results: vec![],
+                    }),
+                    TypeItem::FunctionType(FunctionType {
+                        params: vec![ValueType::I32],
+                        results: vec![ValueType::I32],
+                    }),
+                ],
+                vec![2, 2],
+                vec![
                     ImportItem {
                         module_name: "m0".to_string(),
                         item_name: "add".to_string(),
@@ -1373,10 +1154,9 @@ mod tests {
                     ImportItem {
                         module_name: "m1".to_string(),
                         item_name: "bottom".to_string(),
-                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(1),
                     },
                 ],
-                vec![0, 0],
                 vec![
                     ExportItem {
                         name: "f0".to_string(),
@@ -1414,6 +1194,29 @@ mod tests {
             create_test_ast_module(
                 "m3",
                 vec![
+                    // type for native function 'add'/'f0'
+                    TypeItem::FunctionType(FunctionType {
+                        params: vec![ValueType::I32, ValueType::I32],
+                        results: vec![ValueType::I32],
+                    }),
+                    // type for function 'bottom'/'f1'
+                    TypeItem::FunctionType(FunctionType {
+                        params: vec![],
+                        results: vec![],
+                    }),
+                    // type for function 'f2'
+                    TypeItem::FunctionType(FunctionType {
+                        params: vec![ValueType::I32],
+                        results: vec![ValueType::I32],
+                    }),
+                    // type for internal function index 3
+                    TypeItem::FunctionType(FunctionType {
+                        params: vec![ValueType::I32],
+                        results: vec![],
+                    }),
+                ],
+                vec![3],
+                vec![
                     ImportItem {
                         module_name: "m2".to_string(),
                         item_name: "f0".to_string(),
@@ -1422,15 +1225,14 @@ mod tests {
                     ImportItem {
                         module_name: "m2".to_string(),
                         item_name: "f1".to_string(),
-                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(1),
                     },
                     ImportItem {
                         module_name: "m2".to_string(),
                         item_name: "f2".to_string(),
-                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(0),
+                        import_descriptor: ast::ImportDescriptor::FunctionTypeIndex(2),
                     },
                 ],
-                vec![0],
                 vec![],
                 vec![CodeItem {
                     // function index 3
@@ -1448,7 +1250,7 @@ mod tests {
             ),
         ];
 
-        let actual = compile(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function index 0
@@ -1474,7 +1276,7 @@ mod tests {
                 Instruction::Original(instruction::Instruction::I32Const(1)), // #02
                 Instruction::Control(Control::CallExternal(0, 0, 1, 1, 2)),   // #03
                 Instruction::Original(instruction::Instruction::I32Const(2)), // #04
-                Instruction::Control(Control::CallExternal(1, 0, 3, 1, 3)),   // #05
+                Instruction::Control(Control::CallExternal(1, 2, 3, 1, 3)),   // #05
                 Instruction::Original(instruction::Instruction::End),         // #06
             ],
         ];

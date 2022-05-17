@@ -9,17 +9,19 @@ pub mod object;
 pub mod native_module;
 // pub mod wasm_module;
 // pub mod instance;
-pub mod compiler;
 
 // pub mod vm_operand_stack;
 // pub mod vm_stack_frame;
 // pub mod vm_control_stack;
 // pub mod vm_function;
-// pub mod vm_table;
-// pub mod vm_memory;
-// pub mod vm_global_variable;
+pub mod vm_memory;
+pub mod vm_table;
+pub mod vm_global_variable;
 // pub mod vm_module;
 // pub mod vm_instruction;
+
+pub mod linker;
+pub mod compiler;
 
 // mod ins_const;
 // mod ins_parametric;

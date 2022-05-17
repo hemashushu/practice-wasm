@@ -6,7 +6,7 @@
 
 use anvm_ast::{ast::GlobalType, types::Value};
 
-use crate::object::{EngineError, GlobalVariable};
+use crate::error::EngineError;
 
 pub struct VMGlobalVariable {
     /// GlobalType 记录变量的 `数据类型` 以及 `可变性`
@@ -22,14 +22,12 @@ impl VMGlobalVariable {
             value: value,
         }
     }
-}
 
-impl GlobalVariable for VMGlobalVariable {
-    fn get_value(&self) -> Value {
+    pub fn get_value(&self) -> Value {
         self.value
     }
 
-    fn set_value(&mut self, value: Value) -> Result<(), EngineError> {
+    pub fn set_value(&mut self, value: Value) -> Result<(), EngineError> {
         if !self.global_type.mutable {
             return Err(EngineError::InvalidOperation(
                 "the specified global variable is immutable".to_string(),
@@ -47,7 +45,56 @@ impl GlobalVariable for VMGlobalVariable {
         Ok(())
     }
 
-    fn get_global_type(&self) -> GlobalType {
+    pub fn get_global_type(&self) -> GlobalType {
         self.global_type.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use anvm_ast::{
+        ast::GlobalType,
+        types::{Value, ValueType},
+    };
+
+    use crate::error::EngineError;
+
+    use super::VMGlobalVariable;
+
+    #[test]
+    fn test_get_set() {
+        // 创建一个不可变的全局变量
+        let mut g0 = VMGlobalVariable::new(
+            GlobalType {
+                value_type: ValueType::I32,
+                mutable: false,
+            },
+            Value::I32(10),
+        );
+
+        assert_eq!(g0.get_value(), Value::I32(10));
+        assert!(matches!(
+            g0.set_value(Value::I32(20)),
+            Err(EngineError::InvalidOperation(_))
+        ));
+
+        // 创建一个可变的全局变量
+        let mut g1 = VMGlobalVariable::new(
+            GlobalType {
+                value_type: ValueType::I32,
+                mutable: true,
+            },
+            Value::I32(20),
+        );
+
+        assert_eq!(g1.get_value(), Value::I32(20));
+
+        assert!(matches!(g1.set_value(Value::I32(30)), Ok(_)));
+        assert_eq!(g1.get_value(), Value::I32(30));
+
+        assert!(matches!(
+            g1.set_value(Value::I64(40)), // 设置一个不同数据类型的值
+            Err(EngineError::InvalidOperation(_))
+        ))
     }
 }
