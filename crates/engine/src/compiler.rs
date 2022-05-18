@@ -15,10 +15,12 @@
 //!
 //! - `block 指令` 转换为 `block 控制指令`；
 //! - `loop 指令` 转换为 `block 控制指令`；
-//! - `if 指令` 转换为 `block_jump_eq_zero 控制指令`，跳转目标为原 `else` 指令所在的位置；
-//!   注，原始的 `if 指令` 其实是一个 `block 控制指令` 和一个 `jump_eqz 控制指令` 的语法糖，
-//!   不过为了让转换后的 `指令序列` 跟原始的的位置（即索引）一一对于（以便于追踪和调试），所以
-//!   新增加一个专门跟 `if 指令` 对应的 `block_jump_eq_zero 控制指令`；
+//! - `if 指令` 转换为 `block_jump_eq_zero 控制指令`，跳转目标为原 `else 指令` 或者原 `end 指令` 所在的位置；
+//!   * 原始的 `if 指令` 其实是一个 `block 控制指令` 和一个 `jump_eq_zero 控制指令` 的语法糖，
+//!     不过为了让转换后的 `指令序列` 跟原始的的位置（即索引）一一对于（以便于追踪和调试），所以
+//!     新增加一个专门跟 `if 指令` 对应的 `block_jump_eq_zero 控制指令`；
+//!   * 有时 `if 指令` 的结构里不一定存在 `else 指令`，这时相当于在 `end 指令` 前有一个隐藏的 `else 指令`，
+//!     为了简化起见，如果 `if 指令` 的结构里不存在 `else 指令`，则直接让跳转目标为 `end 指令` 所在的位置。
 //! - `else 指令` 转换为 `jump 控制指令`，跳转目标为 if 结构块当中 `end 指令` 所在的位置；
 //! - `br 指令` 转换为 `jump 控制指令`，跳转目标由目标 block 类型所决定，即
 //!   * 对于原 block/if 结构块，跳转目标为原始结构块的 `end 指令` 所在的位置，
@@ -98,10 +100,19 @@ pub fn compile(
                         block_index_stack.push(*block_index as usize);
 
                         // 获取 if 结构块当中的 `else 指令` 所在的位置
-                        let else_index = block_locations[*block_index as usize].middle_index;
+                        let block_location = &block_locations[*block_index as usize];
+                        let else_index = block_location.middle_index;
+
+                        // 如果 if 结构块当中的缺少了 `else 指令`，则跳转目标为 `end 指令` 所在的位置
+                        let target_addr = if else_index == 0 {
+                            block_location.end_index
+                        } else {
+                            else_index
+                        };
+
                         Instruction::Control(Control::BlockJumpEqZero(
                             block_type.to_owned(),
-                            function_addr_offset + else_index,
+                            function_addr_offset + target_addr,
                         ))
                     }
                     instruction::Instruction::Else => {
@@ -585,6 +596,7 @@ mod tests {
                     local_groups: vec![],
                     instruction_items: vec![
                         // 创建如下的结构块
+                        // 测试 `block 结构块` 和 `loop 结构块`
                         //
                         // |  0--block-start
                         // |  |  1--loop-start
@@ -632,6 +644,7 @@ mod tests {
                     local_groups: vec![],
                     instruction_items: vec![
                         // 创建如下的结构块
+                        // 测试 `if 结构块`
                         //
                         // |  0--block-start
                         // |  |  1--loop-start
@@ -687,20 +700,51 @@ mod tests {
                         instruction::Instruction::Br(4), // #70 - jump to function end
                         instruction::Instruction::Return, // #71
                         instruction::Instruction::End,   // #72 - block 6 end
-                        instruction::Instruction::End,   // #73 // block 4 end
+                        instruction::Instruction::End,   // #73 - block 4 end
                         instruction::Instruction::Br(0), // #74
                         instruction::Instruction::Br(1), // #75
                         instruction::Instruction::Return, // #76
-                        instruction::Instruction::End,   // #77 // block 3 end
+                        instruction::Instruction::End,   // #77 - block 3 end
                         //
                         instruction::Instruction::Br(0),       // #78
                         instruction::Instruction::Return,      // #79
-                        instruction::Instruction::End,         // #80 // block 0 end
+                        instruction::Instruction::End,         // #80 - block 0 end
                         instruction::Instruction::I32Const(0), // #81
                         instruction::Instruction::I32Const(1), // #82
                         instruction::Instruction::Br(0),       // #83
                         instruction::Instruction::Return,      // #84
                         instruction::Instruction::End,         // #85
+                    ],
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        // 创建如下的结构块
+                        // 测试缺少了 `else 指令` 的 `if 结构块`
+                        //
+                        // |  0--if-start
+                        // |  |  1--block-start
+                        // |  |  1--block-end
+                        // |  0--if-end
+                        instruction::Instruction::I32Const(0), // #86
+                        instruction::Instruction::I32Const(1), // #87
+                        instruction::Instruction::If(BlockType::Builtin(None), 0), // #88 - block 0
+                        instruction::Instruction::Br(0),       // #89
+                        instruction::Instruction::Br(1),       // #90
+                        instruction::Instruction::Return,      // #91
+                        instruction::Instruction::Block(BlockType::Builtin(None), 1), // #92 - block 1
+                        instruction::Instruction::Br(0),                              // #93
+                        instruction::Instruction::Br(1),                              // #94
+                        instruction::Instruction::Br(2),                              // #95
+                        instruction::Instruction::Return,                             // #96
+                        instruction::Instruction::End, // #97 - block 1 end
+                        instruction::Instruction::Br(0), // #98
+                        instruction::Instruction::Br(1), // #99
+                        instruction::Instruction::Return, // #100
+                        instruction::Instruction::End, // #101 - block 0 end
+                        instruction::Instruction::I32Const(2), // #102
+                        instruction::Instruction::I32Const(3), // #103
+                        instruction::Instruction::End, // #104
                     ],
                 },
             ],
@@ -799,6 +843,26 @@ mod tests {
             Instruction::Control(Control::Jump(0, 85)), // #83
             Instruction::Control(Control::Jump(0, 85)), // #84
             Instruction::Original(instruction::Instruction::End), // #85
+            // function 4
+            Instruction::Original(instruction::Instruction::I32Const(0)), // #86
+            Instruction::Original(instruction::Instruction::I32Const(1)), // #87
+            Instruction::Control(Control::BlockJumpEqZero(BlockType::Builtin(None), 101)), // #88 - block 0
+            Instruction::Control(Control::Jump(0, 101)),                                   // #89
+            Instruction::Control(Control::Jump(1, 104)),                                   // #90
+            Instruction::Control(Control::Jump(1, 104)),                                   // #91
+            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #92 - block 1
+            Instruction::Control(Control::Jump(0, 97)),                     // #93
+            Instruction::Control(Control::Jump(1, 101)),                    // #94
+            Instruction::Control(Control::Jump(2, 104)),                    // #95
+            Instruction::Control(Control::Jump(2, 104)),                    // #96
+            Instruction::Original(instruction::Instruction::End),           // #97 - block 1 end
+            Instruction::Control(Control::Jump(0, 101)),                    // #98
+            Instruction::Control(Control::Jump(1, 104)),                    // #99
+            Instruction::Control(Control::Jump(1, 104)),                    // #100
+            Instruction::Original(instruction::Instruction::End),           // #101 - block 0 end
+            Instruction::Original(instruction::Instruction::I32Const(2)),   // #102
+            Instruction::Original(instruction::Instruction::I32Const(3)),   // #103
+            Instruction::Original(instruction::Instruction::End),           // #104
         ]];
 
         assert_eq!(actual, expected);

@@ -12,7 +12,7 @@ use crate::{
     vm_memory::VMMemory,
     vm_table::VMTable,
 };
-use anvm_ast::ast::{self, TypeItem};
+use anvm_ast::ast::{self, ImportDescriptor, ImportItem, TypeItem};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionLocation {
@@ -326,7 +326,72 @@ fn get_ast_module_function_index_by_name(ast_modules: &ast::Module, name: &str) 
 pub fn link_tables(
     native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
+    // interpreter: &Interpreter,
 ) -> Result<(Vec<usize>, Vec<VMTable>), EngineError> {
+    let module_count = named_ast_modules.len();
+
+    // 将列表元素的初始值设置为 usize::MAX
+    // 以表示该项尚未设置
+    let mut module_table_map: Vec<usize> = vec![usize::MAX, module_count];
+
+    let mut tables: Vec<VMTable> = vec![];
+
+    // 先创建非导入的表
+    for (ast_module_index, ast_module) in named_ast_modules
+        .iter()
+        .map(|item| &item.module)
+        .enumerate()
+    {
+        // 先检查是否存在导入项
+        let option_import_item = ast_module
+            .import_items
+            .iter()
+            .find(|item| matches!(item.import_descriptor, ImportDescriptor::TableType(_)));
+
+        if option_import_item == None {
+            // 无表类型的导入项，创建新表
+
+            let table = if let Some(first) = ast_module.tables.first() {
+                // 根据定义创建新表
+                VMTable::new(first.clone())
+            } else {
+                // 创建默认表（容量最小值为 0，不限最大值的表）
+                VMTable::new_by_min(0)
+            };
+
+            let table_index = tables.len();
+            tables.push(table);
+
+            module_table_map[ast_module_index] = table_index;
+        }
+    }
+
+    // 解决导入表格
+    for (ast_module_index, ast_module) in named_ast_modules
+        .iter()
+        .map(|item| &item.module)
+        .enumerate()
+    {
+        if module_table_map[ast_module_index] != usize::MAX {
+            continue;
+        }
+
+        let (import_module_name, import_item_name, import_table_type) = ast_module
+            .import_items
+            .iter()
+            .find_map(|item| {
+                if let ImportDescriptor::TableType(table_type) = &item.import_descriptor {
+                    Some((&item.module_name, &item.item_name, table_type))
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+
+        let mut target_module_name = import_module_name;
+        let mut target_item_name = import_item_name;
+        let mut target_table_type = import_table_type;
+    }
     todo!()
 }
 
@@ -343,6 +408,7 @@ pub fn link_tables(
 pub fn link_memorys(
     native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
+    // interpreter: &Interpreter,
 ) -> Result<(Vec<usize>, Vec<VMMemory>), EngineError> {
     todo!()
 }
@@ -355,6 +421,7 @@ pub fn link_memorys(
 pub fn link_global_variables(
     native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
+    // interpreter: &Interpreter,
 ) -> Result<(Vec<Vec<usize>>, Vec<VMGlobalVariable>), EngineError> {
     todo!()
 }

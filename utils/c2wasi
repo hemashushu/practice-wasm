@@ -1,0 +1,36 @@
+#!/bin/zx
+
+// 运行此脚本需要先安装：
+//
+// - nodejs
+// - zx (https://github.com/google/zx)
+// - clang
+// - https://github.com/WebAssembly/wasi-libc
+
+
+let args = process.argv;
+
+if (args.length != 5) {
+    console.log(
+`Usage:
+    ./c2wasi path-to-sysroot path-to-source.c
+`);
+    process.exit(1);
+}
+
+import 'path';
+
+let sysrootPath = path.resolve(args[3])
+let filePath = path.resolve(args[4]);
+
+if (!filePath.endsWith('.c')) {
+    console.log('Only *.c file is supported.');
+    process.exit(1);
+}
+
+let pos = filePath.lastIndexOf('.');
+let outputFile = filePath.substring(0, pos) + '.wasm';
+
+await $`clang --target=wasm32-unknown-wasi --sysroot "${sysrootPath}" -O2 -s -o "${outputFile}" "${filePath}"`
+
+console.log(`output: ${outputFile}`);

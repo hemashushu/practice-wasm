@@ -17,7 +17,9 @@
   - [编译 Rust 到 Wasm](#编译-rust-到-wasm)
     - [编译单独一个 Rust 源码文件](#编译单独一个-rust-源码文件)
     - [编译一个 cargo 项目](#编译一个-cargo-项目)
-  - [编译 C 到 wasm](#编译-c-到-wasm)
+  - [编译 Rust 到 Wasi](#编译-rust-到-wasi)
+  - [编译 C 到 Wasm](#编译-c-到-wasm)
+  - [编译 C 到 Wasi](#编译-c-到-wasi)
   - [wasm-pack 和 wasm-bindgen](#wasm-pack-和-wasm-bindgen)
 
 <!-- /code_chunk_output -->
@@ -129,7 +131,13 @@ crate-type = ["cdylib"]
 
 `$ cargo build --target wasm32-unknown-unknown --release`
 
-## 编译 C 到 wasm
+## 编译 Rust 到 Wasi
+
+跟编译到 Wasm 类似，只需将编译目标更改为 `wasm32-wasi` 即可：
+
+`$ rustc --target wasm32-wasi -C lto -O hello.rs -o hello.wasm`
+
+## 编译 C 到 Wasm
 
 先安装 clang（LLVM），然后使用 `clang` 命令编译：
 
@@ -139,6 +147,31 @@ crate-type = ["cdylib"]
 
 - [Compiling C to WebAssembly and Running It - without Emscripten](https://depth-first.com/articles/2019/10/16/compiling-c-to-webassembly-and-running-it-without-emscripten/)
 - [Compiling C to WebAssembly without Emscripten](https://dassur.ma/things/c-to-webassembly/)
+- [Compiling C to WebAssembly using clang/LLVM and WASI](https://00f.net/2019/04/07/compiling-to-webassembly-with-llvm-and-clang/)
+
+## 编译 C 到 Wasi
+
+1. 安装 clang（LLVM）
+2. 克隆并编译 [wasi-libc](https://github.com/WebAssembly/wasi-libc)
+
+```bash
+$ git clone https://github.com/WebAssembly/wasi-libc.git
+$ cd wasi-libc
+$ make install INSTALL_DIR=~/sysroot
+```
+
+3. 获取 libclang_rt.builtins-wasm32.a
+
+可以通过编译 [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) 获取，或者下载预编译的包 https://github.com/jedisct1/libclang_rt.builtins-wasm32.a
+
+把库复制到类似 `/usr/lib/clang/x.y.z/lib/wasi/` 目录。
+
+4. 编译
+
+`$ clang --target=wasm32-unknown-wasi --sysroot ~/wasi-libc -Os -s -o example.wasm example.c`
+
+参考:
+
 - [Compiling C to WebAssembly using clang/LLVM and WASI](https://00f.net/2019/04/07/compiling-to-webassembly-with-llvm-and-clang/)
 
 ## wasm-pack 和 wasm-bindgen

@@ -3,7 +3,7 @@
 // 运行此脚本需要先安装：
 //
 // - rust
-// - [wasm-tools](https://github.com/bytecodealliance/wasm-tools) `$ cargo install wasm-tools`
+// - `$ rustup target add wasm32-wasi`
 // - zx (https://github.com/google/zx)
 
 let args = process.argv;
@@ -11,7 +11,7 @@ let args = process.argv;
 if (args.length != 4) {
     console.log(
 `Usage:
-    ./wasm2wat path-to-source.wasm
+    ./rust2wasm path-to-source.rs
 `);
     process.exit(1);
 }
@@ -20,14 +20,14 @@ import 'path';
 
 let filePath = path.resolve(args[3]);
 
-if (!filePath.endsWith('.wasm')) {
-    console.log('Only *.wasm file is supported.');
+if (!filePath.endsWith('.rs')) {
+    console.log('Only *.rs file is supported.');
     process.exit(1);
 }
 
 let pos = filePath.lastIndexOf('.');
-let outputFile = filePath.substring(0, pos) + '.wat';
+let outputFile = filePath.substring(0, pos) + '.wasm';
 
-await $`wasm-tools print ${filePath} > ${outputFile}`
+await $`rustc --target wasm32-wasi -O -C lto "${filePath}" -o "${outputFile}"`
 
 console.log(`output: ${outputFile}`);
