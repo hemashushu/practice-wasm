@@ -45,8 +45,8 @@ impl VMGlobalVariable {
         Ok(())
     }
 
-    pub fn get_global_type(&self) -> GlobalType {
-        self.global_type.clone()
+    pub fn get_global_type(&self) -> &GlobalType {
+        &self.global_type //.clone()
     }
 }
 

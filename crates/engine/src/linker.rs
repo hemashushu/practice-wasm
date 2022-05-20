@@ -12,7 +12,10 @@ use crate::{
     vm_memory::VMMemory,
     vm_table::VMTable,
 };
-use anvm_ast::ast::{self, ImportDescriptor, ImportItem, TypeItem};
+use anvm_ast::{
+    ast::{self, ExportDescriptor, GlobalType, ImportDescriptor, TypeItem},
+    types::Value,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionLocation {
@@ -153,7 +156,7 @@ pub fn link_functions(
 
                             match target_function_location {
                                 FunctionLocation::External {
-                                    type_index,
+                                    type_index: _,
                                     module_name,
                                     function_name,
                                 } => {
@@ -319,22 +322,19 @@ fn get_ast_module_function_index_by_name(ast_modules: &ast::Module, name: &str) 
 /// 最小值为 0 的表对象
 ///
 /// 返回值当中
-/// - Vec<VMTable> 是虚拟机实例当中所有表的列表
-/// - Vec<usize> 是每个 AST Module 对应的表的索引列表，
+/// - Vec<VMTable> 是虚拟机当中所有实例表的列表
+/// - Vec<usize> 是每个 AST Module 对应的实例表的索引列表，
 ///   注：目前 WebAssembly 限制一个 Module 只能有一张表；
 ///   存在多个 Module 对应同一张表的情况。
 pub fn link_tables(
-    native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
-    // interpreter: &Interpreter,
-) -> Result<(Vec<usize>, Vec<VMTable>), EngineError> {
-    let module_count = named_ast_modules.len();
+) -> Result<(Vec<VMTable>, Vec<usize>), EngineError> {
+    // "AST 模块 - 表格实例的索引" 的临时映射表，
+    // 将元素的初始值设置为 None，以表示该项尚未设置。
+    let mut module_table_map: Vec<Option<usize>> = vec![None; named_ast_modules.len()];
 
-    // 将列表元素的初始值设置为 usize::MAX
-    // 以表示该项尚未设置
-    let mut module_table_map: Vec<usize> = vec![usize::MAX, module_count];
-
-    let mut tables: Vec<VMTable> = vec![];
+    // 所有实例表
+    let mut instance_tables: Vec<VMTable> = vec![];
 
     // 先创建非导入的表
     for (ast_module_index, ast_module) in named_ast_modules
@@ -342,16 +342,16 @@ pub fn link_tables(
         .map(|item| &item.module)
         .enumerate()
     {
-        // 先检查是否存在导入项
-        let option_import_item = ast_module
+        // 先检查是否存在导入表
+        let option_import_table_item = ast_module
             .import_items
             .iter()
             .find(|item| matches!(item.import_descriptor, ImportDescriptor::TableType(_)));
 
-        if option_import_item == None {
-            // 无表类型的导入项，创建新表
+        if option_import_table_item == None {
+            // 无导入表，创建新表
 
-            let table = if let Some(first) = ast_module.tables.first() {
+            let instance_table = if let Some(first) = ast_module.tables.first() {
                 // 根据定义创建新表
                 VMTable::new(first.clone())
             } else {
@@ -359,40 +359,112 @@ pub fn link_tables(
                 VMTable::new_by_min(0)
             };
 
-            let table_index = tables.len();
-            tables.push(table);
+            let instance_table_index = instance_tables.len();
+            instance_tables.push(instance_table);
 
-            module_table_map[ast_module_index] = table_index;
+            module_table_map[ast_module_index] = Some(instance_table_index);
         }
     }
 
     // 解决导入表格
-    for (ast_module_index, ast_module) in named_ast_modules
-        .iter()
-        .map(|item| &item.module)
-        .enumerate()
-    {
-        if module_table_map[ast_module_index] != usize::MAX {
-            continue;
+    for ast_module_index in 0..named_ast_modules.len() {
+        if module_table_map[ast_module_index] == None {
+            resolve_ast_module_table(
+                named_ast_modules,
+                &instance_tables,
+                &mut module_table_map,
+                ast_module_index,
+            )?;
         }
-
-        let (import_module_name, import_item_name, import_table_type) = ast_module
-            .import_items
-            .iter()
-            .find_map(|item| {
-                if let ImportDescriptor::TableType(table_type) = &item.import_descriptor {
-                    Some((&item.module_name, &item.item_name, table_type))
-                } else {
-                    None
-                }
-            })
-            .unwrap();
-
-        let mut target_module_name = import_module_name;
-        let mut target_item_name = import_item_name;
-        let mut target_table_type = import_table_type;
     }
-    todo!()
+
+    // 转换临时映射表
+    let map = module_table_map
+        .iter()
+        .map(|item| item.unwrap())
+        .collect::<Vec<usize>>();
+
+    Ok((instance_tables, map))
+}
+
+fn resolve_ast_module_table(
+    named_ast_modules: &[NamedAstModule],
+    instance_tables: &Vec<VMTable>,
+    module_table_map: &mut Vec<Option<usize>>,
+    ast_module_index: usize,
+) -> Result<usize, EngineError> {
+    let ast_module = &named_ast_modules[ast_module_index].module;
+
+    let (target_module_name, target_export_item_name, target_table_type) = ast_module
+        .import_items
+        .iter()
+        .find_map(|item| {
+            if let ImportDescriptor::TableType(table_type) = &item.import_descriptor {
+                Some((&item.module_name, &item.item_name, table_type))
+            } else {
+                None
+            }
+        })
+        .expect("unreachable"); // 仅当 AST Module 声明了一个导入表格才会来到这里，所以不存在找不到导入项的情况
+
+    let (target_ast_module_index, target_ast_module) = named_ast_modules
+        .iter()
+        .enumerate()
+        .find(|(_index, item)| &item.name == target_module_name)
+        .map(|(index, item)| (index, &item.module))
+        .ok_or(EngineError::ObjectNotFound(format!(
+            "can not found the module: {}",
+            target_module_name
+        )))?;
+
+    let target_table_index = target_ast_module
+        .export_items
+        .iter()
+        .find_map(|item| match item.export_descriptor {
+            ExportDescriptor::TableIndex(table_index) if &item.name == target_export_item_name => {
+                Some(table_index)
+            }
+            _ => None,
+        })
+        .ok_or(EngineError::ObjectNotFound(format!(
+            "can not found the export table: {}.{}",
+            target_module_name, target_export_item_name
+        )))?;
+
+    if target_table_index != 0 {
+        return Err(EngineError::InvalidOperation(
+            "only one table is allowed for a module".to_string(),
+        ));
+    }
+
+    let option_target_instance_table_index = module_table_map[target_ast_module_index];
+
+    let target_instance_table_index = if let Some(index) = option_target_instance_table_index {
+        index
+    } else {
+        // 目标表实例是模块导入再次导出的，
+        // 需要再次解析一次，直到找到真正的表实例为止
+        resolve_ast_module_table(
+            named_ast_modules,
+            instance_tables,
+            module_table_map,
+            target_ast_module_index,
+        )?
+    };
+
+    // 检查表格类型
+    let instance_table = &instance_tables[target_instance_table_index];
+
+    if instance_table.get_table_type() != target_table_type {
+        return Err(EngineError::InvalidOperation(
+            "imported table type mismatch".to_string(),
+        ));
+    }
+
+    // 更新映射表
+    module_table_map[ast_module_index] = Some(target_instance_table_index);
+
+    Ok(target_ast_module_index)
 }
 
 /// 解决模块间的内存块链接，并创建相应的内存块对象。
@@ -401,27 +473,318 @@ pub fn link_tables(
 /// 最小值为 0 的内存块对象
 ///
 /// 返回值当中
-/// - Vec<VMMemory> 是虚拟机实例当中所有内存块的列表
-/// - Vec<usize> 是每个 AST Module 对应的内存块的索引列表，
+/// - Vec<VMMemory> 是虚拟机当中所有内存块实例的列表
+/// - Vec<usize> 是每个 AST Module 对应的内存块实例的索引列表，
 ///   注：目前 WebAssembly 限制一个 Module 只能有一个内存块；
 ///   存在多个 Module 对应同一个内存块的情况。
 pub fn link_memorys(
-    native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
-    // interpreter: &Interpreter,
-) -> Result<(Vec<usize>, Vec<VMMemory>), EngineError> {
-    todo!()
+) -> Result<(Vec<VMMemory>, Vec<usize>), EngineError> {
+    // "AST 模块 - 内存块实例的索引" 的临时映射表，
+    // 将元素的初始值设置为 None，以表示该项尚未设置。
+    let mut module_memory_block_map: Vec<Option<usize>> = vec![None; named_ast_modules.len()];
+
+    // 所有实例表
+    let mut instance_memory_blocks: Vec<VMMemory> = vec![];
+
+    // 先创建非导入的内存块实例
+    for (ast_module_index, ast_module) in named_ast_modules
+        .iter()
+        .map(|item| &item.module)
+        .enumerate()
+    {
+        // 先检查是否存在导入内存块
+        let option_import_memory_item = ast_module
+            .import_items
+            .iter()
+            .find(|item| matches!(item.import_descriptor, ImportDescriptor::MemoryType(_)));
+
+        if option_import_memory_item == None {
+            // 无导入内存块，创建新内存块
+
+            let instance_memory = if let Some(first) = ast_module.memory_blocks.first() {
+                // 根据定义创建新内存块
+                VMMemory::new(first.clone())
+            } else {
+                // 创建默认内存块（容量最小值为 0，不限最大值的内存块）
+                VMMemory::new_by_min_page(0)
+            };
+
+            let instance_memory_block_index = instance_memory_blocks.len();
+            instance_memory_blocks.push(instance_memory);
+
+            module_memory_block_map[ast_module_index] = Some(instance_memory_block_index);
+        }
+    }
+
+    // 解决导入内存块
+    for ast_module_index in 0..named_ast_modules.len() {
+        if module_memory_block_map[ast_module_index] == None {
+            resolve_ast_module_memory_block(
+                named_ast_modules,
+                &instance_memory_blocks,
+                &mut module_memory_block_map,
+                ast_module_index,
+            )?;
+        }
+    }
+
+    // 转换临时映射表
+    let map = module_memory_block_map
+        .iter()
+        .map(|item| item.unwrap())
+        .collect::<Vec<usize>>();
+
+    Ok((instance_memory_blocks, map))
+}
+
+fn resolve_ast_module_memory_block(
+    named_ast_modules: &[NamedAstModule],
+    instance_memory_blocks: &Vec<VMMemory>,
+    module_memory_block_map: &mut Vec<Option<usize>>,
+    ast_module_index: usize,
+) -> Result<usize, EngineError> {
+    let ast_module = &named_ast_modules[ast_module_index].module;
+
+    let (target_module_name, target_export_item_name, target_memory_type) = ast_module
+        .import_items
+        .iter()
+        .find_map(|item| {
+            if let ImportDescriptor::MemoryType(memory_type) = &item.import_descriptor {
+                Some((&item.module_name, &item.item_name, memory_type))
+            } else {
+                None
+            }
+        })
+        .expect("unreachable"); // 仅当 AST Module 声明了一个导入内存块才会来到这里，所以不存在找不到导入项的情况
+
+    let (target_ast_module_index, target_ast_module) = named_ast_modules
+        .iter()
+        .enumerate()
+        .find(|(_index, item)| &item.name == target_module_name)
+        .map(|(index, item)| (index, &item.module))
+        .ok_or(EngineError::ObjectNotFound(format!(
+            "can not found the module: {}",
+            target_module_name
+        )))?;
+
+    let target_memory_block_index = target_ast_module
+        .export_items
+        .iter()
+        .find_map(|item| match item.export_descriptor {
+            ExportDescriptor::MemoryBlockIndex(memory_block_index)
+                if &item.name == target_export_item_name =>
+            {
+                Some(memory_block_index)
+            }
+            _ => None,
+        })
+        .ok_or(EngineError::ObjectNotFound(format!(
+            "can not found the export memory: {}.{}",
+            target_module_name, target_export_item_name
+        )))?;
+
+    if target_memory_block_index != 0 {
+        return Err(EngineError::InvalidOperation(
+            "only one memory block is allowed for a module".to_string(),
+        ));
+    }
+
+    let option_target_instance_memory_block_index =
+        module_memory_block_map[target_ast_module_index];
+
+    let target_instance_memory_block_index =
+        if let Some(index) = option_target_instance_memory_block_index {
+            index
+        } else {
+            // 目标内存块实例是模块导入再次导出的，
+            // 需要再次解析一次，直到找到真正的内存块实例为止
+            resolve_ast_module_memory_block(
+                named_ast_modules,
+                instance_memory_blocks,
+                module_memory_block_map,
+                target_ast_module_index,
+            )?
+        };
+
+    // 检查表格类型
+    let instance_memory_block = &instance_memory_blocks[target_instance_memory_block_index];
+
+    if instance_memory_block.get_memory_type() != target_memory_type {
+        return Err(EngineError::InvalidOperation(
+            "imported memory type mismatch".to_string(),
+        ));
+    }
+
+    // 更新映射表
+    module_memory_block_map[ast_module_index] = Some(target_instance_memory_block_index);
+
+    Ok(target_ast_module_index)
 }
 
 /// 解决模块间的全局变量链接
 ///
 /// 返回值当中
-/// - Vec<VMGlobalVariable> 是虚拟机实例当中所有全局变量的列表
-/// - Vec<Vec<usize>> 是每个 AST Module 对应的全局变量的索引列表
+/// - Vec<VMGlobalVariable> 是虚拟机当中所有全局变量实例的列表
+/// - Vec<Vec<usize>> 是每个 AST Module 对应的全局变量实例的索引列表
+///   注：一个 Module 可以有多个全局变量
 pub fn link_global_variables(
-    native_modules: &[NativeModule],
+    // native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
     // interpreter: &Interpreter,
-) -> Result<(Vec<Vec<usize>>, Vec<VMGlobalVariable>), EngineError> {
-    todo!()
+) -> Result<(Vec<VMGlobalVariable>, Vec<Vec<usize>>), EngineError> {
+    // "AST 模块 - 全局变量实例的索引" 的临时映射表
+    let mut module_global_variable_map: Vec<Vec<Option<usize>>> = vec![];
+
+    // 所有实例表
+    let mut instance_global_variables: Vec<VMGlobalVariable> = vec![];
+
+    for ast_module in named_ast_modules.iter().map(|item| &item.module) {
+        let mut module_global_variable_map_item: Vec<Option<usize>> = vec![];
+
+        // 先以 None 为值，填充模块的导入全局变量
+        let import_global_variable_count = ast_module
+            .import_items
+            .iter()
+            .filter(|item| matches!(item.import_descriptor, ImportDescriptor::GlobalType(_)))
+            .count();
+
+        for _ in 0..import_global_variable_count {
+            module_global_variable_map_item.push(None);
+        }
+
+        // 再创建模块内定义的所有全局变量
+        for global_item in &ast_module.global_items {
+            let global_type = global_item.global_type.clone();
+            // todo 执行 global_item.initialize_instruction_items
+            let value = Value::I32(0);
+            let instance_global_variable = VMGlobalVariable::new(global_type, value);
+
+            // 创建全局变量实例
+            let instance_global_variable_index = instance_global_variables.len();
+            instance_global_variables.push(instance_global_variable);
+
+            module_global_variable_map_item.push(Some(instance_global_variable_index));
+        }
+
+        module_global_variable_map.push(module_global_variable_map_item);
+    }
+
+    // 解决导入全局变量
+    for ast_module_index in 0..named_ast_modules.len() {
+        let module_global_variable_count = {
+            let module_global_variable_map_item = &module_global_variable_map[ast_module_index];
+            module_global_variable_map_item.len()
+        };
+
+        for module_global_variable_index in 0..module_global_variable_count {
+            let is_none = {
+                let module_global_variable_map_item = &module_global_variable_map[ast_module_index];
+                module_global_variable_map_item[module_global_variable_index] == None
+            };
+            if is_none {
+                resolve_ast_module_global_variable(
+                    named_ast_modules,
+                    &instance_global_variables,
+                    &mut module_global_variable_map,
+                    ast_module_index,
+                    module_global_variable_index,
+                )?;
+            }
+        }
+    }
+
+    // 转换临时映射表
+    let map = module_global_variable_map
+        .iter()
+        .map(|item| {
+            item.iter()
+                .map(|sub_item| sub_item.unwrap())
+                .collect::<Vec<usize>>()
+        })
+        .collect::<Vec<Vec<usize>>>();
+
+    Ok((instance_global_variables, map))
+}
+
+fn resolve_ast_module_global_variable(
+    named_ast_modules: &[NamedAstModule],
+    instance_global_variables: &Vec<VMGlobalVariable>,
+    module_global_variable_map: &mut Vec<Vec<Option<usize>>>,
+    ast_module_index: usize,
+    module_global_variable_index: usize,
+) -> Result<usize, EngineError> {
+    let ast_module = &named_ast_modules[ast_module_index].module;
+
+    let (target_module_name, target_export_item_name, target_global_type) = ast_module
+        .import_items
+        .iter()
+        .filter_map(|item| {
+            if let ImportDescriptor::GlobalType(global_type) = &item.import_descriptor {
+                Some((&item.module_name, &item.item_name, global_type))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<(&String, &String, &GlobalType)>>()[module_global_variable_index];
+
+    let (target_ast_module_index, target_ast_module) = named_ast_modules
+        .iter()
+        .enumerate()
+        .find(|(_index, item)| &item.name == target_module_name)
+        .map(|(index, item)| (index, &item.module))
+        .ok_or(EngineError::ObjectNotFound(format!(
+            "can not found the module: {}",
+            target_module_name
+        )))?;
+
+    let target_module_global_variable_index = target_ast_module
+        .export_items
+        .iter()
+        .find_map(|item| match item.export_descriptor {
+            ExportDescriptor::GlobalItemIndex(global_variable_index)
+                if &item.name == target_export_item_name =>
+            {
+                Some(global_variable_index as usize)
+            }
+            _ => None,
+        })
+        .ok_or(EngineError::ObjectNotFound(format!(
+            "can not found the export global variable: {}.{}",
+            target_module_name, target_export_item_name
+        )))?;
+
+    let option_target_instance_global_variable_index =
+        module_global_variable_map[target_ast_module_index][target_module_global_variable_index];
+
+    let target_instance_global_variable_index =
+        if let Some(index) = option_target_instance_global_variable_index {
+            index
+        } else {
+            // 目标全局变量实例是模块导入再次导出的，
+            // 需要再次解析一次，直到找到真正的全局变量实例为止
+            resolve_ast_module_global_variable(
+                named_ast_modules,
+                instance_global_variables,
+                module_global_variable_map,
+                target_ast_module_index,
+                target_module_global_variable_index,
+            )?
+        };
+
+    // 检查表格类型
+    let instance_global_variable =
+        &instance_global_variables[target_instance_global_variable_index];
+
+    if instance_global_variable.get_global_type() != target_global_type {
+        return Err(EngineError::InvalidOperation(
+            "imported global variable type mismatch".to_string(),
+        ));
+    }
+
+    // 更新映射表
+    module_global_variable_map[ast_module_index][module_global_variable_index] =
+        Some(target_instance_global_variable_index);
+
+    Ok(target_ast_module_index)
 }

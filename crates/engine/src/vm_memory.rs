@@ -41,24 +41,24 @@ impl VMMemory {
         VMMemory::new(memory_type)
     }
 
-    /// 以给定的初始数据来创建 VMMemory 对象
-    pub fn new_with_init_data(init_data: Vec<u8>) -> Self {
-        let byte_len = init_data.len() as u32;
-        let page_count = (byte_len - 1) / PAGE_SIZE + 1;
-
-        // 对齐到整页
-        let mut data = Vec::from(init_data);
-        data.resize((page_count * PAGE_SIZE) as usize, 0);
-
-        let memory_type = MemoryType {
-            limit: Limit::new(page_count, Some(page_count)),
-        };
-
-        VMMemory {
-            memory_type: memory_type,
-            data: data,
-        }
-    }
+//     /// 以给定的初始数据来创建 VMMemory 对象
+//     pub fn new_with_init_data(init_data: Vec<u8>) -> Self {
+//         let byte_len = init_data.len() as u32;
+//         let page_count = (byte_len - 1) / PAGE_SIZE + 1;
+//
+//         // 对齐到整页
+//         let mut data = Vec::from(init_data);
+//         data.resize((page_count * PAGE_SIZE) as usize, 0);
+//
+//         let memory_type = MemoryType {
+//             limit: Limit::new(page_count, Some(page_count)),
+//         };
+//
+//         VMMemory {
+//             memory_type: memory_type,
+//             data: data,
+//         }
+//     }
 
     pub fn get_page_count(&self) -> u32 {
         self.data.len() as u32 / PAGE_SIZE
@@ -89,8 +89,8 @@ impl VMMemory {
         Ok(old_page_count)
     }
 
-    pub fn get_memory_type(&self) -> MemoryType {
-        self.memory_type.clone()
+    pub fn get_memory_type(&self) -> &MemoryType {
+        &self.memory_type //.clone()
     }
 
     pub fn read_bytes(&self, address: usize, length: usize) -> &[u8] {
@@ -259,14 +259,14 @@ mod tests {
         assert_eq!(m0.read_f64(8 * 9), 2.718);
     }
 
-    #[test]
-    fn test_create_with_init_data() {
-        let mut m0 = VMMemory::new_with_init_data(vec![11, 22, 33, 44, 55, 66]);
-
-        assert_eq!(m0.get_page_count(), 1);
-        assert_eq!(m0.read_bytes(0, 8), vec![11, 22, 33, 44, 55, 66, 00, 00]);
-
-        m0.write_bytes(2, &vec![77, 88]);
-        assert_eq!(m0.read_bytes(0, 8), vec![11, 22, 77, 88, 55, 66, 00, 00]);
-    }
+//     #[test]
+//     fn test_create_with_init_data() {
+//         let mut m0 = VMMemory::new_with_init_data(vec![11, 22, 33, 44, 55, 66]);
+//
+//         assert_eq!(m0.get_page_count(), 1);
+//         assert_eq!(m0.read_bytes(0, 8), vec![11, 22, 33, 44, 55, 66, 00, 00]);
+//
+//         m0.write_bytes(2, &vec![77, 88]);
+//         assert_eq!(m0.read_bytes(0, 8), vec![11, 22, 77, 88, 55, 66, 00, 00]);
+//     }
 }

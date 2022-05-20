@@ -100,8 +100,8 @@ impl VMTable {
         Ok(())
     }
 
-    pub fn get_table_type(&self) -> TableType {
-        self.table_type.clone()
+    pub fn get_table_type(&self) -> &TableType {
+        &self.table_type //.clone()
     }
 }
 
