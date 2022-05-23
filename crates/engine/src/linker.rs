@@ -331,7 +331,7 @@ pub fn link_tables(
 ) -> Result<(Vec<VMTable>, Vec<usize>), EngineError> {
     // "AST 模块 - 表格实例的索引" 的临时映射表，
     // 将元素的初始值设置为 None，以表示该项尚未设置。
-    let mut module_table_map: Vec<Option<usize>> = vec![None; named_ast_modules.len()];
+    let mut module_to_table_index_list: Vec<Option<usize>> = vec![None; named_ast_modules.len()];
 
     // 所有实例表
     let mut instance_tables: Vec<VMTable> = vec![];
@@ -362,29 +362,29 @@ pub fn link_tables(
             let instance_table_index = instance_tables.len();
             instance_tables.push(instance_table);
 
-            module_table_map[ast_module_index] = Some(instance_table_index);
+            module_to_table_index_list[ast_module_index] = Some(instance_table_index);
         }
     }
 
     // 解决导入表格
     for ast_module_index in 0..named_ast_modules.len() {
-        if module_table_map[ast_module_index] == None {
+        if module_to_table_index_list[ast_module_index] == None {
             resolve_ast_module_table(
                 named_ast_modules,
                 &instance_tables,
-                &mut module_table_map,
+                &mut module_to_table_index_list,
                 ast_module_index,
             )?;
         }
     }
 
     // 转换临时映射表
-    let map = module_table_map
+    let list = module_to_table_index_list
         .iter()
         .map(|item| item.unwrap())
         .collect::<Vec<usize>>();
 
-    Ok((instance_tables, map))
+    Ok((instance_tables, list))
 }
 
 fn resolve_ast_module_table(
@@ -482,7 +482,7 @@ pub fn link_memorys(
 ) -> Result<(Vec<VMMemory>, Vec<usize>), EngineError> {
     // "AST 模块 - 内存块实例的索引" 的临时映射表，
     // 将元素的初始值设置为 None，以表示该项尚未设置。
-    let mut module_memory_block_map: Vec<Option<usize>> = vec![None; named_ast_modules.len()];
+    let mut module_to_memory_block_index_list: Vec<Option<usize>> = vec![None; named_ast_modules.len()];
 
     // 所有实例表
     let mut instance_memory_blocks: Vec<VMMemory> = vec![];
@@ -513,29 +513,29 @@ pub fn link_memorys(
             let instance_memory_block_index = instance_memory_blocks.len();
             instance_memory_blocks.push(instance_memory);
 
-            module_memory_block_map[ast_module_index] = Some(instance_memory_block_index);
+            module_to_memory_block_index_list[ast_module_index] = Some(instance_memory_block_index);
         }
     }
 
     // 解决导入内存块
     for ast_module_index in 0..named_ast_modules.len() {
-        if module_memory_block_map[ast_module_index] == None {
+        if module_to_memory_block_index_list[ast_module_index] == None {
             resolve_ast_module_memory_block(
                 named_ast_modules,
                 &instance_memory_blocks,
-                &mut module_memory_block_map,
+                &mut module_to_memory_block_index_list,
                 ast_module_index,
             )?;
         }
     }
 
     // 转换临时映射表
-    let map = module_memory_block_map
+    let list = module_to_memory_block_index_list
         .iter()
         .map(|item| item.unwrap())
         .collect::<Vec<usize>>();
 
-    Ok((instance_memory_blocks, map))
+    Ok((instance_memory_blocks, list))
 }
 
 fn resolve_ast_module_memory_block(
@@ -634,7 +634,7 @@ pub fn link_global_variables(
     // interpreter: &Interpreter,
 ) -> Result<(Vec<VMGlobalVariable>, Vec<Vec<usize>>), EngineError> {
     // "AST 模块 - 全局变量实例的索引" 的临时映射表
-    let mut module_global_variable_map: Vec<Vec<Option<usize>>> = vec![];
+    let mut module_to_global_variables_list: Vec<Vec<Option<usize>>> = vec![];
 
     // 所有实例表
     let mut instance_global_variables: Vec<VMGlobalVariable> = vec![];
@@ -667,26 +667,26 @@ pub fn link_global_variables(
             module_global_variable_map_item.push(Some(instance_global_variable_index));
         }
 
-        module_global_variable_map.push(module_global_variable_map_item);
+        module_to_global_variables_list.push(module_global_variable_map_item);
     }
 
     // 解决导入全局变量
     for ast_module_index in 0..named_ast_modules.len() {
         let module_global_variable_count = {
-            let module_global_variable_map_item = &module_global_variable_map[ast_module_index];
+            let module_global_variable_map_item = &module_to_global_variables_list[ast_module_index];
             module_global_variable_map_item.len()
         };
 
         for module_global_variable_index in 0..module_global_variable_count {
             let is_none = {
-                let module_global_variable_map_item = &module_global_variable_map[ast_module_index];
+                let module_global_variable_map_item = &module_to_global_variables_list[ast_module_index];
                 module_global_variable_map_item[module_global_variable_index] == None
             };
             if is_none {
                 resolve_ast_module_global_variable(
                     named_ast_modules,
                     &instance_global_variables,
-                    &mut module_global_variable_map,
+                    &mut module_to_global_variables_list,
                     ast_module_index,
                     module_global_variable_index,
                 )?;
@@ -695,7 +695,7 @@ pub fn link_global_variables(
     }
 
     // 转换临时映射表
-    let map = module_global_variable_map
+    let list = module_to_global_variables_list
         .iter()
         .map(|item| {
             item.iter()
@@ -704,7 +704,7 @@ pub fn link_global_variables(
         })
         .collect::<Vec<Vec<usize>>>();
 
-    Ok((instance_global_variables, map))
+    Ok((instance_global_variables, list))
 }
 
 fn resolve_ast_module_global_variable(

@@ -164,7 +164,7 @@ mod tests {
     }
 
     fn get_test_binary_resource(filename: &str) -> Vec<u8> {
-        let mut path_buf = env::current_dir().expect("failed to get current directory");
+        let mut path_buf = env::current_dir().unwrap();
 
         // 使用 `cargo test` 测试时，
         // `env::current_dir()` 函数获得的当前目录为
@@ -174,7 +174,7 @@ mod tests {
         // `env::current_dir()` 函数获得的当前目录为
         // `./xiaoxuan-vm`。
         //
-        // 这里需要处理这种情况。
+        // 下面语句用于处理这种情况。
 
         if !path_buf.ends_with("native") {
             path_buf.push("crates");
@@ -182,7 +182,7 @@ mod tests {
         }
         let fullname_buf = path_buf.join("resources").join(filename);
         let fullname = fullname_buf.to_str().unwrap();
-        fs::read(fullname).expect(&format!("failed to read the specified file: {}", fullname))
+        fs::read(fullname).expect(&format!("failed to read the specified binary file: {}", fullname))
     }
 
     fn get_test_ast_module(filename: &str) -> ast::Module {

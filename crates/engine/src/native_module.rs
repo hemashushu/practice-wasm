@@ -15,14 +15,18 @@ pub type NativeFunction = fn(&[Value]) -> Result<Vec<Value>, NativeError>;
 
 pub struct NativeFunctionItem {
     pub name: String,
-    pub type_index: usize,
+    pub function_type_index: usize,
     pub param_names: Vec<String>,
     pub native_function: NativeFunction,
 }
 
 pub struct NativeModule {
     pub name: String,
+
+    /// 函数类型总列表
     pub function_types: Vec<FunctionType>,
+
+    /// 函数列表
     pub function_items: Vec<NativeFunctionItem>,
 }
 
@@ -35,8 +39,8 @@ impl NativeModule {
         }
     }
 
-    /// 添加 FunctionType 到内部列表，
-    /// 如果相同的 FunctionType 已经存在，则返回已存在项目的索引值。
+    /// 创建并添加新的 FunctionType 到函数类型总列表，或者
+    /// 返回已存在的 FunctionType 项目的索引值。
     fn add_function_type(&mut self, params: Vec<ValueType>, results: Vec<ValueType>) -> usize {
         let function_type = FunctionType { params, results };
 
@@ -68,7 +72,7 @@ impl NativeModule {
 
         let function_item = NativeFunctionItem {
             name: name.to_string(),
-            type_index,
+            function_type_index: type_index,
             param_names: param_names
                 .iter()
                 .map(|s| s.to_string())

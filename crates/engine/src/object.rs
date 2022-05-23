@@ -51,11 +51,15 @@ pub enum FunctionItem {
 pub enum Control {
     /// 进入一个新的栈帧
     /// 对应 block/loop 指令
-    Block(BlockType),
+    Block(BlockType, /* end_addr */ usize),
 
     /// 进入一个新的栈帧，并当原栈顶的数值等于 0 时，跳转到指定的地址
     /// 对应 if 指令
-    BlockJumpEqZero(BlockType, /* alternate_addr */ usize),
+    BlockJumpEqZero(
+        BlockType,
+        /* alternate_addr */ usize,
+        /* end_addr */ usize,
+    ),
 
     /// 跳转到指定的地址
     /// 其中 relative_depth 为当前栈帧距离目标栈帧的层次数量，当数量为 0 时，表示

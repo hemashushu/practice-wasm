@@ -15,7 +15,8 @@ const PAGE_SIZE: u32 = 65536;
 /// WebAssembly 约定内存块最大只能有 65536 个页面
 const MAX_PAGES: u32 = 65536;
 
-/// 当前使用字节数组来充当内存
+/// 当前使用偷懒的方法 -- 数组来实现内存块，让 Rust 底层库
+/// 自动管理内存块的分配和容量。
 pub struct VMMemory {
     memory_type: MemoryType,
     data: Vec<u8>,
@@ -23,74 +24,70 @@ pub struct VMMemory {
 
 impl VMMemory {
     pub fn new(memory_type: MemoryType) -> Self {
-        let min = memory_type.limit.get_min();
-        let byte_len = min * PAGE_SIZE;
+        let min_page = memory_type.limit.get_min();
+        let bytes_count = min_page * PAGE_SIZE;
 
         VMMemory {
             memory_type: memory_type,
-            data: vec![0; byte_len as usize], //Vec::<u8>::with_capacity(byte_len as usize),
+
+            // 预先分配好空槽，因为访问者会随机访问指定的地址，所以不能仅仅
+            // 分配 Vec 的容量，而应该分配空槽。
+            // 空槽的初始值都是 0u8
+            data: vec![0; bytes_count as usize],
         }
     }
 
     /// 创建指定页面数（且不限最大值的）内存块
-    pub fn new_by_min_page(min: u32) -> Self {
+    pub fn new_by_min_page(min_page: u32) -> Self {
         let memory_type = MemoryType {
-            limit: Limit::AtLeast(min),
+            limit: Limit::AtLeast(min_page),
         };
 
         VMMemory::new(memory_type)
     }
 
-//     /// 以给定的初始数据来创建 VMMemory 对象
-//     pub fn new_with_init_data(init_data: Vec<u8>) -> Self {
-//         let byte_len = init_data.len() as u32;
-//         let page_count = (byte_len - 1) / PAGE_SIZE + 1;
-//
-//         // 对齐到整页
-//         let mut data = Vec::from(init_data);
-//         data.resize((page_count * PAGE_SIZE) as usize, 0);
-//
-//         let memory_type = MemoryType {
-//             limit: Limit::new(page_count, Some(page_count)),
-//         };
-//
-//         VMMemory {
-//             memory_type: memory_type,
-//             data: data,
-//         }
-//     }
+    /// min_page 和 max_page 的值都是 `包括的`（`included`）
+    pub fn new_by_page_range(min_page: u32, max_page: u32) -> Self {
+        let memory_type = MemoryType {
+            limit: Limit::Range(min_page, max_page),
+        };
+
+        VMMemory::new(memory_type)
+    }
 
     pub fn get_page_count(&self) -> u32 {
+        // 这里暂时不考虑空间大小不 PAGE_SIZE 对齐的情况
         self.data.len() as u32 / PAGE_SIZE
     }
 
     /// 返回原先的页面数
-    pub fn increase_page(&mut self, increase_number: u32) -> Result<u32, EngineError> {
+    pub fn increase_page(&mut self, increase_page_number: u32) -> Result<u32, EngineError> {
         let old_page_count = self.get_page_count();
-        let new_page_count = old_page_count + increase_number;
+        let new_page_count = old_page_count + increase_page_number;
 
         // 如果 MemoryType 的 limit 成员不指定 max 值，则可以
         // 增长到 WebAssembly 内存块最大允许的页面数 MAX_PAGES
-        if let Limit::Range(_, max) = self.memory_type.limit {
-            if new_page_count > max {
+        if let Limit::Range(_, max_page) = self.memory_type.limit {
+            if new_page_count > max_page {
                 return Err(EngineError::Overflow(
                     "memory page exceeds the specified maximum value".to_string(),
                 ));
             }
         }
 
-        if new_page_count >= MAX_PAGES {
+        if new_page_count > MAX_PAGES {
             return Err(EngineError::Overflow(
                 "memory pages exceeds the maximum allowed value".to_string(),
             ));
         }
 
+        // 新增加的空槽的初始值都是 0u8
         self.data.resize((new_page_count * PAGE_SIZE) as usize, 0u8);
         Ok(old_page_count)
     }
 
     pub fn get_memory_type(&self) -> &MemoryType {
-        &self.memory_type //.clone()
+        &self.memory_type
     }
 
     pub fn read_bytes(&self, address: usize, length: usize) -> &[u8] {
@@ -166,17 +163,14 @@ impl VMMemory {
 
 #[cfg(test)]
 mod tests {
-    use anvm_ast::ast::{Limit, MemoryType};
-
     use crate::error::EngineError;
 
     use super::VMMemory;
 
     #[test]
     fn test_increase_page() {
-        let mut m0 = VMMemory::new(MemoryType {
-            limit: Limit::new(4, None),
-        });
+        let mut m0 = VMMemory::new_by_min_page(4);
+
         assert_eq!(m0.get_page_count(), 4);
 
         assert_eq!(m0.increase_page(2).unwrap(), 4);
@@ -193,9 +187,8 @@ mod tests {
         assert_eq!(m1.get_page_count(), 6);
 
         // 创建一个有 max page 值的内存块
-        let mut m2 = VMMemory::new(MemoryType {
-            limit: Limit::new(2, Some(4)),
-        });
+        let mut m2 = VMMemory::new_by_page_range(2, 4);
+
         assert_eq!(m2.get_page_count(), 2);
         assert!(matches!(m2.increase_page(2), Ok(_)));
         assert!(matches!(m2.increase_page(1), Err(EngineError::Overflow(_))));
@@ -203,9 +196,7 @@ mod tests {
 
     #[test]
     fn test_read_write_bytes() {
-        let mut m0 = VMMemory::new(MemoryType {
-            limit: Limit::new(1, None),
-        });
+        let mut m0 = VMMemory::new_by_min_page(1);
 
         assert_eq!(m0.read_bytes(0, 8), vec![0, 0, 0, 0, 0, 0, 0, 0]);
 
@@ -258,15 +249,4 @@ mod tests {
         assert_eq!(m0.read_f32(8 * 8), 3.142);
         assert_eq!(m0.read_f64(8 * 9), 2.718);
     }
-
-//     #[test]
-//     fn test_create_with_init_data() {
-//         let mut m0 = VMMemory::new_with_init_data(vec![11, 22, 33, 44, 55, 66]);
-//
-//         assert_eq!(m0.get_page_count(), 1);
-//         assert_eq!(m0.read_bytes(0, 8), vec![11, 22, 33, 44, 55, 66, 00, 00]);
-//
-//         m0.write_bytes(2, &vec![77, 88]);
-//         assert_eq!(m0.read_bytes(0, 8), vec![11, 22, 77, 88, 55, 66, 00, 00]);
-//     }
 }

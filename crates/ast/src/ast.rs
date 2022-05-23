@@ -338,11 +338,16 @@ pub enum Limit {
 }
 
 impl Limit {
-    pub fn new(min: u32, option_max: Option<u32>) -> Self {
-        match option_max {
-            Some(max) => Limit::Range(min, max),
-            None => Limit::AtLeast(min),
-        }
+    pub fn new_by_min(min: u32) -> Self {
+        Limit::AtLeast(min)
+    }
+
+    /// 根据指定范围来创建 Limit 实例
+    ///
+    /// 跟常见程序语言里的 range 不一样，min 和 max 的值都是 `包括的`（`included`），
+    /// 比如 Range(0, 10) 表示从 0 到 10 一共 11 个数字，因为数字 `10` 是 `包括的`。
+    pub fn new_by_range(min: u32, max: u32) -> Self {
+        Limit::Range(min, max)
     }
 
     pub fn get_min(&self) -> u32 {

@@ -8,12 +8,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anvm_ast::instruction::Instruction;
 
-use crate::{
-    ins_branch, ins_const, ins_function, ins_memory, ins_numeric_binary, ins_numeric_comparsion,
-    ins_numeric_convert, ins_numeric_eqz, ins_numeric_unary, ins_parametric, ins_variable,
-    object::EngineError, vm_module::VMModule,
-};
-
+/*
 pub fn exec_instruction(
     vm_module: Rc<RefCell<VMModule>>,
     instruction: &Instruction,
@@ -269,3 +264,4 @@ pub fn exec_instructions(
     }
     Ok(())
 }
+*/

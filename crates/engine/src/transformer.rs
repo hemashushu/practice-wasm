@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! # 函数指令 "编译器"
+//! # 函数指令 "转换器"
 //!
 //! 将一个模块的所有函数的指令序列合并成一个序列，并且将诸如 `call`、`br`、`if`、`else` 等
 //! 流程控制类指令转换为当前的 VM 引擎可以直接解析执行的指令。
@@ -34,8 +34,8 @@
 //!
 //! 控制指令列表
 //!
-//! - block (block_type)
-//! - block_jump_eq_zero (block_type, alternate_addr)
+//! - block (block_type, end_addr)
+//! - block_jump_eq_zero (block_type, alternate_addr, end_addr)
 //! - jump (relative_depth, addr)
 //! - jump_not_eq_zero (relative_depth, addr)
 //! - call_internal (type_index, function_index, addr)
@@ -61,7 +61,9 @@ use crate::{
 /// 提高模块间调用的处理效率。
 /// 不过为了便于追踪和调试，当前编译模块仅对一个模块里的所有函数指令序列进行合并，
 /// 而不会合并所有模块。
-pub fn compile(
+///
+/// function_items_list 来自 linker 对所有函数进行链接之后的结果
+pub fn transform(
     // native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
     function_items_list: &Vec<Vec<FunctionItem>>,
@@ -90,11 +92,27 @@ pub fn compile(
                 let instruction = match original_instruction {
                     instruction::Instruction::Block(block_type, block_index) => {
                         block_index_stack.push(*block_index as usize);
-                        Instruction::Control(Control::Block(block_type.to_owned()))
+
+                        // 获取 block 结构块当中的 `end 指令` 所在的位置
+                        let block_location = &block_locations[*block_index as usize];
+                        let end_index = block_location.end_index;
+
+                        Instruction::Control(Control::Block(
+                            block_type.to_owned(),
+                            function_addr_offset + end_index,
+                        ))
                     }
                     instruction::Instruction::Loop(block_type, block_index) => {
                         block_index_stack.push(*block_index as usize);
-                        Instruction::Control(Control::Block(block_type.to_owned()))
+
+                        // 获取 loop 结构块当中的 `end 指令` 所在的位置
+                        let block_location = &block_locations[*block_index as usize];
+                        let end_index = block_location.end_index;
+
+                        Instruction::Control(Control::Block(
+                            block_type.to_owned(),
+                            function_addr_offset + end_index,
+                        ))
                     }
                     instruction::Instruction::If(block_type, block_index) => {
                         block_index_stack.push(*block_index as usize);
@@ -102,17 +120,19 @@ pub fn compile(
                         // 获取 if 结构块当中的 `else 指令` 所在的位置
                         let block_location = &block_locations[*block_index as usize];
                         let else_index = block_location.middle_index;
+                        let end_index = block_location.end_index;
 
                         // 如果 if 结构块当中的缺少了 `else 指令`，则跳转目标为 `end 指令` 所在的位置
-                        let target_addr = if else_index == 0 {
-                            block_location.end_index
+                        let alternate_addr = if else_index == 0 {
+                            end_index
                         } else {
                             else_index
                         };
 
                         Instruction::Control(Control::BlockJumpEqZero(
                             block_type.to_owned(),
-                            function_addr_offset + target_addr,
+                            function_addr_offset + alternate_addr,
+                            function_addr_offset + end_index,
                         ))
                     }
                     instruction::Instruction::Else => {
@@ -393,7 +413,7 @@ fn get_function_block_locations(code_item: &CodeItem) -> Vec<BlockLocation> {
 
 #[cfg(test)]
 mod tests {
-    use super::{compile, NamedAstModule};
+    use super::{transform, NamedAstModule};
     use crate::{
         error::{EngineError, NativeError},
         linker,
@@ -479,13 +499,13 @@ mod tests {
         module
     }
 
-    fn link_and_compile_functions(
+    fn link_and_transform_functions(
         native_modules: &[NativeModule],
         named_ast_modules: &[NamedAstModule],
     ) -> Result<Vec<Vec<Instruction>>, EngineError> {
         let function_items_list: Vec<Vec<FunctionItem>> =
             linker::link_functions(native_modules, named_ast_modules)?;
-        compile(named_ast_modules, &function_items_list)
+        transform(named_ast_modules, &function_items_list)
     }
 
     #[test]
@@ -551,7 +571,7 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 Instruction::Original(instruction::Instruction::I32Const(1)),
@@ -750,7 +770,7 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Original(instruction::Instruction::I32Const(0)),
@@ -758,61 +778,60 @@ mod tests {
             // function 1
             Instruction::Original(instruction::Instruction::I32Const(0)), // #02
             Instruction::Original(instruction::Instruction::I32Const(1)), // #03
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #04 - block 0
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 28)), // #04 - block 0
             Instruction::Control(Control::Jump(0, 28)),                   // #05
             Instruction::Control(Control::Jump(1, 35)),                   // #06
             Instruction::Control(Control::Jump(1, 35)),                   // #07
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #08 - block 1 - loop
-            Instruction::Control(Control::Jump(0, 8)),                    // #09
-            Instruction::Control(Control::Jump(1, 28)),                   // #10
-            Instruction::Control(Control::Jump(2, 35)),                   // #11
-            Instruction::Control(Control::Jump(2, 35)),                   // #12
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #13 - block 2
-            Instruction::Control(Control::Jump(0, 19)),                   // #14
-            Instruction::Control(Control::Jump(1, 8)),                    // #15
-            Instruction::Control(Control::Jump(2, 28)),                   // #16
-            Instruction::Control(Control::Jump(3, 35)),                   // #17
-            Instruction::Control(Control::Jump(3, 35)),                   // #18
-            Instruction::Original(instruction::Instruction::End),         // #19 - block 2 end
-            Instruction::Control(Control::Jump(0, 8)),                    // #20
-            Instruction::Control(Control::Jump(1, 28)),                   // #21
-            Instruction::Control(Control::Jump(2, 35)),                   // #22
-            Instruction::Control(Control::Jump(2, 35)),                   // #23
-            Instruction::Original(instruction::Instruction::End),         // #24 - block 1 end
-            Instruction::Control(Control::Jump(0, 28)),                   // #25
-            Instruction::Control(Control::Jump(1, 35)),                   // #26
-            Instruction::Control(Control::Jump(1, 35)),                   // #27
-            Instruction::Original(instruction::Instruction::End),         // #28 - block 0 end
-            Instruction::Original(instruction::Instruction::I32Const(2)), // #29
-            Instruction::Original(instruction::Instruction::I32Const(3)), // #30
-            Instruction::Control(Control::Jump(0, 35)),                   // #31
-            Instruction::Control(Control::Jump(0, 35)),                   // #32
-            Instruction::Original(instruction::Instruction::I32Const(4)), // #33
-            Instruction::Original(instruction::Instruction::I32Const(5)), // #34
-            Instruction::Original(instruction::Instruction::End),         // #35
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 24)), // #08 - block 1 - loop
+            Instruction::Control(Control::Jump(0, 8)),                          // #09
+            Instruction::Control(Control::Jump(1, 28)),                         // #10
+            Instruction::Control(Control::Jump(2, 35)),                         // #11
+            Instruction::Control(Control::Jump(2, 35)),                         // #12
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 19)), // #13 - block 2
+            Instruction::Control(Control::Jump(0, 19)),                         // #14
+            Instruction::Control(Control::Jump(1, 8)),                          // #15
+            Instruction::Control(Control::Jump(2, 28)),                         // #16
+            Instruction::Control(Control::Jump(3, 35)),                         // #17
+            Instruction::Control(Control::Jump(3, 35)),                         // #18
+            Instruction::Original(instruction::Instruction::End),               // #19 - block 2 end
+            Instruction::Control(Control::Jump(0, 8)),                          // #20
+            Instruction::Control(Control::Jump(1, 28)),                         // #21
+            Instruction::Control(Control::Jump(2, 35)),                         // #22
+            Instruction::Control(Control::Jump(2, 35)),                         // #23
+            Instruction::Original(instruction::Instruction::End),               // #24 - block 1 end
+            Instruction::Control(Control::Jump(0, 28)),                         // #25
+            Instruction::Control(Control::Jump(1, 35)),                         // #26
+            Instruction::Control(Control::Jump(1, 35)),                         // #27
+            Instruction::Original(instruction::Instruction::End),               // #28 - block 0 end
+            Instruction::Original(instruction::Instruction::I32Const(2)),       // #29
+            Instruction::Original(instruction::Instruction::I32Const(3)),       // #30
+            Instruction::Control(Control::Jump(0, 35)),                         // #31
+            Instruction::Control(Control::Jump(0, 35)),                         // #32
+            Instruction::Original(instruction::Instruction::I32Const(4)),       // #33
+            Instruction::Original(instruction::Instruction::I32Const(5)),       // #34
+            Instruction::Original(instruction::Instruction::End),               // #35
             // function 3
             Instruction::Original(instruction::Instruction::I32Const(0)), // #36
             Instruction::Original(instruction::Instruction::I32Const(1)), // #37
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #38 - block 0
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #39 - block 1 loop
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #40 - block 2
-            Instruction::Original(instruction::Instruction::End),         // #41 - block 2 end
-            Instruction::Original(instruction::Instruction::End),         // #42 - block 1 end
-            //
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #43 - block 3
-            Instruction::Control(Control::Jump(0, 77)),                     // #44
-            Instruction::Control(Control::Jump(1, 80)),                     // #45
-            Instruction::Control(Control::Jump(2, 85)),                     // #46
-            Instruction::Control(Control::BlockJumpEqZero(BlockType::Builtin(None), 60)), // #47 - block 4 if
-            Instruction::Control(Control::JumpNotEqZero(0, 73)),                          // #48
-            Instruction::Control(Control::JumpNotEqZero(1, 77)),                          // #49
-            Instruction::Control(Control::JumpNotEqZero(2, 80)),                          // #50
-            Instruction::Control(Control::Jump(3, 85)),                                   // #51
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #52 - block 5
-            Instruction::Control(Control::Jump(0, 59)),                     // #53
-            Instruction::Control(Control::Jump(1, 73)),                     // #54
-            Instruction::Control(Control::Jump(2, 77)),                     // #55
-            Instruction::Control(Control::Jump(3, 80)),                     // #56
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 80)), // #38 - block 0
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 42)), // #39 - block 1 loop
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 41)), // #40 - block 2
+            Instruction::Original(instruction::Instruction::End),               // #41 - block 2 end
+            Instruction::Original(instruction::Instruction::End),               // #42 - block 1 end
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 77)), // #43 - block 3
+            Instruction::Control(Control::Jump(0, 77)),                         // #44
+            Instruction::Control(Control::Jump(1, 80)),                         // #45
+            Instruction::Control(Control::Jump(2, 85)),                         // #46
+            Instruction::Control(Control::BlockJumpEqZero(BlockType::Builtin(None), 60, 73)), // #47 - block 4 if
+            Instruction::Control(Control::JumpNotEqZero(0, 73)),                              // #48
+            Instruction::Control(Control::JumpNotEqZero(1, 77)),                              // #49
+            Instruction::Control(Control::JumpNotEqZero(2, 80)),                              // #50
+            Instruction::Control(Control::Jump(3, 85)),                                       // #51
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 59)), // #52 - block 5
+            Instruction::Control(Control::Jump(0, 59)),                         // #53
+            Instruction::Control(Control::Jump(1, 73)),                         // #54
+            Instruction::Control(Control::Jump(2, 77)),                         // #55
+            Instruction::Control(Control::Jump(3, 80)),                         // #56
             Instruction::Control(Control::Jump(4, 85)), // #57 - jump to function end
             Instruction::Control(Control::Jump(4, 85)), // #58
             Instruction::Original(instruction::Instruction::End), // #59 - block 5 end
@@ -821,7 +840,7 @@ mod tests {
             Instruction::Control(Control::JumpNotEqZero(1, 77)), // #62
             Instruction::Control(Control::JumpNotEqZero(2, 80)), // #63
             Instruction::Control(Control::Jump(3, 85)), // #64
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #65 - block 6
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 72)), // #65 - block 6
             Instruction::Control(Control::Jump(0, 72)), // #66
             Instruction::Control(Control::Jump(1, 73)), // #67
             Instruction::Control(Control::Jump(2, 77)), // #68
@@ -834,7 +853,6 @@ mod tests {
             Instruction::Control(Control::Jump(1, 80)), // #75
             Instruction::Control(Control::Jump(2, 85)), // #76
             Instruction::Original(instruction::Instruction::End), // #77 // block 3 end
-            //
             Instruction::Control(Control::Jump(0, 80)), // #78
             Instruction::Control(Control::Jump(1, 85)), // #79
             Instruction::Original(instruction::Instruction::End), // #80 // block 0 end
@@ -846,23 +864,23 @@ mod tests {
             // function 4
             Instruction::Original(instruction::Instruction::I32Const(0)), // #86
             Instruction::Original(instruction::Instruction::I32Const(1)), // #87
-            Instruction::Control(Control::BlockJumpEqZero(BlockType::Builtin(None), 101)), // #88 - block 0
-            Instruction::Control(Control::Jump(0, 101)),                                   // #89
-            Instruction::Control(Control::Jump(1, 104)),                                   // #90
-            Instruction::Control(Control::Jump(1, 104)),                                   // #91
-            Instruction::Control(Control::Block(BlockType::Builtin(None))), // #92 - block 1
-            Instruction::Control(Control::Jump(0, 97)),                     // #93
-            Instruction::Control(Control::Jump(1, 101)),                    // #94
-            Instruction::Control(Control::Jump(2, 104)),                    // #95
-            Instruction::Control(Control::Jump(2, 104)),                    // #96
-            Instruction::Original(instruction::Instruction::End),           // #97 - block 1 end
-            Instruction::Control(Control::Jump(0, 101)),                    // #98
-            Instruction::Control(Control::Jump(1, 104)),                    // #99
-            Instruction::Control(Control::Jump(1, 104)),                    // #100
-            Instruction::Original(instruction::Instruction::End),           // #101 - block 0 end
-            Instruction::Original(instruction::Instruction::I32Const(2)),   // #102
-            Instruction::Original(instruction::Instruction::I32Const(3)),   // #103
-            Instruction::Original(instruction::Instruction::End),           // #104
+            Instruction::Control(Control::BlockJumpEqZero(BlockType::Builtin(None), 101, 101)), // #88 - block 0
+            Instruction::Control(Control::Jump(0, 101)), // #89
+            Instruction::Control(Control::Jump(1, 104)), // #90
+            Instruction::Control(Control::Jump(1, 104)), // #91
+            Instruction::Control(Control::Block(BlockType::Builtin(None), 97)), // #92 - block 1
+            Instruction::Control(Control::Jump(0, 97)),  // #93
+            Instruction::Control(Control::Jump(1, 101)), // #94
+            Instruction::Control(Control::Jump(2, 104)), // #95
+            Instruction::Control(Control::Jump(2, 104)), // #96
+            Instruction::Original(instruction::Instruction::End), // #97 - block 1 end
+            Instruction::Control(Control::Jump(0, 101)), // #98
+            Instruction::Control(Control::Jump(1, 104)), // #99
+            Instruction::Control(Control::Jump(1, 104)), // #100
+            Instruction::Original(instruction::Instruction::End), // #101 - block 0 end
+            Instruction::Original(instruction::Instruction::I32Const(2)), // #102
+            Instruction::Original(instruction::Instruction::I32Const(3)), // #103
+            Instruction::Original(instruction::Instruction::End), // #104
         ]];
 
         assert_eq!(actual, expected);
@@ -911,7 +929,7 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Original(instruction::Instruction::I32Const(0)), // #00
@@ -1030,7 +1048,7 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function 0
@@ -1124,7 +1142,7 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function index 2
             Instruction::Original(instruction::Instruction::I32Const(0)), // #00
@@ -1314,7 +1332,7 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_compile_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function index 0

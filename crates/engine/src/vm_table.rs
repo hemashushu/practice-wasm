@@ -43,6 +43,10 @@ impl VMTable {
         let min = table_type.limit.get_min();
         VMTable {
             table_type: table_type,
+
+            // 预先分配好空槽，因为访问者会随机访问指定的地址，所以不能仅仅
+            // 分配 Vec 的容量，而应该分配空槽。
+            // 空槽的初始值都是 None
             elements: vec![None; min as usize],
         }
     }
@@ -51,6 +55,15 @@ impl VMTable {
     pub fn new_by_min(min: u32) -> Self {
         let table_type = TableType {
             limit: Limit::AtLeast(min),
+        };
+
+        VMTable::new(table_type)
+    }
+
+    /// min 和 max 的值都是 `包括的`（`included`）
+    pub fn new_by_page_range(min_page: u32, max_page: u32) -> Self {
+        let table_type = TableType {
+            limit: Limit::Range(min_page, max_page),
         };
 
         VMTable::new(table_type)
@@ -75,6 +88,7 @@ impl VMTable {
             }
         }
 
+        // 新增加的空槽的初始值都是 None
         self.elements.resize(new_len as usize, None);
         Ok(old_len)
     }
@@ -101,21 +115,18 @@ impl VMTable {
     }
 
     pub fn get_table_type(&self) -> &TableType {
-        &self.table_type //.clone()
+        &self.table_type
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use anvm_ast::ast::{Limit, TableType};
-
     use crate::{error::EngineError, vm_table::VMTable};
 
     #[test]
     fn test_increase_size() {
-        let mut t0 = VMTable::new(TableType {
-            limit: Limit::new(4, None),
-        });
+        let mut t0 = VMTable::new_by_min(4);
+
         assert_eq!(t0.get_size(), 4);
 
         assert_eq!(t0.increase_size(2).unwrap(), 4);
@@ -132,9 +143,8 @@ mod tests {
         assert_eq!(m1.get_size(), 6);
 
         // 创建一个有 max page 值的表格
-        let mut m2 = VMTable::new(TableType {
-            limit: Limit::new(2, Some(4)),
-        });
+        let mut m2 = VMTable::new_by_page_range(2, 4);
+
         assert_eq!(m2.get_size(), 2);
         assert!(matches!(m2.increase_size(2), Ok(_)));
         assert!(matches!(m2.increase_size(1), Err(EngineError::Overflow(_))));

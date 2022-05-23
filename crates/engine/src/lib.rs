@@ -10,7 +10,8 @@ pub mod native_module;
 // pub mod wasm_module;
 // pub mod instance;
 
-// pub mod vm_operand_stack;
+pub mod vm_stack;
+
 // pub mod vm_stack_frame;
 // pub mod vm_control_stack;
 // pub mod vm_function;
@@ -21,7 +22,10 @@ pub mod vm_global_variable;
 // pub mod vm_instruction;
 
 pub mod linker;
-pub mod compiler;
+pub mod transformer;
+
+pub mod vm_module;
+pub mod vm;
 
 // mod ins_const;
 // mod ins_parametric;
@@ -35,4 +39,4 @@ pub mod compiler;
 // mod ins_function;
 // mod ins_branch;
 
-// pub mod instance;
+pub mod instance;
