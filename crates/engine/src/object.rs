@@ -22,25 +22,26 @@ impl NamedAstModule {
     }
 }
 
-/// 函数信息
+/// 一个模块里的所有类型函数的信息
+///
+/// 函数包括导入的函数（分为本地函数和外部模块普通函数）以及
+/// 模块内部定义的普通函数。
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionItem {
     Native {
-        type_index: usize,
         native_module_index: usize,
+        type_index: usize, // 目标函数在目标模块当中的类型索引
         function_index: usize,
     },
     External {
-        type_index: usize,
         ast_module_index: usize,
+        type_index: usize, // 目标函数在目标模块当中的类型索引
         function_index: usize,
-        internal_function_index: usize,
         start_index: usize,
         end_index: usize, // 函数 `end 指令` 所在的位置
     },
     Internal {
         type_index: usize,
-        internal_function_index: usize,
         start_index: usize,
         end_index: usize, // 函数 `end 指令` 所在的位置
     },
@@ -75,27 +76,27 @@ pub enum Control {
 
     /// 调用模块内的函数
     CallInternal(
-        /* type_index */ usize,
+        /* type_index */ usize, // 冗余信息，为了省去一次查询过程
         /* function_index */ usize,
-        /* internal_function_index */ usize,
-        /* addr */ usize,
+        /* addr */ usize, // 冗余信息，为了省去一次查询过程
     ),
 
     /// 调用模块外的函数
     CallExternal(
         /* ast_module_index */ usize,
-        /* type_index 在原模块当中的类型索引 */ usize,
+        /* type_index 在原模块当中的类型索引 */
+        usize, // 冗余信息，为了省去一次查询过程
         /* function_index 在原模块当中的函数索引（索引包括导入的外部函数，也包括模块内部函数，此索引值为 call 指令参数所指定的值）*/
         usize,
-        /* internal_function_index 在原模块当中的内部函数列表里的函数索引 */
-        usize,
-        /* addr */ usize,
+        /* addr */
+        usize, // 冗余信息，为了省去一次查询过程
     ),
 
     /// 调用本地函数（native function）模块的本地函数
     CallNative(
         /* native_module_index */ usize,
-        /* type_index 在原模块当中的类型索引 */ usize,
+        /* type_index 在原模块当中的类型索引 */
+        usize, // 冗余信息，为了省去一次查询过程
         /* function_index 在原模块当中的函数索引 */ usize,
     ),
 }

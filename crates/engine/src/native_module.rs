@@ -13,21 +13,28 @@ use crate::error::NativeError;
 
 pub type NativeFunction = fn(&[Value]) -> Result<Vec<Value>, NativeError>;
 
-pub struct NativeFunctionItem {
-    pub name: String,
-    pub function_type_index: usize,
-    pub param_names: Vec<String>,
-    pub native_function: NativeFunction,
-}
-
+/// 本地函数的本地模块
+///
+/// 本地模块的结构模仿普通二进制模块的结构，即把：
+///
+/// - 函数的类型列表
+/// - `函数-类型` 的映射表
+/// - 函数列表
+/// - 函数的名称
+/// - 局部变量（即型参）名称
+///
+/// 都分开存放。
 pub struct NativeModule {
     pub name: String,
 
-    /// 函数类型总列表
+    // 函数类型总列表
     pub function_types: Vec<FunctionType>,
 
-    /// 函数列表
-    pub function_items: Vec<NativeFunctionItem>,
+    // 函数列表
+    pub function_to_type_index_list: Vec<usize>,
+    pub native_functions: Vec<NativeFunction>,
+    pub function_names: Vec<String>,
+    pub local_variable_names: Vec<Vec<String>>,
 }
 
 impl NativeModule {
@@ -35,7 +42,11 @@ impl NativeModule {
         Self {
             name: name.to_string(),
             function_types: vec![],
-            function_items: vec![],
+
+            function_to_type_index_list: vec![],
+            native_functions: vec![],
+            function_names: vec![],
+            local_variable_names: vec![],
         }
     }
 
@@ -60,7 +71,7 @@ impl NativeModule {
         }
     }
 
-    pub fn add_function(
+    pub fn add_native_function(
         &mut self,
         name: &str,
         params: Vec<ValueType>,
@@ -68,26 +79,32 @@ impl NativeModule {
         results: Vec<ValueType>,
         native_function: NativeFunction,
     ) {
-        let type_index = self.add_function_type(params, results);
+        let function_type_index = self.add_function_type(params, results);
 
-        let function_item = NativeFunctionItem {
-            name: name.to_string(),
-            function_type_index: type_index,
-            param_names: param_names
+        self.function_to_type_index_list.push(function_type_index);
+        self.native_functions.push(native_function);
+        self.function_names.push(name.to_string());
+        self.local_variable_names.push(
+            param_names
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<String>>(),
-            native_function,
-        };
-
-        self.function_items.push(function_item);
+        );
     }
 
-    pub fn find_function_index_by_name(&self, name: &str) -> Option<usize> {
-        self.function_items
+    /// 根据函数名称获得函数的索引值
+    ///
+    /// 注意：对于本地模块来说
+    /// - 所有函数都是导出函数，所以 `导出名称` 实际上
+    ///   就是函数名称（对于普通模块来说则不一定是，普通模块的函数名称只是个仅供
+    ///   反汇编时所使用的额外的属性）。
+    /// - 函数的索引就是模块内所有本地函数的索引，本地模块没有导入函数，所以第一个
+    ///   本地很熟的索引值就是 0。
+    pub fn find_function_index_by_exported_name(&self, name: &str) -> Option<usize> {
+        self.function_names
             .iter()
             .enumerate()
-            .find(|item| item.1.name == name)
+            .find(|item| item.1 == name)
             .map(|item| item.0)
     }
 }

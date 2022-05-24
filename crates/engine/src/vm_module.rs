@@ -39,17 +39,18 @@ pub struct VMModule {
     // /// 包含一份模块的语法树对象，用于动态维护模块的内容
     // pub ast_module: ast::Module,
 
-    // 为方便起见，这里复制了一份 `类型列表` 和 `函数-类型映射表`
-    pub function_types: Vec<FunctionType>,
-    pub function_to_type_indexes: Vec<usize>,
+    /// 为方便起见，这里复制了一份 `类型列表`
+    /// 免去每次函数调用
+    // pub function_types: Vec<FunctionType>,
+    // pub function_to_type_indexes: Vec<usize>,
 
-    // 这是经过转换后的函数位置列表以及指令列表
+    /// 函数位置列表
     pub function_items: Vec<FunctionItem>,
+
+    /// 指令列表
     pub instructions: Vec<Instruction>,
 
-    /// 保留一份 AST Module。
-    /// 用于动态改变模块结构（比如增加函数）、反汇编等
-    /// 注意 AST Module 在执行指令过程中是完全不使用的。
+    /// 保留 AST Module
     pub ast_module: anvm_ast::ast::Module,
 }
 
@@ -59,8 +60,8 @@ impl VMModule {
         table_index: usize,
         memory_index: usize,
         global_variable_indexes: Vec<usize>,
-        function_types: Vec<FunctionType>,
-        function_to_type_indexes: Vec<usize>,
+        // function_types: Vec<FunctionType>,
+        // function_to_type_indexes: Vec<usize>,
         function_items: Vec<FunctionItem>,
         instructions: Vec<Instruction>,
         ast_module: anvm_ast::ast::Module,
@@ -70,8 +71,8 @@ impl VMModule {
             table_index,
             memory_index,
             global_variable_indexes,
-            function_types,
-            function_to_type_indexes,
+            // function_types,
+            // function_to_type_indexes,
             function_items,
             instructions,
             ast_module,

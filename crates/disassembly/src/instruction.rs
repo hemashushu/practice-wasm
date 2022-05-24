@@ -579,7 +579,7 @@ mod tests {
             ])],
             type_items: vec![],
             import_items: vec![],
-            function_list: vec![],
+            internal_function_to_type_index_list: vec![],
             tables: vec![],
             memory_blocks: vec![],
             global_items: vec![],

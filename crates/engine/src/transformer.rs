@@ -230,32 +230,32 @@ pub fn transform(
                         match function_item {
                             FunctionItem::Internal {
                                 type_index,
-                                internal_function_index,
+                                // internal_function_index,
                                 start_index,
                                 end_index,
                             } => Instruction::Control(Control::CallInternal(
                                 *type_index,
                                 *function_index as usize,
-                                *internal_function_index,
+                                // *internal_function_index,
                                 *start_index,
                             )),
                             FunctionItem::External {
-                                type_index,
                                 ast_module_index: vm_module_index,
+                                type_index,
                                 function_index,
-                                internal_function_index,
+                                // internal_function_index,
                                 start_index,
                                 end_index,
                             } => Instruction::Control(Control::CallExternal(
                                 *vm_module_index,
                                 *type_index,
                                 *function_index,
-                                *internal_function_index,
+                                // *internal_function_index,
                                 *start_index,
                             )),
                             FunctionItem::Native {
-                                type_index,
                                 native_module_index,
+                                type_index,
                                 function_index,
                             } => Instruction::Control(Control::CallNative(
                                 *native_module_index,
@@ -444,7 +444,7 @@ mod tests {
                 custom_items: vec![],
                 type_items,
                 import_items,
-                function_list,
+                internal_function_to_type_index_list: function_list,
                 tables: vec![],
                 memory_blocks: vec![],
                 global_items: vec![],
@@ -480,7 +480,7 @@ mod tests {
     fn create_test_native_module() -> NativeModule {
         let mut module = NativeModule::new("m0");
 
-        module.add_function(
+        module.add_native_function(
             "add",
             vec![ValueType::I32, ValueType::I32],
             vec!["left", "right"],
@@ -488,7 +488,7 @@ mod tests {
             test_native_function_add,
         );
 
-        module.add_function(
+        module.add_native_function(
             "sub",
             vec![ValueType::I32, ValueType::I32],
             vec!["left", "right"],
@@ -934,9 +934,9 @@ mod tests {
             // function 0
             Instruction::Original(instruction::Instruction::I32Const(0)), // #00
             Instruction::Original(instruction::Instruction::I32Const(1)), // #01
-            Instruction::Control(Control::CallInternal(0, 1, 1, 7)),      // #02
+            Instruction::Control(Control::CallInternal(0, 1, 7)),         // #02
             Instruction::Original(instruction::Instruction::I32Const(10)), // #03
-            Instruction::Control(Control::CallInternal(0, 2, 2, 10)),     // #04
+            Instruction::Control(Control::CallInternal(0, 2, 10)),        // #04
             Instruction::Original(instruction::Instruction::I32Const(11)), // #05
             Instruction::Original(instruction::Instruction::End),         // #06
             // function 1
@@ -946,7 +946,7 @@ mod tests {
             // function 2
             Instruction::Original(instruction::Instruction::I32Const(4)), // #10
             Instruction::Original(instruction::Instruction::I32Const(5)), // #11
-            Instruction::Control(Control::CallInternal(0, 1, 1, 7)),      // #12
+            Instruction::Control(Control::CallInternal(0, 1, 7)),         // #12
             Instruction::Original(instruction::Instruction::End),         // #13
         ]];
 
@@ -1058,26 +1058,26 @@ mod tests {
                 // function 1
                 Instruction::Original(instruction::Instruction::I32Const(2)), // #03
                 Instruction::Original(instruction::Instruction::I32Const(3)), // #04
-                Instruction::Control(Control::CallInternal(0, 0, 0, 0)),      // #05
+                Instruction::Control(Control::CallInternal(0, 0, 0)),         // #05
                 Instruction::Original(instruction::Instruction::End),         // #06
             ],
             vec![
                 // function index 2
                 Instruction::Original(instruction::Instruction::I32Const(0)), // #00
                 Instruction::Original(instruction::Instruction::I32Const(1)), // #01
-                Instruction::Control(Control::CallExternal(0, 0, 0, 0, 0)),   // #02
+                Instruction::Control(Control::CallExternal(0, 0, 0, 0)),      // #02
                 Instruction::Original(instruction::Instruction::I32Const(10)), // #03
-                Instruction::Control(Control::CallExternal(0, 0, 1, 1, 3)),   // #04
+                Instruction::Control(Control::CallExternal(0, 0, 1, 3)),      // #04
                 Instruction::Original(instruction::Instruction::I32Const(11)), // #05
-                Instruction::Control(Control::CallInternal(0, 3, 1, 9)),      // #06
+                Instruction::Control(Control::CallInternal(0, 3, 9)),         // #06
                 Instruction::Original(instruction::Instruction::I32Const(12)), // #07
                 Instruction::Original(instruction::Instruction::End),         // #08
                 // function index 3
                 Instruction::Original(instruction::Instruction::I32Const(2)), // #09
                 Instruction::Original(instruction::Instruction::I32Const(3)), // #10
-                Instruction::Control(Control::CallExternal(0, 0, 0, 0, 0)),   // #11
+                Instruction::Control(Control::CallExternal(0, 0, 0, 0)),      // #11
                 Instruction::Original(instruction::Instruction::I32Const(20)), // #12
-                Instruction::Control(Control::CallExternal(0, 0, 1, 1, 3)),   // #13
+                Instruction::Control(Control::CallExternal(0, 0, 1, 3)),      // #13
                 Instruction::Original(instruction::Instruction::I32Const(21)), // #14
                 Instruction::Original(instruction::Instruction::End),         // #15
             ],
@@ -1151,7 +1151,7 @@ mod tests {
             Instruction::Original(instruction::Instruction::I32Const(10)), // #03
             Instruction::Control(Control::CallNative(0, 0, 1)),           // #04
             Instruction::Original(instruction::Instruction::I32Const(11)), // #05
-            Instruction::Control(Control::CallInternal(0, 3, 1, 9)),      // #06
+            Instruction::Control(Control::CallInternal(0, 3, 9)),         // #06
             Instruction::Original(instruction::Instruction::I32Const(12)), // #07
             Instruction::Original(instruction::Instruction::End),         // #08
             // function index 3
@@ -1356,9 +1356,9 @@ mod tests {
                 Instruction::Original(instruction::Instruction::I32Const(0)), // #00
                 Instruction::Control(Control::CallNative(0, 0, 0)),           // #01
                 Instruction::Original(instruction::Instruction::I32Const(1)), // #02
-                Instruction::Control(Control::CallExternal(0, 0, 1, 1, 2)),   // #03
+                Instruction::Control(Control::CallExternal(0, 0, 1, 2)),      // #03
                 Instruction::Original(instruction::Instruction::I32Const(2)), // #04
-                Instruction::Control(Control::CallExternal(1, 2, 3, 1, 3)),   // #05
+                Instruction::Control(Control::CallExternal(1, 2, 3, 3)),      // #05
                 Instruction::Original(instruction::Instruction::End),         // #06
             ],
         ];

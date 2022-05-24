@@ -17,10 +17,11 @@ use anvm_ast::{
     types::Value,
 };
 
+/// AST 模块内的函数信息
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionLocation {
-    External {
-        type_index: usize,
+    Import {
+        type_index: usize, // 导入项所期望的函数类型
         module_name: String,
         function_name: String,
     },
@@ -67,12 +68,12 @@ pub fn link_functions(
 
     // 第 2 步：
     // 将 FunctionLocation 转换为 FunctionItem
-    // 具体来说，因为一个模块里的导入函数（即对应的 FunctionLocation::External）
+    // 具体来说，因为一个模块里的导入函数（即对应的 FunctionLocation::Import）
     // - 既有可能是另外一个模块的函数，
     // - 也有可能是本地模块的本地函数，
     // - 还有可能是另外一个模块的导入函数再次导出的函数。
     //
-    // 这一个步骤主要就是为了解析 FunctionLocation::External 到最终的
+    // 这一个步骤主要就是为了解析 FunctionLocation::Import 到最终的
     // FunctionItem::Native 和 FunctionItem::External。
 
     let module_names = get_module_names(native_modules, named_ast_modules);
@@ -84,8 +85,8 @@ pub fn link_functions(
 
         for function_location in function_locations {
             let function_item = match function_location {
-                FunctionLocation::External {
-                    type_index,
+                FunctionLocation::Import {
+                    type_index, // 导入项所期望的函数类型
                     module_name,
                     function_name,
                 } => {
@@ -109,18 +110,23 @@ pub fn link_functions(
                             // 目标是本地函数模块的本地函数
                             let target_native_module_index = target_module_index;
                             let target_native_module = &native_modules[target_native_module_index];
-                            let target_function_index = get_native_module_function_index_by_name(
-                                target_native_module,
-                                target_function_name,
-                            )
-                            .ok_or(EngineError::ObjectNotFound(format!(
-                                "cannot found the native function: {} in native module: {}",
-                                target_function_name, target_module_name
-                            )))?;
+                            let target_function_index =
+                                get_native_module_function_index_by_export_name(
+                                    target_native_module,
+                                    target_function_name,
+                                )
+                                .ok_or(
+                                    EngineError::ObjectNotFound(format!(
+                                        "cannot found the native function: {} in native module: {}",
+                                        target_function_name, target_module_name
+                                    )),
+                                )?;
 
                             // 检查函数的实际类型个导入时声明的类型是否匹配
+                            let target_type_index = target_native_module
+                                .function_to_type_index_list[target_function_index];
                             let actual_function_type =
-                                &target_native_module.function_types[*type_index as usize];
+                                &target_native_module.function_types[target_type_index];
 
                             if expected_function_type != actual_function_type {
                                 return Err(EngineError::InvalidOperation(
@@ -129,8 +135,8 @@ pub fn link_functions(
                             }
 
                             let function_item = FunctionItem::Native {
-                                type_index: *type_index,
                                 native_module_index: target_native_module_index,
+                                type_index: target_type_index,
                                 function_index: target_function_index,
                             };
 
@@ -142,41 +148,44 @@ pub fn link_functions(
                             let target_ast_module =
                                 &named_ast_modules[target_ast_module_index].module;
 
-                            let target_function_index = get_ast_module_function_index_by_name(
-                                target_ast_module,
-                                target_function_name,
-                            )
-                            .ok_or(EngineError::ObjectNotFound(format!(
-                                "cannot found the exported function: {} in module: {}",
-                                target_function_name, target_module_name
-                            )))?;
+                            let target_function_index =
+                                get_ast_module_function_index_by_export_name(
+                                    target_ast_module,
+                                    target_function_name,
+                                )
+                                .ok_or(
+                                    EngineError::ObjectNotFound(format!(
+                                        "cannot found the exported function: {} in module: {}",
+                                        target_function_name, target_module_name
+                                    )),
+                                )?;
 
                             let target_function_location = &function_locations_list
                                 [target_ast_module_index][target_function_index];
 
                             match target_function_location {
-                                FunctionLocation::External {
+                                FunctionLocation::Import {
                                     type_index: _,
-                                    module_name,
-                                    function_name,
+                                    module_name: another_module_name,
+                                    function_name: another_function_name,
                                 } => {
                                     // 目标函数是外部模块 "从外部导入然后再重新导出" 的函数，
                                     // 所需需要再解析一遍，直到目标函数是 "AST 模块的内部函数" 和 "本地函数模块的本地函数"
                                     // 这两者之中的一个为止。
-                                    target_module_name = module_name;
-                                    target_function_name = function_name;
+                                    target_module_name = another_module_name;
+                                    target_function_name = another_function_name;
                                 }
                                 FunctionLocation::Internal {
                                     internal_function_index,
-                                    type_index,
+                                    type_index: type_index_target_module,
                                     start_index,
                                     end_index,
                                 } => {
                                     // 目标函数是外部模块的内部函数
 
-                                    // 检查函数的实际类型个导入时声明的类型是否匹配
+                                    // 检查函数的实际类型跟导入时声明的类型是否匹配
                                     let actual_type_item =
-                                        &target_ast_module.type_items[*type_index];
+                                        &target_ast_module.type_items[*type_index_target_module];
 
                                     if expected_type_item != actual_type_item {
                                         return Err(EngineError::InvalidOperation(
@@ -185,10 +194,10 @@ pub fn link_functions(
                                     }
 
                                     let function_item = FunctionItem::External {
-                                        type_index: *type_index,
+                                        type_index: *type_index_target_module,
                                         ast_module_index: target_ast_module_index,
                                         function_index: target_function_index,
-                                        internal_function_index: *internal_function_index,
+                                        // internal_function_index: *internal_function_index,
                                         start_index: *start_index,
                                         end_index: *end_index,
                                     };
@@ -205,7 +214,7 @@ pub fn link_functions(
                     end_index,
                 } => FunctionItem::Internal {
                     type_index: *type_index,
-                    internal_function_index: *internal_function_index,
+                    // internal_function_index: *internal_function_index,
                     start_index: *start_index,
                     end_index: *end_index,
                 },
@@ -226,7 +235,7 @@ fn get_ast_module_import_function_locations(ast_module: &ast::Module) -> Vec<Fun
         .iter()
         .filter_map(|item| {
             if let ast::ImportDescriptor::FunctionTypeIndex(type_index) = item.import_descriptor {
-                let temp_item = FunctionLocation::External {
+                let temp_item = FunctionLocation::Import {
                     type_index: type_index as usize,
                     module_name: item.module_name.clone(),
                     function_name: item.item_name.clone(),
@@ -243,7 +252,11 @@ fn get_ast_module_internal_function_locations(ast_module: &ast::Module) -> Vec<F
     let mut function_addr_offset: usize = 0;
     let mut function_locations: Vec<FunctionLocation> = vec![];
 
-    for (internal_function_index, type_index) in ast_module.function_list.iter().enumerate() {
+    for (internal_function_index, type_index) in ast_module
+        .internal_function_to_type_index_list
+        .iter()
+        .enumerate()
+    {
         let instruction_count = ast_module.code_items[internal_function_index]
             .instruction_items
             .len();
@@ -290,19 +303,17 @@ fn get_module_index_by_name(module_names: &[String], name: &str) -> Option<usize
         .map(|(index, _)| index)
 }
 
-fn get_native_module_function_index_by_name(
+fn get_native_module_function_index_by_export_name(
     native_modules: &NativeModule,
     name: &str,
 ) -> Option<usize> {
-    native_modules
-        .function_items
-        .iter()
-        .enumerate()
-        .find(|(_, item)| item.name == name)
-        .map(|(index, _)| index)
+    native_modules.find_function_index_by_exported_name(name)
 }
 
-fn get_ast_module_function_index_by_name(ast_modules: &ast::Module, name: &str) -> Option<usize> {
+fn get_ast_module_function_index_by_export_name(
+    ast_modules: &ast::Module,
+    name: &str,
+) -> Option<usize> {
     ast_modules.export_items.iter().find_map(|item| {
         if item.name == name {
             if let ast::ExportDescriptor::FunctionIndex(function_index) = item.export_descriptor {
@@ -482,7 +493,8 @@ pub fn link_memorys(
 ) -> Result<(Vec<VMMemory>, Vec<usize>), EngineError> {
     // "AST 模块 - 内存块实例的索引" 的临时映射表，
     // 将元素的初始值设置为 None，以表示该项尚未设置。
-    let mut module_to_memory_block_index_list: Vec<Option<usize>> = vec![None; named_ast_modules.len()];
+    let mut module_to_memory_block_index_list: Vec<Option<usize>> =
+        vec![None; named_ast_modules.len()];
 
     // 所有实例表
     let mut instance_memory_blocks: Vec<VMMemory> = vec![];
@@ -673,13 +685,15 @@ pub fn link_global_variables(
     // 解决导入全局变量
     for ast_module_index in 0..named_ast_modules.len() {
         let module_global_variable_count = {
-            let module_global_variable_map_item = &module_to_global_variables_list[ast_module_index];
+            let module_global_variable_map_item =
+                &module_to_global_variables_list[ast_module_index];
             module_global_variable_map_item.len()
         };
 
         for module_global_variable_index in 0..module_global_variable_count {
             let is_none = {
-                let module_global_variable_map_item = &module_to_global_variables_list[ast_module_index];
+                let module_global_variable_map_item =
+                    &module_to_global_variables_list[ast_module_index];
                 module_global_variable_map_item[module_global_variable_index] == None
             };
             if is_none {

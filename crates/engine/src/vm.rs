@@ -7,8 +7,9 @@
 use anvm_ast::{ast::LocalGroup, types::Value};
 
 use crate::{
-    error::EngineError, native_module::NativeModule, vm_global_variable::VMGlobalVariable,
-    vm_memory::VMMemory, vm_module::VMModule, vm_stack::VMStack, vm_table::VMTable,
+    error::EngineError, native_module::NativeModule, object::FunctionItem,
+    vm_global_variable::VMGlobalVariable, vm_memory::VMMemory, vm_module::VMModule,
+    vm_stack::VMStack, vm_table::VMTable,
 };
 
 pub struct Status {
@@ -101,6 +102,8 @@ pub struct VM {
 }
 
 impl VM {
+    /// 从 vm 外部（即宿主）调用函数，并进行求值
+    /// 直到函数所有指令执行完毕。
     pub fn eval_function_by_index(
         &mut self,
         vm_module_index: usize,
@@ -108,6 +111,78 @@ impl VM {
         args: &[Value],
     ) -> Result<Vec<Value>, EngineError> {
         todo!()
+    }
+
+    /// 将指定实参压入栈，并将 pc 的值指向函数的
+    /// 第一个指令，但并不会开始执行指令。
+    pub fn call_function_by_index(
+        &mut self,
+        vm_module_index: usize,
+        function_index: usize,
+        args: &[Value],
+    ) -> Result<(), EngineError> {
+        let vm_module = &self.context.vm_modules[vm_module_index];
+
+        let function_item = &vm_module.function_items[function_index];
+
+        match function_item {
+            FunctionItem::Native {
+                native_module_index,
+                type_index,
+                function_index,
+            } => {
+                todo!()
+            }
+            FunctionItem::External {
+                ast_module_index,
+                type_index,
+                function_index,
+                start_index,
+                end_index,
+            } => {
+                todo!()
+            }
+            FunctionItem::Internal {
+                type_index,
+                start_index,
+                end_index,
+            } => {}
+        }
+
+        todo!()
+    }
+
+    /// 从 vm 外部（即宿主）调用 "模块内部定义的" 函数
+    ///
+    /// 从 vm 外部调用模块内部函数时，将实参压入操作数栈，
+    /// 参数列表左边（小索引端）的实参先压入，
+    ///
+    /// 示例：
+    ///
+    /// |  START            END       |
+    /// |  |                ^         |
+    /// |  V                |         |
+    /// | (a,b,c)          (x,y)      |
+    /// |  | | |            ^ ^       |
+    /// |  V V V            | |       |
+    /// |
+    /// |--- 栈顶。---|   |--- 栈顶。---|
+    /// | - c        |   |            |
+    /// | - b        |   | - y        |
+    /// | - a        |   | - x        |
+    /// | - ...      |   | - ...      |
+    /// |--- 栈底。---|   |--- 栈底。---|
+    /// |                             |
+    /// |    internal function        |
+    /// |-----------------------------|
+    fn push_arguments(&mut self, args: &[Value]) {
+        self.context.stack.push_values(args);
+    }
+
+    /// 从 vm 内部返回结果给外部（即宿主）函数调用者
+    /// 先弹出的数值放置在结果数组的右边（大索引端）。
+    fn pop_results(&mut self, result_count: usize) -> Vec<Value> {
+        self.context.stack.pop_values(result_count)
     }
 
     pub fn push_call_frame(

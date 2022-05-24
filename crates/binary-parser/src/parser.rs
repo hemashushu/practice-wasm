@@ -3,7 +3,6 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 use std::vec;
 
 use anvm_ast::{
@@ -134,7 +133,7 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
         custom_items: vec![],
         type_items: vec![],
         import_items: vec![],
-        function_list: vec![],
+        internal_function_to_type_index_list: vec![],
         tables: vec![],
         memory_blocks: vec![],
         global_items: vec![],
@@ -173,7 +172,7 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
                 module.import_items = parse_import_section(section_data)?;
             }
             SECTION_FUNCTION_ID => {
-                module.function_list = parse_function_list_section(section_data)?;
+                module.internal_function_to_type_index_list = parse_function_list_section(section_data)?;
             }
             SECTION_TABLE_ID => {
                 module.tables = parse_table_section(section_data)?;
@@ -1785,7 +1784,7 @@ mod tests {
                     limit: Limit::AtLeast(0),
                 }),
             }],
-            function_list: vec![0],
+            internal_function_to_type_index_list: vec![0],
             tables: vec![],
             memory_blocks: vec![],
             global_items: vec![],
@@ -1855,7 +1854,7 @@ mod tests {
                 }),
             ],
             import_items: vec![],
-            function_list: vec![0, 0, 1, 2],
+            internal_function_to_type_index_list: vec![0, 0, 1, 2],
             tables: vec![],
             memory_blocks: vec![MemoryType {
                 limit: Limit::AtLeast(16),
@@ -2016,7 +2015,7 @@ mod tests {
                     import_descriptor: ImportDescriptor::FunctionTypeIndex(0),
                 },
             ],
-            function_list: vec![1, 1],
+            internal_function_to_type_index_list: vec![1, 1],
             tables: vec![TableType {
                 limit: Limit::Range(2, 4),
             }],
@@ -2198,7 +2197,7 @@ mod tests {
                 }),
             ],
             import_items: vec![],
-            function_list: vec![1, 0],
+            internal_function_to_type_index_list: vec![1, 0],
             tables: vec![TableType {
                 limit: Limit::Range(2, 4),
             }],
@@ -2428,7 +2427,7 @@ mod tests {
             })]
         );
 
-        assert_eq!(m0.function_list, vec![0, 0]);
+        assert_eq!(m0.internal_function_to_type_index_list, vec![0, 0]);
 
         assert_eq!(
             m0.tables,
