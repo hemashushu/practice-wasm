@@ -43,6 +43,22 @@ impl Value {
     }
 }
 
+impl Into<usize> for Value {
+    fn into(self) -> usize {
+        if let Self::I64(v) = self {
+            v as usize
+        } else {
+            panic!("failed to convert anvm_ast::types::Value into usize");
+        }
+    }
+}
+
+impl Into<Value> for usize {
+    fn into(self) -> Value {
+        Value::I64(self as i64)
+    }
+}
+
 // WebAssembly 的索引值，比如类型索引、函数索引、内存块索引、表索引、标签索引等，使用 u32 类型。
 // https://webassembly.github.io/spec/core/syntax/modules.html#indices
 //

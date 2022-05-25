@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use anvm_ast::ast::FunctionType;
+use anvm_ast::{ast::FunctionType, types::ValueType};
 
 use crate::object::{FunctionItem, Instruction};
 
@@ -38,20 +38,28 @@ pub struct VMModule {
 
     // /// 包含一份模块的语法树对象，用于动态维护模块的内容
     // pub ast_module: ast::Module,
+    // 免去每次函数调用
+    /// 复制一份 `类型列表`
+    /// 调用函数时，需要这个函数类型表来确定实参和返回值的数量
+    pub function_types: Vec<FunctionType>,
 
-    /// 为方便起见，这里复制了一份 `类型列表`
-    /// 免去每次函数调用
-    // pub function_types: Vec<FunctionType>,
+    /// 复制一份内部函数的 `局部变量表`
+    /// 调用函数时，需要这个局部变量表来分配局部变量空槽
+    ///
+    /// 注意这个列表的索引是 `内部函数的索引`，而不是 `模块的函数索引`，后者
+    /// 包括了导入函数和内部函数。
+    pub internal_function_local_variable_types_list: Vec<Vec<ValueType>>,
+
     // pub function_to_type_indexes: Vec<usize>,
-
     /// 函数位置列表
+    /// 用于从 vm 外部调用模块内部函数时，获取被调用函数的信息
     pub function_items: Vec<FunctionItem>,
 
     /// 指令列表
     pub instructions: Vec<Instruction>,
-
-    /// 保留 AST Module
-    pub ast_module: anvm_ast::ast::Module,
+    // /// 保留原始的 AST Module
+    // /// 用于动态更改模块的结构（比如增加函数）以及反汇编
+    // pub ast_module: anvm_ast::ast::Module,
 }
 
 impl VMModule {
@@ -60,22 +68,24 @@ impl VMModule {
         table_index: usize,
         memory_index: usize,
         global_variable_indexes: Vec<usize>,
-        // function_types: Vec<FunctionType>,
+        function_types: Vec<FunctionType>,
+        internal_function_local_variable_types_list: Vec<Vec<ValueType>>,
         // function_to_type_indexes: Vec<usize>,
         function_items: Vec<FunctionItem>,
         instructions: Vec<Instruction>,
-        ast_module: anvm_ast::ast::Module,
+        // ast_module: anvm_ast::ast::Module,
     ) -> Self {
         Self {
             name,
             table_index,
             memory_index,
             global_variable_indexes,
-            // function_types,
+            function_types,
+            internal_function_local_variable_types_list,
             // function_to_type_indexes,
             function_items,
             instructions,
-            ast_module,
+            // ast_module,
         }
     }
 }

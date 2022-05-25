@@ -4,7 +4,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use anvm_ast::ast::{FunctionType, TypeItem};
+use anvm_ast::{
+    ast::{FunctionType, TypeItem},
+    types::ValueType,
+};
 
 use crate::{
     error::EngineError,
@@ -19,44 +22,48 @@ use crate::{
 
 pub fn create_instance(
     native_modules: Vec<NativeModule>,
-    mut named_ast_modules: Vec<NamedAstModule>,
+    named_ast_modules: &[NamedAstModule],
 ) -> Result<VM, EngineError> {
     // 获取指令列表
     // 指令列表跟 AST 模块列表是一一对应的，所以无需映射表
-    let mut function_items_list = link_functions(&native_modules, &named_ast_modules)?;
-    let mut instructions_list = transform(&named_ast_modules, &function_items_list)?;
+    let mut function_items_list = link_functions(&native_modules, named_ast_modules)?;
+    let mut instructions_list = transform(named_ast_modules, &function_items_list)?;
 
     // 获取内存块列表，以及 "AST 模块 - 内存块" 映射表
-    let (memory_blocks, mut module_to_memory_block_index_list) = link_memorys(&named_ast_modules)?;
+    let (memory_blocks, mut module_to_memory_block_index_list) = link_memorys(named_ast_modules)?;
 
     // 获取 "表" 的列表，以及 "AST 模块 - 表" 映射表
-    let (tables, mut module_to_table_index_list) = link_tables(&named_ast_modules)?;
+    let (tables, mut module_to_table_index_list) = link_tables(named_ast_modules)?;
 
     // 获取全局变量列表，以及 "AST 模块 - 全局变量列表" 映射表
     let (global_variables, mut module_to_global_variables_list) =
-        link_global_variables(&named_ast_modules)?;
+        link_global_variables(named_ast_modules)?;
 
     let module_count = named_ast_modules.len();
     let mut vm_modules: Vec<VMModule> = vec![];
 
-    for _ in 0..module_count {
+    for index in 0..module_count {
         let function_items = function_items_list.pop().unwrap();
         let instructions = instructions_list.pop().unwrap();
         let memory_index = module_to_memory_block_index_list.pop().unwrap();
         let table_index = module_to_table_index_list.pop().unwrap();
         let global_variable_indexes = module_to_global_variables_list.pop().unwrap();
-        let named_ast_module = named_ast_modules.pop().unwrap();
+
+        let ast_module_index = module_count - index - 1;
+        // let named_ast_module = named_ast_modules.pop().unwrap();
+        let named_ast_module = &named_ast_modules[ast_module_index];
 
         let name = named_ast_module.name.clone();
-        // let ast_module = &named_ast_module.module;
+        let ast_module = &named_ast_module.module;
 
-        // let function_types = ast_module
-        //     .type_items
-        //     .iter()
-        //     .map(|item| match item {
-        //         TypeItem::FunctionType(function_type) => function_type.to_owned(),
-        //     })
-        //     .collect::<Vec<FunctionType>>();
+        // 复制一份函数类型表
+        let function_types = ast_module
+            .type_items
+            .iter()
+            .map(|item| match item {
+                TypeItem::FunctionType(function_type) => function_type.to_owned(),
+            })
+            .collect::<Vec<FunctionType>>();
 
         // let function_to_type_indexes = ast_module
         //     .internal_function_to_type_index_list
@@ -64,16 +71,30 @@ pub fn create_instance(
         //     .map(|item| *item as usize)
         //     .collect::<Vec<usize>>();
 
+        let internal_function_local_variables_list = ast_module
+            .code_items
+            .iter()
+            .map(|item| {
+                item.local_groups
+                    .iter()
+                    .flat_map(|local_group| {
+                        vec![local_group.value_type.clone(); local_group.variable_count as usize]
+                    })
+                    .collect::<Vec<ValueType>>()
+            })
+            .collect::<Vec<Vec<ValueType>>>();
+
         let vm_module = VMModule::new(
             name,
             table_index,
             memory_index,
             global_variable_indexes,
-            // function_types,
+            function_types,
             // function_to_type_indexes,
+            internal_function_local_variables_list,
             function_items,
             instructions,
-            named_ast_module.module,
+            // named_ast_module.module,
         );
 
         // todo:: 填充 data 到 memory
@@ -268,7 +289,7 @@ mod tests {
     pub fn eval(filename: &str, index: usize, args: &[Value]) -> Result<Vec<Value>, EngineError> {
         let ast_module = get_test_ast_module(filename);
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let mut vm = create_instance(vec![], vec![named_ast_module])?;
+        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
         vm.eval_function_by_index(0, index, args)
     }
@@ -277,55 +298,57 @@ mod tests {
     fn test_instruction_const() {
         let module_name = "test-const.wasm";
 
-        // assert_eq!(
-        //     eval(module_name, 0, &vec![]).unwrap(),
-        //     vec![Value::I32(123)]
-        // );
-        // assert_eq!(
-        //     eval(module_name, 1, &vec![]).unwrap(),
-        //     vec![Value::I32(123), Value::I32(456)]
-        // );
+        assert_eq!(
+            eval(module_name, 0, &vec![]).unwrap(),
+            vec![Value::I32(123)]
+        );
+        assert_eq!(
+            eval(module_name, 1, &vec![]).unwrap(),
+            vec![Value::I32(123), Value::I32(456)]
+        );
+    }
+
+    #[test]
+    fn test_inst_parametric() {
+        let module_name = "test-parametric.wasm";
+
+        assert_eq!(
+            eval(module_name, 0, &vec![]).unwrap(),
+            vec![Value::I32(100), Value::I32(123)]
+        );
+        assert_eq!(
+            eval(module_name, 1, &vec![]).unwrap(),
+            vec![Value::I32(100), Value::I32(456)]
+        );
+        assert_eq!(
+            eval(module_name, 2, &vec![]).unwrap(),
+            vec![Value::I32(123)]
+        );
+        assert_eq!(eval(module_name, 3, &vec![]).unwrap(), vec![]);
+        assert_eq!(
+            eval(module_name, 4, &vec![]).unwrap(),
+            vec![Value::I32(100), Value::I32(123)]
+        );
     }
 }
 
 /*
-    #[test]
-    fn test_inst_parametric() {
-        let module = get_test_vm_module("test-parametric.wasm");
 
-        assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
-            vec![Value::I32(100), Value::I32(123)]
-        );
-        assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
-            vec![Value::I32(100), Value::I32(456)]
-        );
-        assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
-            vec![Value::I32(123)]
-        );
-        assert_eq!(eval(&module, 3, &vec![]).unwrap(), vec![]);
-        assert_eq!(
-            eval(&module, 4, &vec![]).unwrap(),
-            vec![Value::I32(100), Value::I32(123)]
-        );
-    }
 
     #[test]
     fn test_inst_numeric_eqz() {
         let module = get_test_vm_module("test-numeric-eqz.wasm");
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
     }
@@ -337,123 +360,123 @@ mod tests {
         // i32
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 3, &vec![]).unwrap(),
-            vec![Value::I32(10), Value::I32(0)]
-        );
-
-        assert_eq!(
-            eval(&module, 4, &vec![]).unwrap(),
-            vec![Value::I32(10), Value::I32(0)]
-        );
-        assert_eq!(
-            eval(&module, 5, &vec![]).unwrap(),
-            vec![Value::I32(10), Value::I32(1)]
-        );
-        assert_eq!(
-            eval(&module, 6, &vec![]).unwrap(),
-            vec![Value::I32(10), Value::I32(1)]
-        );
-        assert_eq!(
-            eval(&module, 7, &vec![]).unwrap(),
+            eval(module_name, 3, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
 
         assert_eq!(
-            eval(&module, 8, &vec![]).unwrap(),
+            eval(module_name, 4, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
         assert_eq!(
-            eval(&module, 9, &vec![]).unwrap(),
+            eval(module_name, 5, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 10, &vec![]).unwrap(),
+            eval(module_name, 6, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 11, &vec![]).unwrap(),
+            eval(module_name, 7, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(0)]
         );
 
         assert_eq!(
-            eval(&module, 12, &vec![]).unwrap(),
+            eval(module_name, 8, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+        assert_eq!(
+            eval(module_name, 9, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 13, &vec![]).unwrap(),
+            eval(module_name, 10, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 14, &vec![]).unwrap(),
+            eval(module_name, 11, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(0)]
+        );
+
+        assert_eq!(
+            eval(module_name, 12, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 15, &vec![]).unwrap(),
+            eval(module_name, 13, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval(module_name, 14, &vec![]).unwrap(),
+            vec![Value::I32(10), Value::I32(1)]
+        );
+        assert_eq!(
+            eval(module_name, 15, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(1)]
         );
 
         // f32
 
         assert_eq!(
-            eval(&module, 16, &vec![]).unwrap(),
+            eval(module_name, 16, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0)]
         );
         assert_eq!(
-            eval(&module, 17, &vec![]).unwrap(),
+            eval(module_name, 17, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 18, &vec![]).unwrap(),
+            eval(module_name, 18, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 19, &vec![]).unwrap(),
+            eval(module_name, 19, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0)]
         );
 
         assert_eq!(
-            eval(&module, 20, &vec![]).unwrap(),
+            eval(module_name, 20, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 21, &vec![]).unwrap(),
+            eval(module_name, 21, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0)]
         );
         assert_eq!(
-            eval(&module, 22, &vec![]).unwrap(),
+            eval(module_name, 22, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0)]
         );
         assert_eq!(
-            eval(&module, 23, &vec![]).unwrap(),
+            eval(module_name, 23, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
 
         assert_eq!(
-            eval(&module, 24, &vec![]).unwrap(),
+            eval(module_name, 24, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 25, &vec![]).unwrap(),
+            eval(module_name, 25, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 26, &vec![]).unwrap(),
+            eval(module_name, 26, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 27, &vec![]).unwrap(),
+            eval(module_name, 27, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(1)]
         );
     }
@@ -465,65 +488,65 @@ mod tests {
         // i32
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(27)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I32(2)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
 
         // f32
         assert_eq!(
-            eval(&module, 3, &vec![]).unwrap(),
+            eval(module_name, 3, &vec![]).unwrap(),
             vec![Value::F32(2.718)]
         );
         assert_eq!(
-            eval(&module, 4, &vec![]).unwrap(),
+            eval(module_name, 4, &vec![]).unwrap(),
             vec![Value::F32(2.718)]
         );
         assert_eq!(
-            eval(&module, 5, &vec![]).unwrap(),
+            eval(module_name, 5, &vec![]).unwrap(),
             vec![Value::F32(-2.718)]
         );
         assert_eq!(
-            eval(&module, 6, &vec![]).unwrap(),
+            eval(module_name, 6, &vec![]).unwrap(),
             vec![Value::F32(3.0)]
         );
         assert_eq!(
-            eval(&module, 7, &vec![]).unwrap(),
+            eval(module_name, 7, &vec![]).unwrap(),
             vec![Value::F32(2.0)]
         );
         assert_eq!(
-            eval(&module, 8, &vec![]).unwrap(),
+            eval(module_name, 8, &vec![]).unwrap(),
             vec![Value::F32(2.0)]
         );
 
         // 就近取整（4 舍 6 入，5 奇进偶不进）
         assert_eq!(
-            eval(&module, 9, &vec![]).unwrap(),
+            eval(module_name, 9, &vec![]).unwrap(),
             vec![Value::F32(1.0)]
         );
         assert_eq!(
-            eval(&module, 10, &vec![]).unwrap(),
+            eval(module_name, 10, &vec![]).unwrap(),
             vec![Value::F32(2.0)]
         );
         assert_eq!(
-            eval(&module, 11, &vec![]).unwrap(),
+            eval(module_name, 11, &vec![]).unwrap(),
             vec![Value::F32(2.0)]
         );
         assert_eq!(
-            eval(&module, 12, &vec![]).unwrap(),
+            eval(module_name, 12, &vec![]).unwrap(),
             vec![Value::F32(4.0)]
         );
 
         // sqrt
         assert_eq!(
-            eval(&module, 13, &vec![]).unwrap(),
+            eval(module_name, 13, &vec![]).unwrap(),
             vec![Value::F32(5.0)]
         );
     }
@@ -533,52 +556,52 @@ mod tests {
         let module = get_test_vm_module("test-numeric-binary.wasm");
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(55)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(-11)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(726)]
         );
         assert_eq!(
-            eval(&module, 3, &vec![]).unwrap(),
+            eval(module_name, 3, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(-4)]
         );
         assert_eq!(
-            eval(&module, 4, &vec![]).unwrap(),
+            eval(module_name, 4, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b01111111111111111111111111111100)
             ]
         );
         assert_eq!(
-            eval(&module, 5, &vec![]).unwrap(),
+            eval(module_name, 5, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(-2)]
         );
         assert_eq!(
-            eval(&module, 6, &vec![]).unwrap(),
+            eval(module_name, 6, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(2)]
         );
 
         assert_eq!(
-            eval(&module, 7, &vec![]).unwrap(),
+            eval(module_name, 7, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0b11000)]
         );
         assert_eq!(
-            eval(&module, 8, &vec![]).unwrap(),
+            eval(module_name, 8, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0b1111_1001)]
         );
         assert_eq!(
-            eval(&module, 9, &vec![]).unwrap(),
+            eval(module_name, 9, &vec![]).unwrap(),
             vec![Value::I32(11), Value::I32(0b1110_0001)]
         );
 
         assert_eq!(
-            eval(&module, 10, &vec![]).unwrap(),
+            eval(module_name, 10, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b11111111_11111111_11111111_1111_0000u32 as i32)
@@ -586,14 +609,14 @@ mod tests {
         );
 
         assert_eq!(
-            eval(&module, 11, &vec![]).unwrap(),
+            eval(module_name, 11, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b11111111_11111111_11111111_1111_1111u32 as i32)
             ]
         );
         assert_eq!(
-            eval(&module, 12, &vec![]).unwrap(),
+            eval(module_name, 12, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b00001111_11111111_11111111_1111_1111)
@@ -601,14 +624,14 @@ mod tests {
         );
 
         assert_eq!(
-            eval(&module, 13, &vec![]).unwrap(),
+            eval(module_name, 13, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b11111111_11111111_11111111_1110_0011u32 as i32)
             ]
         );
         assert_eq!(
-            eval(&module, 14, &vec![]).unwrap(),
+            eval(module_name, 14, &vec![]).unwrap(),
             vec![
                 Value::I32(11),
                 Value::I32(0b00_11111111_11111111_11111111_111110)
@@ -621,41 +644,41 @@ mod tests {
         let module = get_test_vm_module("test-numeric-convert.wasm");
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(123)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I64(8)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I64(8)]
         );
         assert_eq!(
-            eval(&module, 3, &vec![]).unwrap(),
+            eval(module_name, 3, &vec![]).unwrap(),
             vec![Value::I64(-8)]
         );
         assert_eq!(
-            eval(&module, 4, &vec![]).unwrap(),
+            eval(module_name, 4, &vec![]).unwrap(),
             vec![Value::I64(0x00_00_00_00_ff_ff_ff_f8)]
         );
 
         assert_eq!(
-            eval(&module, 5, &vec![]).unwrap(),
+            eval(module_name, 5, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
         assert_eq!(
-            eval(&module, 6, &vec![]).unwrap(),
+            eval(module_name, 6, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
 
         assert_eq!(
-            eval(&module, 7, &vec![]).unwrap(),
+            eval(module_name, 7, &vec![]).unwrap(),
             vec![Value::F32(66.0)]
         );
         assert_eq!(
-            eval(&module, 8, &vec![]).unwrap(),
+            eval(module_name, 8, &vec![]).unwrap(),
             vec![Value::F32(66.0)]
         );
 
@@ -667,15 +690,15 @@ mod tests {
         let module = get_test_vm_module("test-variable.wasm");
 
         assert_eq!(
-            eval(&module, 0, &vec![Value::I32(11), Value::I32(22)]).unwrap(),
+            eval(module_name, 0, &vec![Value::I32(11), Value::I32(22)]).unwrap(),
             vec![Value::I32(22), Value::I32(11)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![Value::I32(11), Value::I32(22)]).unwrap(),
+            eval(module_name, 1, &vec![Value::I32(11), Value::I32(22)]).unwrap(),
             vec![Value::I32(33)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
+            eval(module_name, 2, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
             vec![
                 Value::I32(55),
                 Value::I32(66),
@@ -690,11 +713,11 @@ mod tests {
         let module = get_test_vm_module("test-memory-page.wasm");
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(2)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I32(10), Value::I32(2), Value::I32(4), Value::I32(7)]
         );
     }
@@ -714,11 +737,11 @@ mod tests {
             get_test_vm_module_with_init_memory_data("test-memory-load.wasm", init_memory_data);
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(0x11)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![
                 Value::I32(0x11),
                 Value::I32(0xf1),
@@ -727,7 +750,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![
                 Value::I32(0x11),
                 Value::I32(0xf1),
@@ -738,7 +761,7 @@ mod tests {
 
         // 测试符号
         assert_eq!(
-            eval(&module, 3, &vec![]).unwrap(),
+            eval(module_name, 3, &vec![]).unwrap(),
             vec![
                 Value::I32(17),
                 Value::I32(17),
@@ -749,7 +772,7 @@ mod tests {
 
         // 测试 16 位和 32 位整数
         assert_eq!(
-            eval(&module, 4, &vec![]).unwrap(),
+            eval(module_name, 4, &vec![]).unwrap(),
             vec![
                 Value::I32(0x6655),
                 Value::I32(0x6655),
@@ -761,7 +784,7 @@ mod tests {
 
         // 测试 64 位整数
         assert_eq!(
-            eval(&module, 5, &vec![]).unwrap(),
+            eval(module_name, 5, &vec![]).unwrap(),
             vec![
                 Value::I64(0x03020100),
                 Value::I64(0x03020100),
@@ -788,13 +811,13 @@ mod tests {
 
         // 测试读取数据
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(0x11), Value::I32(0x2233), Value::I32(0x44556677)]
         );
 
         // 测试读取数据
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![
                 Value::I64(0xf0e0d0c0b0a09080u64 as i64),
                 Value::I64(0x68),
@@ -804,14 +827,14 @@ mod tests {
 
         // 测试 i32.store8
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I32(0xddccbbaau32 as i32)]
         );
         let d2: Vec<u8> = vec![0xaa, 0xbb, 0xcc, 0xdd, 0x00, 0x00, 0x00, 0x00];
         assert_eq!(module.as_ref().borrow().dump_memory(0, d2.len()), d2);
 
         // 测试 i32 和 i64 的各种类型 store 指令
-        assert_eq!(eval(&module, 3, &vec![]).unwrap(), vec![]);
+        assert_eq!(eval(module_name, 3, &vec![]).unwrap(), vec![]);
         let d3: Vec<u8> = vec![
             0xaa, 0xbb, 0xcc, 0xdd, 0x02, 0x01, 0x00, 0x00, 0xa3, 0xa2, 0xa1, 0xa0, 0xb0, 0x00,
             0xc1, 0xc0, 0xd3, 0xd2, 0xd1, 0xd0, 0xe7, 0xe6, 0xe5, 0xe4, 0xe3, 0xe2, 0xe1, 0xe0,
@@ -820,7 +843,7 @@ mod tests {
 
         // 测试 memory.grow 指令之后，访问原有的内存数据
         assert_eq!(
-            eval(&module, 4, &vec![]).unwrap(),
+            eval(module_name, 4, &vec![]).unwrap(),
             vec![
                 Value::I32(1),
                 Value::I32(2),
@@ -835,15 +858,15 @@ mod tests {
         let module = get_test_vm_module("test-function-call.wasm");
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I32(-5)]
         );
     }
@@ -853,19 +876,19 @@ mod tests {
         let module = get_test_vm_module("test-function-indirect-call.wasm");
 
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(12)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I32(8)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I32(20)]
         );
         assert_eq!(
-            eval(&module, 3, &vec![]).unwrap(),
+            eval(module_name, 3, &vec![]).unwrap(),
             vec![Value::I32(5)]
         );
     }
@@ -876,43 +899,43 @@ mod tests {
 
         // 测试 return
         assert_eq!(
-            eval(&module, 0, &vec![]).unwrap(),
+            eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(1)]
         );
         assert_eq!(
-            eval(&module, 1, &vec![]).unwrap(),
+            eval(module_name, 1, &vec![]).unwrap(),
             vec![Value::I32(2)]
         );
         assert_eq!(
-            eval(&module, 2, &vec![]).unwrap(),
+            eval(module_name, 2, &vec![]).unwrap(),
             vec![Value::I32(3)]
         );
 
         // 测试 br
         assert_eq!(
-            eval(&module, 3, &vec![]).unwrap(),
+            eval(module_name, 3, &vec![]).unwrap(),
             vec![Value::I32(4)]
         );
         assert_eq!(
-            eval(&module, 4, &vec![]).unwrap(),
+            eval(module_name, 4, &vec![]).unwrap(),
             vec![Value::I32(2)]
         );
         assert_eq!(
-            eval(&module, 5, &vec![]).unwrap(),
+            eval(module_name, 5, &vec![]).unwrap(),
             vec![Value::I32(11)]
         );
         assert_eq!(
-            eval(&module, 6, &vec![]).unwrap(),
+            eval(module_name, 6, &vec![]).unwrap(),
             vec![Value::I32(12)]
         );
         assert_eq!(
-            eval(&module, 7, &vec![]).unwrap(),
+            eval(module_name, 7, &vec![]).unwrap(),
             vec![Value::I32(13)]
         );
 
         // 测试 br_if
         assert_eq!(
-            eval(&module, 8, &vec![]).unwrap(),
+            eval(module_name, 8, &vec![]).unwrap(),
             vec![Value::I32(55)]
         );
 
@@ -921,11 +944,11 @@ mod tests {
 
         // 测试 if
         assert_eq!(
-            eval(&module, 9, &vec![]).unwrap(),
+            eval(module_name, 9, &vec![]).unwrap(),
             vec![Value::I32(2)]
         );
         assert_eq!(
-            eval(&module, 10, &vec![]).unwrap(),
+            eval(module_name, 10, &vec![]).unwrap(),
             vec![Value::I32(1)]
         );
     }

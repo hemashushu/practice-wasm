@@ -17,7 +17,7 @@ use anvm_ast::{
     types::Value,
 };
 
-/// AST 模块内的函数信息
+/// AST 模块的函数的指令序列位置信息
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionLocation {
     Import {
@@ -195,9 +195,9 @@ pub fn link_functions(
 
                                     let function_item = FunctionItem::External {
                                         type_index: *type_index_target_module,
-                                        ast_module_index: target_ast_module_index,
+                                        vm_module_index: target_ast_module_index,
                                         function_index: target_function_index,
-                                        // internal_function_index: *internal_function_index,
+                                        internal_function_index: *internal_function_index,
                                         start_index: *start_index,
                                         end_index: *end_index,
                                     };
@@ -214,7 +214,7 @@ pub fn link_functions(
                     end_index,
                 } => FunctionItem::Internal {
                     type_index: *type_index,
-                    // internal_function_index: *internal_function_index,
+                    internal_function_index: *internal_function_index,
                     start_index: *start_index,
                     end_index: *end_index,
                 },

@@ -4,6 +4,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+pub fn make_invalid_operand_data_type(instruction_name: &str, data_type_name: &str) -> EngineError {
+    // INVALID_OPERAND_DATA_TYPE
+    EngineError::InvalidOperation(format!(
+        "operand data type for instruction \"{}\" should be \"{}\"",
+        instruction_name, data_type_name
+    ))
+}
+
 // use std::{any::Any, cell::RefCell, rc::Rc, fmt::Debug};
 //
 // use anvm_ast::{

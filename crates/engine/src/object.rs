@@ -34,13 +34,15 @@ pub enum FunctionItem {
         function_index: usize,
     },
     External {
-        ast_module_index: usize,
+        vm_module_index: usize,
         type_index: usize, // 目标函数在目标模块当中的类型索引
         function_index: usize,
+        internal_function_index: usize, // 目标函数在目标模块当中的内部函数列表里的索引
         start_index: usize,
         end_index: usize, // 函数 `end 指令` 所在的位置
     },
     Internal {
+        internal_function_index: usize, // 函数在模块当中的内部函数列表里的索引
         type_index: usize,
         start_index: usize,
         end_index: usize, // 函数 `end 指令` 所在的位置
@@ -52,15 +54,18 @@ pub enum FunctionItem {
 pub enum Control {
     /// 进入一个新的栈帧
     /// 对应 block/loop 指令
-    Block(BlockType, /* end_addr */ usize),
+    Block {
+        block_type: BlockType,
+        end_addr: usize,
+    },
 
     /// 进入一个新的栈帧，并当原栈顶的数值等于 0 时，跳转到指定的地址
     /// 对应 if 指令
-    BlockJumpEqZero(
-        BlockType,
-        /* alternate_addr */ usize,
-        /* end_addr */ usize,
-    ),
+    BlockJumpEqZero {
+        block_type: BlockType,
+        alternate_addr: usize,
+        end_addr: usize,
+    },
 
     /// 跳转到指定的地址
     /// 其中 relative_depth 为当前栈帧距离目标栈帧的层次数量，当数量为 0 时，表示
@@ -75,30 +80,61 @@ pub enum Control {
     JumpNotEqZero(/* relative_depth */ usize, /* addr */ usize),
 
     /// 调用模块内的函数
-    CallInternal(
-        /* type_index */ usize, // 冗余信息，为了省去一次查询过程
-        /* function_index */ usize,
-        /* addr */ usize, // 冗余信息，为了省去一次查询过程
-    ),
+    CallInternal {
+        /// 被调用者的类型索引
+        /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
+        type_index: usize,
+
+        /// 被调用者的函数索引
+        /// 此索引并非内部函数索引，而是模块内所有函数的索引
+        function_index: usize,
+
+        /// 被调用者的内部函数索引
+        /// 即被调用者在内部函数列表里的索引，
+        /// 这是一个冗余信息，用于快速获取内部函数的局部变量信息
+        internal_function_index: usize,
+
+        /// 被调用函数的指令开始位置
+        /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
+        addr: usize,
+    },
 
     /// 调用模块外的函数
-    CallExternal(
-        /* ast_module_index */ usize,
-        /* type_index 在原模块当中的类型索引 */
-        usize, // 冗余信息，为了省去一次查询过程
-        /* function_index 在原模块当中的函数索引（索引包括导入的外部函数，也包括模块内部函数，此索引值为 call 指令参数所指定的值）*/
-        usize,
-        /* addr */
-        usize, // 冗余信息，为了省去一次查询过程
-    ),
+    CallExternal {
+        /// 目标模块的索引
+        vm_module_index: usize,
+
+        /// 目标函数在原模块当中的类型索引
+        /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
+        type_index: usize,
+
+        /// 目标函数在原模块当中的索引
+        /// 此索引包括导入的外部函数，也包括模块内部函数，此索引值为 call 指令参数所指定的值
+        function_index: usize,
+
+        /// 目标函数在原模块当中内部函数索引
+        /// 这是一个冗余信息，用于快速获取内部函数的局部变量信息
+        internal_function_index: usize,
+
+        /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
+        addr: usize,
+    },
 
     /// 调用本地函数（native function）模块的本地函数
-    CallNative(
-        /* native_module_index */ usize,
-        /* type_index 在原模块当中的类型索引 */
-        usize, // 冗余信息，为了省去一次查询过程
-        /* function_index 在原模块当中的函数索引 */ usize,
-    ),
+    CallNative {
+        native_module_index: usize,
+
+        /// 目标函数在原模块当中的类型索引
+        /// 冗余信息，用于省去函数调用时的一次查询过程
+        type_index: usize,
+
+        /// 目标函数在原模块当中的函数索引
+        /// 本地模块没有导入函数，所以该索引值等于本地函数列表的索引
+        function_index: usize,
+    },
+
+    /// 原 end 指令，表示函数或者结构块结束
+    Return,
 }
 
 /// 编译后的指令

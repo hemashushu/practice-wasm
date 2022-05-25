@@ -226,6 +226,10 @@ impl VMStack {
         values
     }
 
+    pub fn drop_values_at(&mut self, index: usize) {
+        self.slots.drain(index..);
+    }
+
     pub fn peek_values(&self, start: usize, end: usize) -> &[Value] {
         &self.slots[start..end]
     }

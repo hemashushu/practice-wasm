@@ -11,17 +11,18 @@
 //! - drop
 //! - select
 
-use std::{cell::RefCell, rc::Rc};
-
 use anvm_ast::types::Value;
 
-use crate::{object::EngineError, vm_module::VMModule};
+use crate::{
+    error::{make_invalid_operand_data_type, EngineError},
+    vm::VM,
+};
 
 /// # drop
 ///
 /// 弹出栈顶的一个操作数并扔掉
-pub fn drop(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    vm_module.as_ref().borrow_mut().operand_stack.pop();
+pub fn drop(vm: &mut VM) -> Result<(), EngineError> {
+    vm.context.stack.pop();
     Ok(())
 }
 
@@ -33,7 +34,7 @@ pub fn drop(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
 /// - 栈顶
 /// - testing     <-- 测试值
 /// - consequent  <-- 为 0 时压入这个
-/// - alternate   <-- 为 1 时压入这个
+/// - alternate   <-- 非 0 时压入这个
 /// - 栈底
 ///
 /// 示例：
@@ -45,31 +46,24 @@ pub fn drop(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
 /// 其中：
 /// - 栈顶元素（第一个操作数）必须是 int32，
 /// - 第二个和第三个操作数的类型必须相同
-pub fn select(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let (testing, consequent, alternate) = (
-        module.operand_stack.pop(),
-        module.operand_stack.pop(),
-        module.operand_stack.pop(),
-    );
+pub fn select(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (testing, consequent, alternate) = (stack.pop(), stack.pop(), stack.pop());
 
     if consequent.get_type() != alternate.get_type() {
         Err(EngineError::InvalidOperation(
-            "the value type of the consequent and alternate for \"select\" instruction should be the same".to_string(),
+            "the operand data type of the consequent and alternate for \"select\" instruction should be the same".to_string(),
         ))
     } else {
         if let Value::I32(value) = testing {
             if value == 0 {
-                module.operand_stack.push(consequent);
+                stack.push(consequent);
             } else {
-                module.operand_stack.push(alternate);
+                stack.push(alternate);
             }
             Ok(())
         } else {
-            Err(EngineError::InvalidOperation(
-                "the testing number for \"select\" instruction should be type \"i32\"".to_string(),
-            ))
+            Err(make_invalid_operand_data_type("select", "i32"))
         }
     }
 }
