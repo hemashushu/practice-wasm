@@ -5,9 +5,11 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    error::EngineError,
+    error::{make_invalid_table_index_engine_error, EngineError, make_invalid_memory_index_engine_error},
     native_module::NativeModule,
     object::{FunctionItem, NamedAstModule},
+    transformer::transform_constant_expression,
+    vm::VM,
     vm_global_variable::VMGlobalVariable,
     vm_memory::VMMemory,
     vm_table::VMTable,
@@ -366,8 +368,8 @@ pub fn link_tables(
                 // 根据定义创建新表
                 VMTable::new(first.clone())
             } else {
-                // 创建默认表（容量最小值为 0，不限最大值的表）
-                VMTable::new_by_min(0)
+                // 创建默认表（容量最小值为 0，最大值也是 0，相当于无表）
+                VMTable::new_by_page_range(0, 0)
             };
 
             let instance_table_index = instance_tables.len();
@@ -443,9 +445,7 @@ fn resolve_ast_module_table(
         )))?;
 
     if target_table_index != 0 {
-        return Err(EngineError::InvalidOperation(
-            "only one table is allowed for a module".to_string(),
-        ));
+        return Err(make_invalid_table_index_engine_error());
     }
 
     let option_target_instance_table_index = module_table_map[target_ast_module_index];
@@ -518,8 +518,8 @@ pub fn link_memorys(
                 // 根据定义创建新内存块
                 VMMemory::new(first.clone())
             } else {
-                // 创建默认内存块（容量最小值为 0，不限最大值的内存块）
-                VMMemory::new_by_min_page(0)
+                // 创建默认内存块（容量最小值为 0，最大值也是 0，相当于无内存块定义）
+                VMMemory::new_by_page_range(0, 0)
             };
 
             let instance_memory_block_index = instance_memory_blocks.len();
@@ -597,9 +597,7 @@ fn resolve_ast_module_memory_block(
         )))?;
 
     if target_memory_block_index != 0 {
-        return Err(EngineError::InvalidOperation(
-            "only one memory block is allowed for a module".to_string(),
-        ));
+        return Err(make_invalid_memory_index_engine_error());
     }
 
     let option_target_instance_memory_block_index =
@@ -651,6 +649,9 @@ pub fn link_global_variables(
     // 所有实例表
     let mut instance_global_variables: Vec<VMGlobalVariable> = vec![];
 
+    // 创建一个 `裸 VM` 实例，用于对 `常量表达式` 求值
+    let mut bare_vm = VM::new_bare_vm();
+
     for ast_module in named_ast_modules.iter().map(|item| &item.module) {
         let mut module_global_variable_map_item: Vec<Option<usize>> = vec![];
 
@@ -668,8 +669,20 @@ pub fn link_global_variables(
         // 再创建模块内定义的所有全局变量
         for global_item in &ast_module.global_items {
             let global_type = global_item.global_type.clone();
-            // todo 执行 global_item.initialize_instruction_items
-            let value = Value::I32(0);
+
+            // 求值 global_item 的初始化常量表达式
+            let constant_expression =
+                transform_constant_expression(&global_item.initialize_instruction_items)?;
+            let value = bare_vm.eval_constant_expression(&constant_expression)?;
+
+            // 检查数据类型是否匹配
+            if value.get_type() != global_type.value_type {
+                return Err(EngineError::InvalidOperation(
+                    "the initialized value does not match the data type of the global variable"
+                        .to_string(),
+                ));
+            }
+
             let instance_global_variable = VMGlobalVariable::new(global_type, value);
 
             // 创建全局变量实例

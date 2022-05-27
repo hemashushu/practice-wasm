@@ -1,20 +1,22 @@
 (module
-    (memory 1)    ;; 声明一个内存块，页面数为 1，即 64KB
+    (memory 1)      ;; 声明一个内存块，页面数为 1，即 64KB
 
-    ;; 初始化数据：
-    ;; addr: 0      : 0x11,
-    ;; addr: 8      : 0x2233                : 0x33, 0x22
-    ;; addr: 16     : 0x44556677            : 0x77, 0x66, 0x55, 0x44
-    ;; addr: 24     : 0xf0e0d0c0b0a09080    : 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0
-    ;; addr: 32     : "hello"               : 0x68, 0x65, 0x6C, 0x6C, 0x6F,
-    ;; addr: 40     : "中文"。               : 0xE4, 0xB8, 0xAD, 0xE6, 0x96, 0x87,
-
+    ;; 初始化数据
     (data 0 (offset (i32.const 0)) "\11")
     (data 0 (offset (i32.const 8)) "\33\22")
     (data 0 (offset (i32.const 16)) "\77\66\55\44")
     (data 0 (offset (i32.const 24)) "\80\90\a0\b0\c0\d0\e0\f0")
     (data 0 (offset (i32.const 32)) "hello")
     (data 0 (offset (i32.const 40)) "中文")
+    ;;
+    ;; 初始化之后内存的内容如下
+    ;;
+    ;; addr: 0      : 0x11,
+    ;; addr: 8      : 0x2233                : 0x33, 0x22
+    ;; addr: 16     : 0x44556677            : 0x77, 0x66, 0x55, 0x44
+    ;; addr: 24     : 0xf0e0d0c0b0a09080    : 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0
+    ;; addr: 32     : "hello"               : 0x68, 0x65, 0x6C, 0x6C, 0x6F,
+    ;; addr: 40     : "中文"。               : 0xE4, 0xB8, 0xAD, 0xE6, 0x96, 0x87,
 
     (func $f0 (result i32 i32 i32)
         ;; 读第 1 个数

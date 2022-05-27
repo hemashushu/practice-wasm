@@ -5,14 +5,20 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use anvm_ast::{
-    ast::LocalGroup,
+    instruction,
     types::{Value, ValueType},
 };
 
 use crate::{
-    error::EngineError, interpreter, native_module::NativeModule, object::FunctionItem,
-    vm_global_variable::VMGlobalVariable, vm_memory::VMMemory, vm_module::VMModule,
-    vm_stack::VMStack, vm_table::VMTable,
+    error::EngineError,
+    interpreter,
+    native_module::NativeModule,
+    object::{FunctionItem, Instruction},
+    vm_global_variable::VMGlobalVariable,
+    vm_memory::VMMemory,
+    vm_module::VMModule,
+    vm_stack::VMStack,
+    vm_table::VMTable,
 };
 
 pub struct Status {
@@ -87,6 +93,15 @@ impl Status {
             program_counter: 0,
         }
     }
+
+    pub fn reset(&mut self) {
+        self.frame_pointer = 0;
+        self.local_pointer = 0;
+        self.base_pointer = 0;
+        self.vm_module_index = 0;
+        self.function_index = 0;
+        self.program_counter = 0;
+    }
 }
 
 pub struct Context {
@@ -120,9 +135,6 @@ impl Context {
 }
 
 pub struct VM {
-    // pub module_map: HashMap<String, Rc<RefCell<dyn Module>>>,
-    // pub vm_modules: Vec<VMModule>,
-    // pub modules: Vec<Module>,
     pub status: Status,
     pub context: Context,
 }
@@ -450,5 +462,46 @@ impl VM {
         // 已经执行完毕。
         let is_program_end = previous_frame_pointer == 0;
         is_program_end
+    }
+
+    /// 创建一个 `裸 VM`，即除了一个栈之外，什么都没有
+    /// 的虚拟机（没有内存、表、全局变量、模块）。
+    ///
+    /// `裸 VM` 用于执行常量表达式
+    pub fn new_bare_vm() -> Self {
+        let status = Status::new();
+        let stack = VMStack::new();
+        let context = Context::new(stack, vec![], vec![], vec![], vec![], vec![]);
+
+        Self { status, context }
+    }
+
+    pub fn eval_constant_expression(
+        &mut self,
+        instructions: &[Instruction],
+    ) -> Result<Value, EngineError> {
+        // 复位状态和栈
+        // 如此一来就可以在一个 `裸 VM` 里重复调用该函数
+        // 用于方便对多个常量表达式求值
+        self.status.reset();
+        self.context.stack.reset();
+
+        // 压入一个虚拟的栈帧，让该帧只有一个返回值
+        self.push_call_frame(0, 1, &vec![], 0, 0, 0);
+
+        let mut pc: usize = 0;
+
+        loop {
+            let instruction = instructions[pc].to_owned();
+            let is_program_end = interpreter::exec_instruction(self, &instruction)?;
+            if is_program_end {
+                break;
+            }
+
+            pc += 1;
+        }
+
+        let value = self.context.stack.pop();
+        Ok(value)
     }
 }

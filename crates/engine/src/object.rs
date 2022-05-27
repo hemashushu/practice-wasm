@@ -140,6 +140,11 @@ pub enum Control {
 /// 编译后的指令
 #[derive(Debug, PartialEq, Clone)]
 pub enum Instruction {
-    Original(instruction::Instruction),
+    /// 按顺序执行的指令
+    /// 即执行完一条指令后，不改变程序的执行顺序，继续执行下一条指令
+    Sequence(instruction::Instruction),
+
+    /// 控制指令
+    /// 会控制或者会改变程序执行顺序的指令
     Control(Control),
 }

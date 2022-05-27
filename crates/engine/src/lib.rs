@@ -20,13 +20,13 @@ pub mod vm;
 
 mod ins_const;
 mod ins_parametric;
-// mod ins_numeric_eqz;
-// mod ins_numeric_comparsion;
-// mod ins_numeric_unary;
-// mod ins_numeric_binary;
-// mod ins_numeric_convert;
-// mod ins_variable;
-// mod ins_memory;
+mod ins_numeric_eqz;
+mod ins_numeric_comparsion;
+mod ins_numeric_unary;
+mod ins_numeric_binary;
+mod ins_numeric_convert;
+mod ins_variable;
+mod ins_memory;
 // mod ins_function;
 // mod ins_branch;
 

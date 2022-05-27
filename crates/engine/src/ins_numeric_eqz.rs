@@ -12,36 +12,33 @@
 //! i32.eqz
 //! i64.eqz
 
-use std::{cell::RefCell, rc::Rc};
-
 use anvm_ast::types::Value;
 
-use crate::{object::EngineError, vm_module::VMModule};
+use crate::{
+    error::{make_invalid_operand_data_types_engine_error, EngineError},
+    vm::VM,
+};
 
-pub fn i32_eqz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let testing = module.operand_stack.pop();
+pub fn i32_eqz(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let testing = stack.pop();
 
     if let Value::I32(value) = testing {
-        module.operand_stack.push_bool(value == 0);
+        stack.push_bool(value == 0);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.eqz\" should be \"i32\"".to_string(),
-        ))
+        Err(make_invalid_operand_data_types_engine_error("i32.eqz", "i32"))
     }
 }
 
-pub fn i64_eqz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let testing = module.operand_stack.pop();
+pub fn i64_eqz(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let testing = stack.pop();
 
     if let Value::I64(value) = testing {
-        module.operand_stack.push_bool(value == 0);
+        stack.push_bool(value == 0);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.eqz\" should be \"i64\"".to_string(),
-        ))
+        Err(make_invalid_operand_data_types_engine_error("i64.eqz", "i64"))
     }
 }

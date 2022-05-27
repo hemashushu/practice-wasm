@@ -17,50 +17,51 @@
 //! - global.get global_idx:uint32  ;; 读取指定索引的全局变量的值，压入操作数栈
 //! - global.set global_idx:uint32  ;; 从操作数栈弹出一个数，写入到指定索引的全局变量；弹出的数的类型必须跟全局变量的一致
 
-use std::{cell::RefCell, rc::Rc};
+use crate::{error::EngineError, vm::VM};
 
-use crate::{object::EngineError, vm_module::VMModule};
+pub fn local_get(vm: &mut VM, index: u32) -> Result<(), EngineError> {
+    let offset = vm.status.local_pointer + (index as usize);
 
-pub fn local_get(vm_module: Rc<RefCell<VMModule>>, index: u32) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let offset = module.current_call_frame_base_pointer + (index as usize);
-    let value = module.operand_stack.get_value(offset);
-    module.operand_stack.push(value);
+    let stack = &mut vm.context.stack;
+    let value = stack.get_value(offset);
+    stack.push(value);
     Ok(())
 }
 
-pub fn local_set(vm_module: Rc<RefCell<VMModule>>, index: u32) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let value = module.operand_stack.pop();
-    let offset = module.current_call_frame_base_pointer + (index as usize);
-    module.operand_stack.set_value(offset, value);
+pub fn local_set(vm: &mut VM, index: u32) -> Result<(), EngineError> {
+    let offset = vm.status.local_pointer + (index as usize);
+
+    let stack = &mut vm.context.stack;
+    let value = stack.pop();
+    stack.set_value(offset, value);
     Ok(())
 }
 
-pub fn local_tee(vm_module: Rc<RefCell<VMModule>>, index: u32) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let value = module.operand_stack.peek();
-    let offset = module.current_call_frame_base_pointer + (index as usize);
-    module.operand_stack.set_value(offset, value);
+pub fn local_tee(vm: &mut VM, index: u32) -> Result<(), EngineError> {
+    let offset = vm.status.local_pointer + (index as usize);
+
+    let stack = &mut vm.context.stack;
+    let value = stack.peek();
+    stack.set_value(offset, value);
     Ok(())
 }
 
-pub fn global_get(vm_module: Rc<RefCell<VMModule>>, index: u32) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let value = module.global_variables[index as usize]
-        .as_ref()
-        .borrow()
-        .get_value();
-    module.operand_stack.push(value);
+pub fn global_get(vm: &mut VM, index: u32) -> Result<(), EngineError> {
+    let instance_global_variable_index =
+        vm.context.vm_modules[vm.status.vm_module_index].global_variable_indexes[index as usize];
+    let value = vm.context.global_variables[instance_global_variable_index].get_value();
+
+    let stack = &mut vm.context.stack;
+    stack.push(value);
     Ok(())
 }
 
-pub fn global_set(vm_module: Rc<RefCell<VMModule>>, index: u32) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let value = module.operand_stack.pop();
-    module.global_variables[index as usize]
-        .as_ref()
-        .borrow_mut()
-        .set_value(value)?;
+pub fn global_set(vm: &mut VM, index: u32) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let value = stack.pop();
+
+    let instance_global_variable_index =
+        vm.context.vm_modules[vm.status.vm_module_index].global_variable_indexes[index as usize];
+    vm.context.global_variables[instance_global_variable_index].set_value(value)?;
     Ok(())
 }

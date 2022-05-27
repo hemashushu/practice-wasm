@@ -103,9 +103,9 @@ use anvm_ast::{
 };
 
 use crate::{
-    object::{EngineError, Function},
     object::FrameType,
-    vm_function::{VMFunctionKind, VMFunction},
+    object::{EngineError, Function},
+    vm_function::{VMFunction, VMFunctionKind},
     vm_module::{enter_control_block, VMModule},
 };
 
@@ -246,9 +246,7 @@ pub fn call_indirect(
     table_index: u32,
 ) -> Result<(), EngineError> {
     if table_index != 0 {
-        return Err(EngineError::InvalidOperation(
-            "only table with index value of 0 is allowed".to_string(),
-        ));
+        return Err(make_invalid_table_index_engine_error());
     }
 
     let rc_function = {

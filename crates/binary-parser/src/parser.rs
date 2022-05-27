@@ -474,7 +474,7 @@ fn continue_parse_type_item(source: &[u8]) -> Result<(TypeItem, &[u8]), ParseErr
     let (tag, post_tag) = read_byte(source)?;
     if tag != FUNCTION_TYPE_TAG {
         return Err(ParseError::Unsupported(
-            "only type of function is supported".to_string(),
+            "only the \"type of function\" is supported in the \"type\" section".to_string(),
         ));
     }
 
@@ -603,7 +603,7 @@ fn continue_parse_table_type(source: &[u8]) -> Result<(TableType, &[u8]), ParseE
     let (tag, post_tag) = read_byte(source)?;
     if tag != TABLE_TYPE_TAG_FUNC_REF {
         Err(ParseError::Unsupported(
-            "only function reference is supported in the table".to_string(),
+            "only the \"function reference\" type table is supported in the \"import\" section".to_string(),
         ))
     } else {
         let (limit, post_limit) = continue_parse_limit(post_tag)?;
@@ -698,7 +698,7 @@ fn parse_table_section(source: &[u8]) -> Result<Vec<TableType>, ParseError> {
 
     if item_count > 1 {
         return Err(ParseError::Unsupported(
-            "only one table is supported".to_string(),
+            "only one table is allowed in a module".to_string(),
         ));
     }
 
@@ -734,7 +734,7 @@ fn parse_memory_section(source: &[u8]) -> Result<Vec<MemoryType>, ParseError> {
 
     if item_count > 1 {
         return Err(ParseError::Unsupported(
-            "only one memory block is supported".to_string(),
+            "only one memory block is allowed in a module".to_string(),
         ));
     }
 

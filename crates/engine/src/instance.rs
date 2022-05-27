@@ -6,15 +6,17 @@
 
 use anvm_ast::{
     ast::{FunctionType, TypeItem},
-    types::ValueType,
+    types::{Value, ValueType},
 };
 
 use crate::{
-    error::EngineError,
+    error::{
+        make_invalid_memory_index_engine_error, make_invalid_table_index_engine_error, EngineError,
+    },
     linker::{link_functions, link_global_variables, link_memorys, link_tables},
     native_module::NativeModule,
     object::NamedAstModule,
-    transformer::transform,
+    transformer::{transform, transform_constant_expression},
     vm::{Context, Status, VM},
     vm_module::VMModule,
     vm_stack::VMStack,
@@ -29,18 +31,22 @@ pub fn create_instance(
     let mut function_items_list = link_functions(&native_modules, named_ast_modules)?;
     let mut instructions_list = transform(named_ast_modules, &function_items_list)?;
 
-    // 获取内存块列表，以及 "AST 模块 - 内存块" 映射表
-    let (memory_blocks, mut module_to_memory_block_index_list) = link_memorys(named_ast_modules)?;
+    // 获取内存块实例列表，以及 "AST 模块 - 内存块" 映射表
+    let (mut memory_blocks, mut module_to_memory_block_index_list) =
+        link_memorys(named_ast_modules)?;
 
-    // 获取 "表" 的列表，以及 "AST 模块 - 表" 映射表
-    let (tables, mut module_to_table_index_list) = link_tables(named_ast_modules)?;
+    // 获取 "表" 实例列表，以及 "AST 模块 - 表" 映射表
+    let (mut tables, mut module_to_table_index_list) = link_tables(named_ast_modules)?;
 
-    // 获取全局变量列表，以及 "AST 模块 - 全局变量列表" 映射表
+    // 获取全局变量实例列表，以及 "AST 模块 - 全局变量列表" 映射表
     let (global_variables, mut module_to_global_variables_list) =
         link_global_variables(named_ast_modules)?;
 
     let module_count = named_ast_modules.len();
     let mut vm_modules: Vec<VMModule> = vec![];
+
+    // 创建一个 `裸 VM`，用于 data 项以及 element 项的偏移值常量表达式的求值
+    let mut bare_vm = VM::new_bare_vm();
 
     for index in 0..module_count {
         let function_items = function_items_list.pop().unwrap();
@@ -50,7 +56,6 @@ pub fn create_instance(
         let global_variable_indexes = module_to_global_variables_list.pop().unwrap();
 
         let ast_module_index = module_count - index - 1;
-        // let named_ast_module = named_ast_modules.pop().unwrap();
         let named_ast_module = &named_ast_modules[ast_module_index];
 
         let name = named_ast_module.name.clone();
@@ -64,12 +69,6 @@ pub fn create_instance(
                 TypeItem::FunctionType(function_type) => function_type.to_owned(),
             })
             .collect::<Vec<FunctionType>>();
-
-        // let function_to_type_indexes = ast_module
-        //     .internal_function_to_type_index_list
-        //     .iter()
-        //     .map(|item| *item as usize)
-        //     .collect::<Vec<usize>>();
 
         let internal_function_local_variables_list = ast_module
             .code_items
@@ -90,16 +89,59 @@ pub fn create_instance(
             memory_index,
             global_variable_indexes,
             function_types,
-            // function_to_type_indexes,
             internal_function_local_variables_list,
             function_items,
             instructions,
-            // named_ast_module.module,
         );
 
-        // todo:: 填充 data 到 memory
+        // 填充 data 到 memory
+        for data_item in &ast_module.data_items {
+            // 内存块索引，目前 WebAssembly 标准只支持 0
+            if data_item.memory_block_index != 0 {
+                return Err(make_invalid_memory_index_engine_error());
+            }
 
-        // todo:: 填充 element 到 table
+            let offset_instruction_items = &data_item.offset_instruction_items;
+            let constant_expression = transform_constant_expression(offset_instruction_items)?;
+            let offset = bare_vm.eval_constant_expression(&constant_expression)?;
+
+            let address = match offset {
+                Value::I32(v) => v as usize,
+                _ => {
+                    return Err(EngineError::InvalidOperation(
+                        "memory data offset should be a i32 number".to_string(),
+                    ));
+                }
+            };
+
+            let data = &data_item.data;
+            memory_blocks[memory_index].write_bytes(address, data);
+        }
+
+        // 填充 element 到 table
+        for element_item in &ast_module.element_items {
+            // 表索引，目前 WebAssembly 标准只支持 0
+            if element_item.table_index != 0 {
+                return Err(make_invalid_table_index_engine_error());
+            }
+
+            let offset_instruction_items = &element_item.offset_instruction_items;
+            let constant_expression = transform_constant_expression(offset_instruction_items)?;
+            let offset_value = bare_vm.eval_constant_expression(&constant_expression)?;
+
+            let offset = match offset_value {
+                Value::I32(v) => v as usize,
+                _ => {
+                    return Err(EngineError::InvalidOperation(
+                        "table element offset should be a i32 number".to_string(),
+                    ));
+                }
+            };
+
+            for (index, function_index) in element_item.function_indices.iter().enumerate() {
+                tables[table_index].set_element(offset + index, *function_index)?;
+            }
+        }
 
         vm_modules.push(vm_module);
     }
@@ -294,6 +336,38 @@ mod tests {
         vm.eval_function_by_index(0, index, args)
     }
 
+    pub fn eval_with_initial_memory_data(
+        filename: &str,
+        index: usize,
+        args: &[Value],
+        initial_memory_data: &[u8],
+    ) -> Result<Vec<Value>, EngineError> {
+        let ast_module = get_test_ast_module(filename);
+        let named_ast_module = NamedAstModule::new("test", ast_module);
+        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
+
+        vm.context.memory_blocks[0].write_bytes(0, initial_memory_data);
+        vm.eval_function_by_index(0, index, args)
+    }
+
+    pub fn eval_and_dump_memory_data(
+        filename: &str,
+        index: usize,
+        args: &[Value],
+        address: usize,
+        length: usize,
+    ) -> Result<(Vec<Value>, Vec<u8>), EngineError> {
+        let ast_module = get_test_ast_module(filename);
+        let named_ast_module = NamedAstModule::new("test", ast_module);
+        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
+
+        let result = vm.eval_function_by_index(0, index, args)?;
+        let data = vm.context.memory_blocks[0]
+            .read_bytes(address, length)
+            .to_vec();
+        Ok((result, data))
+    }
+
     #[test]
     fn test_instruction_const() {
         let module_name = "test-const.wasm";
@@ -330,14 +404,10 @@ mod tests {
             vec![Value::I32(100), Value::I32(123)]
         );
     }
-}
-
-/*
-
 
     #[test]
     fn test_inst_numeric_eqz() {
-        let module = get_test_vm_module("test-numeric-eqz.wasm");
+        let module_name = "test-numeric-eqz.wasm";
 
         assert_eq!(
             eval(module_name, 0, &vec![]).unwrap(),
@@ -355,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_numeric_comparsion() {
-        let module = get_test_vm_module("test-numeric-comparsion.wasm");
+        let module_name = "test-numeric-comparsion.wasm";
 
         // i32
 
@@ -483,22 +553,13 @@ mod tests {
 
     #[test]
     fn test_numeric_unary() {
-        let module = get_test_vm_module("test-numeric-unary.wasm");
+        let module_name = "test-numeric-unary.wasm";
 
         // i32
 
-        assert_eq!(
-            eval(module_name, 0, &vec![]).unwrap(),
-            vec![Value::I32(27)]
-        );
-        assert_eq!(
-            eval(module_name, 1, &vec![]).unwrap(),
-            vec![Value::I32(2)]
-        );
-        assert_eq!(
-            eval(module_name, 2, &vec![]).unwrap(),
-            vec![Value::I32(3)]
-        );
+        assert_eq!(eval(module_name, 0, &vec![]).unwrap(), vec![Value::I32(27)]);
+        assert_eq!(eval(module_name, 1, &vec![]).unwrap(), vec![Value::I32(2)]);
+        assert_eq!(eval(module_name, 2, &vec![]).unwrap(), vec![Value::I32(3)]);
 
         // f32
         assert_eq!(
@@ -553,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_numeric_binary() {
-        let module = get_test_vm_module("test-numeric-binary.wasm");
+        let module_name = "test-numeric-binary.wasm";
 
         assert_eq!(
             eval(module_name, 0, &vec![]).unwrap(),
@@ -641,37 +702,22 @@ mod tests {
 
     #[test]
     fn test_numeric_convert() {
-        let module = get_test_vm_module("test-numeric-convert.wasm");
+        let module_name = "test-numeric-convert.wasm";
 
         assert_eq!(
             eval(module_name, 0, &vec![]).unwrap(),
             vec![Value::I32(123)]
         );
-        assert_eq!(
-            eval(module_name, 1, &vec![]).unwrap(),
-            vec![Value::I64(8)]
-        );
-        assert_eq!(
-            eval(module_name, 2, &vec![]).unwrap(),
-            vec![Value::I64(8)]
-        );
-        assert_eq!(
-            eval(module_name, 3, &vec![]).unwrap(),
-            vec![Value::I64(-8)]
-        );
+        assert_eq!(eval(module_name, 1, &vec![]).unwrap(), vec![Value::I64(8)]);
+        assert_eq!(eval(module_name, 2, &vec![]).unwrap(), vec![Value::I64(8)]);
+        assert_eq!(eval(module_name, 3, &vec![]).unwrap(), vec![Value::I64(-8)]);
         assert_eq!(
             eval(module_name, 4, &vec![]).unwrap(),
             vec![Value::I64(0x00_00_00_00_ff_ff_ff_f8)]
         );
 
-        assert_eq!(
-            eval(module_name, 5, &vec![]).unwrap(),
-            vec![Value::I32(3)]
-        );
-        assert_eq!(
-            eval(module_name, 6, &vec![]).unwrap(),
-            vec![Value::I32(3)]
-        );
+        assert_eq!(eval(module_name, 5, &vec![]).unwrap(), vec![Value::I32(3)]);
+        assert_eq!(eval(module_name, 6, &vec![]).unwrap(), vec![Value::I32(3)]);
 
         assert_eq!(
             eval(module_name, 7, &vec![]).unwrap(),
@@ -686,31 +732,44 @@ mod tests {
     }
 
     #[test]
-    fn test_variable() {
-        let module = get_test_vm_module("test-variable.wasm");
+    fn test_local_variable() {
+        let module_name = "test-local-variable.wasm";
 
         assert_eq!(
-            eval(module_name, 0, &vec![Value::I32(11), Value::I32(22)]).unwrap(),
-            vec![Value::I32(22), Value::I32(11)]
+            eval(module_name, 0, &vec![Value::I32(10), Value::I32(20)]).unwrap(),
+            vec![Value::I32(10), Value::I32(20)]
         );
         assert_eq!(
-            eval(module_name, 1, &vec![Value::I32(11), Value::I32(22)]).unwrap(),
-            vec![Value::I32(33)]
+            eval(module_name, 1, &vec![Value::I32(33), Value::I32(44)]).unwrap(),
+            vec![Value::I32(-11)]
         );
         assert_eq!(
-            eval(module_name, 2, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
-            vec![
-                Value::I32(55),
-                Value::I32(66),
-                Value::I32(20),
-                Value::I32(10),
-            ]
+            eval(module_name, 2, &vec![Value::I32(33), Value::I32(22)]).unwrap(),
+            vec![Value::I32(10),]
+        );
+    }
+
+    #[test]
+    fn test_global_variable() {
+        let module_name = "test-global-variable.wasm";
+
+        assert_eq!(
+            eval(module_name, 0, &vec![]).unwrap(),
+            vec![Value::I32(55), Value::I32(66)]
+        );
+        assert_eq!(
+            eval(module_name, 1, &vec![Value::I32(3), Value::I32(4)]).unwrap(),
+            vec![Value::I32(-12)]
+        );
+        assert_eq!(
+            eval(module_name, 2, &vec![Value::I32(7)]).unwrap(),
+            vec![Value::I32(114),]
         );
     }
 
     #[test]
     fn test_memory_page() {
-        let module = get_test_vm_module("test-memory-page.wasm");
+        let module_name = "test-memory-page.wasm";
 
         assert_eq!(
             eval(module_name, 0, &vec![]).unwrap(),
@@ -724,7 +783,7 @@ mod tests {
 
     #[test]
     fn test_memory_load() {
-        let init_memory_data: Vec<u8> = vec![
+        let initial_memory_data: Vec<u8> = vec![
             /* addr: 0      */ 0x11, // 17
             /* addr: 1      */ 0xf1, // uint8'241 == int8'-15 (-15=241-256)
             /* addr: 2,3    */ 0x55, 0x66, // 0x6655
@@ -733,15 +792,14 @@ mod tests {
             /* addr: 14..21 */ 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0,
         ];
 
-        let module =
-            get_test_vm_module_with_init_memory_data("test-memory-load.wasm", init_memory_data);
+        let module_name = "test-memory-load.wasm";
 
         assert_eq!(
-            eval(module_name, 0, &vec![]).unwrap(),
+            eval_with_initial_memory_data(module_name, 0, &vec![], &initial_memory_data).unwrap(),
             vec![Value::I32(0x11)]
         );
         assert_eq!(
-            eval(module_name, 1, &vec![]).unwrap(),
+            eval_with_initial_memory_data(module_name, 1, &vec![], &initial_memory_data).unwrap(),
             vec![
                 Value::I32(0x11),
                 Value::I32(0xf1),
@@ -750,7 +808,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            eval(module_name, 2, &vec![]).unwrap(),
+            eval_with_initial_memory_data(module_name, 2, &vec![], &initial_memory_data).unwrap(),
             vec![
                 Value::I32(0x11),
                 Value::I32(0xf1),
@@ -761,7 +819,7 @@ mod tests {
 
         // 测试符号
         assert_eq!(
-            eval(module_name, 3, &vec![]).unwrap(),
+            eval_with_initial_memory_data(module_name, 3, &vec![], &initial_memory_data).unwrap(),
             vec![
                 Value::I32(17),
                 Value::I32(17),
@@ -772,7 +830,7 @@ mod tests {
 
         // 测试 16 位和 32 位整数
         assert_eq!(
-            eval(module_name, 4, &vec![]).unwrap(),
+            eval_with_initial_memory_data(module_name, 4, &vec![], &initial_memory_data).unwrap(),
             vec![
                 Value::I32(0x6655),
                 Value::I32(0x6655),
@@ -784,7 +842,7 @@ mod tests {
 
         // 测试 64 位整数
         assert_eq!(
-            eval(module_name, 5, &vec![]).unwrap(),
+            eval_with_initial_memory_data(module_name, 5, &vec![], &initial_memory_data).unwrap(),
             vec![
                 Value::I64(0x03020100),
                 Value::I64(0x03020100),
@@ -798,26 +856,26 @@ mod tests {
 
     #[test]
     fn test_memory_store() {
-        let module = get_test_vm_module("test-memory-store.wasm");
+        let module_name = "test-memory-store.wasm";
 
-        // 检查内存 （经过 data 段）初始化之后的内容
-        let d0: Vec<u8> = vec![
+        // 测试 i32.load
+        let e0: Vec<u8> = vec![
             0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x33, 0x22, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x77, 0x66, 0x55, 0x44, 0x00, 0x00, 0x00, 0x00, 0x80, 0x90, 0xa0, 0xb0,
             0xc0, 0xd0, 0xe0, 0xf0, 0x68, 0x65, 0x6C, 0x6C, 0x6F, 0x00, 0x00, 0x00, 0xE4, 0xB8,
             0xAD, 0xE6, 0x96, 0x87, 0x00, 0x00,
         ];
-        assert_eq!(module.as_ref().borrow().dump_memory(0, d0.len()), d0);
-
-        // 测试读取数据
+        let (r0, d0) = eval_and_dump_memory_data(module_name, 0, &vec![], 0, e0.len()).unwrap();
         assert_eq!(
-            eval(module_name, 0, &vec![]).unwrap(),
+            r0,
             vec![Value::I32(0x11), Value::I32(0x2233), Value::I32(0x44556677)]
         );
+        assert_eq!(d0, e0);
 
-        // 测试读取数据
+        // 测试 i64.load
+        let r1 = eval(module_name, 1, &vec![]).unwrap();
         assert_eq!(
-            eval(module_name, 1, &vec![]).unwrap(),
+            r1,
             vec![
                 Value::I64(0xf0e0d0c0b0a09080u64 as i64),
                 Value::I64(0x68),
@@ -826,24 +884,24 @@ mod tests {
         );
 
         // 测试 i32.store8
-        assert_eq!(
-            eval(module_name, 2, &vec![]).unwrap(),
-            vec![Value::I32(0xddccbbaau32 as i32)]
-        );
-        let d2: Vec<u8> = vec![0xaa, 0xbb, 0xcc, 0xdd, 0x00, 0x00, 0x00, 0x00];
-        assert_eq!(module.as_ref().borrow().dump_memory(0, d2.len()), d2);
+        let e2: Vec<u8> = vec![0xaa, 0xbb, 0xcc, 0xdd, 0x00, 0x00, 0x00, 0x00];
+        let (r2, d2) = eval_and_dump_memory_data(module_name, 2, &vec![], 0, e2.len()).unwrap();
+        assert_eq!(r2, vec![Value::I32(0xddccbbaau32 as i32)]);
+        assert_eq!(e2, d2);
 
         // 测试 i32 和 i64 的各种类型 store 指令
-        assert_eq!(eval(module_name, 3, &vec![]).unwrap(), vec![]);
-        let d3: Vec<u8> = vec![
+        let e3: Vec<u8> = vec![
             0xaa, 0xbb, 0xcc, 0xdd, 0x02, 0x01, 0x00, 0x00, 0xa3, 0xa2, 0xa1, 0xa0, 0xb0, 0x00,
             0xc1, 0xc0, 0xd3, 0xd2, 0xd1, 0xd0, 0xe7, 0xe6, 0xe5, 0xe4, 0xe3, 0xe2, 0xe1, 0xe0,
         ];
-        assert_eq!(module.as_ref().borrow().dump_memory(0, d3.len()), d3);
+        let (r3, d3) = eval_and_dump_memory_data(module_name, 3, &vec![], 0, e3.len()).unwrap();
+        assert_eq!(r3, vec![]);
+        assert_eq!(d3, d3);
 
         // 测试 memory.grow 指令之后，访问原有的内存数据
+        let r4 = eval(module_name, 4, &vec![]).unwrap();
         assert_eq!(
-            eval(module_name, 4, &vec![]).unwrap(),
+            r4,
             vec![
                 Value::I32(1),
                 Value::I32(2),
@@ -852,6 +910,13 @@ mod tests {
             ]
         );
     }
+}
+
+/*
+
+
+
+
 
     #[test]
     fn test_function_call() {

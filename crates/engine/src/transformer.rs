@@ -11,7 +11,8 @@
 //!
 //! ## 指令转换规则
 //!
-//! 大部分指令都不需要转换，仅对流程控制（分支）和函数调用等指令需要转换为 `控制指令`：
+//! 大部分指令都不需要转换，仅对流程控制（分支）和函数调用等指令需要转换为 `控制指令`，其他的不会对
+//! 程序执行顺序产生影响的指令（比如数值指令）则转换为 `顺序指令`。
 //!
 //! - `block 指令` 转换为 `block 控制指令`；
 //! - `loop 指令` 转换为 `block 控制指令`；
@@ -31,6 +32,7 @@
 //!   * 对于目标为模块内的函数，转为 `call_internal 控制指令`；
 //!   * 对于目标为模块外的函数，转为 `call_external 控制指令`；
 //!   * 对于目标为本地的函数（native function），转为 `call_native 控制指令`；
+//! - `end 指令` 转为 `return 控制指令`；
 //!
 //! 控制指令列表
 //!
@@ -274,7 +276,7 @@ pub fn transform(
 
                         Instruction::Control(Control::Return)
                     }
-                    _ => Instruction::Original(original_instruction.to_owned()), // 其他指令不用转换
+                    _ => Instruction::Sequence(original_instruction.to_owned()), // 其他指令归类为 `顺序指令`，
                 };
 
                 instructions.push(instruction);
@@ -288,6 +290,43 @@ pub fn transform(
     }
 
     Ok(instructions_list)
+}
+
+/// 转换常量表达式里的指令
+///
+/// WebAssembly 里的
+///
+/// - 内存数据初始化指令当中的位置偏移值
+/// - 表的元素的位置偏移值
+/// - 全局变量的初始值
+///
+/// 都使用一条指令序列来表达，此序列也称为 `常量表达式`，表达式里的
+/// 指令一般是一个 `iNN.const 指令` 和一个 `end 指令`，
+/// https://webassembly.github.io/spec/core/valid/instructions.html#valid-constant
+pub fn transform_constant_expression(
+    original_instructions: &[instruction::Instruction],
+) -> Result<Vec<Instruction>, EngineError> {
+    let mut instructions = Vec::<Instruction>::with_capacity(original_instructions.len());
+
+    for inst in original_instructions {
+        let instruction = match inst {
+            instruction::Instruction::I32Const(_)
+            | instruction::Instruction::I64Const(_)
+            | instruction::Instruction::F32Const(_)
+            | instruction::Instruction::F64Const(_) => Instruction::Sequence(inst.to_owned()),
+            instruction::Instruction::End => Instruction::Control(Control::Return),
+            _ => {
+                return Err(EngineError::InvalidOperation(format!(
+                    "does not support instruction \"{:?}\" in constant expression",
+                    inst
+                )));
+            }
+        };
+
+        instructions.push(instruction);
+    }
+
+    Ok(instructions)
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -575,19 +614,19 @@ mod tests {
         let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
-                Instruction::Original(instruction::Instruction::I32Const(1)),
+                Instruction::Sequence(instruction::Instruction::I32Const(1)),
                 Instruction::Control(Control::Return),
-                Instruction::Original(instruction::Instruction::I32Const(2)),
+                Instruction::Sequence(instruction::Instruction::I32Const(2)),
                 Instruction::Control(Control::Return),
-                Instruction::Original(instruction::Instruction::I32Const(3)),
+                Instruction::Sequence(instruction::Instruction::I32Const(3)),
                 Instruction::Control(Control::Return),
             ],
             vec![
-                Instruction::Original(instruction::Instruction::I32Const(1)),
+                Instruction::Sequence(instruction::Instruction::I32Const(1)),
                 Instruction::Control(Control::Return),
-                Instruction::Original(instruction::Instruction::I32Const(2)),
-                Instruction::Original(instruction::Instruction::I32Const(3)),
-                Instruction::Original(instruction::Instruction::I32Add),
+                Instruction::Sequence(instruction::Instruction::I32Const(2)),
+                Instruction::Sequence(instruction::Instruction::I32Const(3)),
+                Instruction::Sequence(instruction::Instruction::I32Add),
                 Instruction::Control(Control::Return),
             ],
         ];
@@ -774,11 +813,11 @@ mod tests {
         let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
-            Instruction::Original(instruction::Instruction::I32Const(0)),
+            Instruction::Sequence(instruction::Instruction::I32Const(0)),
             Instruction::Control(Control::Return),
             // function 1
-            Instruction::Original(instruction::Instruction::I32Const(0)), // #02
-            Instruction::Original(instruction::Instruction::I32Const(1)), // #03
+            Instruction::Sequence(instruction::Instruction::I32Const(0)), // #02
+            Instruction::Sequence(instruction::Instruction::I32Const(1)), // #03
             Instruction::Control(Control::Block {
                 block_type: BlockType::Builtin(None),
                 end_addr: 28,
@@ -803,26 +842,26 @@ mod tests {
             Instruction::Control(Control::Jump(2, 28)),                   // #16
             Instruction::Control(Control::Jump(3, 35)),                   // #17
             Instruction::Control(Control::Jump(3, 35)),                   // #18
-            Instruction::Control(Control::Return),         // #19 - block 2 end
+            Instruction::Control(Control::Return),                        // #19 - block 2 end
             Instruction::Control(Control::Jump(0, 8)),                    // #20
             Instruction::Control(Control::Jump(1, 28)),                   // #21
             Instruction::Control(Control::Jump(2, 35)),                   // #22
             Instruction::Control(Control::Jump(2, 35)),                   // #23
-            Instruction::Control(Control::Return),         // #24 - block 1 end
+            Instruction::Control(Control::Return),                        // #24 - block 1 end
             Instruction::Control(Control::Jump(0, 28)),                   // #25
             Instruction::Control(Control::Jump(1, 35)),                   // #26
             Instruction::Control(Control::Jump(1, 35)),                   // #27
-            Instruction::Control(Control::Return),         // #28 - block 0 end
-            Instruction::Original(instruction::Instruction::I32Const(2)), // #29
-            Instruction::Original(instruction::Instruction::I32Const(3)), // #30
+            Instruction::Control(Control::Return),                        // #28 - block 0 end
+            Instruction::Sequence(instruction::Instruction::I32Const(2)), // #29
+            Instruction::Sequence(instruction::Instruction::I32Const(3)), // #30
             Instruction::Control(Control::Jump(0, 35)),                   // #31
             Instruction::Control(Control::Jump(0, 35)),                   // #32
-            Instruction::Original(instruction::Instruction::I32Const(4)), // #33
-            Instruction::Original(instruction::Instruction::I32Const(5)), // #34
-            Instruction::Control(Control::Return),         // #35
+            Instruction::Sequence(instruction::Instruction::I32Const(4)), // #33
+            Instruction::Sequence(instruction::Instruction::I32Const(5)), // #34
+            Instruction::Control(Control::Return),                        // #35
             // function 3
-            Instruction::Original(instruction::Instruction::I32Const(0)), // #36
-            Instruction::Original(instruction::Instruction::I32Const(1)), // #37
+            Instruction::Sequence(instruction::Instruction::I32Const(0)), // #36
+            Instruction::Sequence(instruction::Instruction::I32Const(1)), // #37
             Instruction::Control(Control::Block {
                 block_type: BlockType::Builtin(None),
                 end_addr: 80,
@@ -835,8 +874,8 @@ mod tests {
                 block_type: BlockType::Builtin(None),
                 end_addr: 41,
             }), // #40 - block 2
-            Instruction::Control(Control::Return),         // #41 - block 2 end
-            Instruction::Control(Control::Return),         // #42 - block 1 end
+            Instruction::Control(Control::Return),                        // #41 - block 2 end
+            Instruction::Control(Control::Return),                        // #42 - block 1 end
             Instruction::Control(Control::Block {
                 block_type: BlockType::Builtin(None),
                 end_addr: 77,
@@ -863,7 +902,7 @@ mod tests {
             Instruction::Control(Control::Jump(3, 80)),                   // #56
             Instruction::Control(Control::Jump(4, 85)), // #57 - jump to function end
             Instruction::Control(Control::Jump(4, 85)), // #58
-            Instruction::Control(Control::Return), // #59 - block 5 end
+            Instruction::Control(Control::Return),      // #59 - block 5 end
             Instruction::Control(Control::Jump(0, 73)), // #60 - else
             Instruction::Control(Control::JumpNotEqZero(0, 73)), // #61
             Instruction::Control(Control::JumpNotEqZero(1, 77)), // #62
@@ -879,23 +918,23 @@ mod tests {
             Instruction::Control(Control::Jump(3, 80)), // #69
             Instruction::Control(Control::Jump(4, 85)), // #70 - jump to function end
             Instruction::Control(Control::Jump(4, 85)), // #71
-            Instruction::Control(Control::Return), // #72 - block 6 end
-            Instruction::Control(Control::Return), // #73 // block 4 end
+            Instruction::Control(Control::Return),      // #72 - block 6 end
+            Instruction::Control(Control::Return),      // #73 // block 4 end
             Instruction::Control(Control::Jump(0, 77)), // #74
             Instruction::Control(Control::Jump(1, 80)), // #75
             Instruction::Control(Control::Jump(2, 85)), // #76
-            Instruction::Control(Control::Return), // #77 // block 3 end
+            Instruction::Control(Control::Return),      // #77 // block 3 end
             Instruction::Control(Control::Jump(0, 80)), // #78
             Instruction::Control(Control::Jump(1, 85)), // #79
-            Instruction::Control(Control::Return), // #80 // block 0 end
-            Instruction::Original(instruction::Instruction::I32Const(0)), // #81
-            Instruction::Original(instruction::Instruction::I32Const(1)), // #82
+            Instruction::Control(Control::Return),      // #80 // block 0 end
+            Instruction::Sequence(instruction::Instruction::I32Const(0)), // #81
+            Instruction::Sequence(instruction::Instruction::I32Const(1)), // #82
             Instruction::Control(Control::Jump(0, 85)), // #83
             Instruction::Control(Control::Jump(0, 85)), // #84
-            Instruction::Control(Control::Return), // #85
+            Instruction::Control(Control::Return),      // #85
             // function 4
-            Instruction::Original(instruction::Instruction::I32Const(0)), // #86
-            Instruction::Original(instruction::Instruction::I32Const(1)), // #87
+            Instruction::Sequence(instruction::Instruction::I32Const(0)), // #86
+            Instruction::Sequence(instruction::Instruction::I32Const(1)), // #87
             Instruction::Control(Control::BlockJumpEqZero {
                 block_type: BlockType::Builtin(None),
                 alternate_addr: 101,
@@ -912,14 +951,14 @@ mod tests {
             Instruction::Control(Control::Jump(1, 101)),                  // #94
             Instruction::Control(Control::Jump(2, 104)),                  // #95
             Instruction::Control(Control::Jump(2, 104)),                  // #96
-            Instruction::Control(Control::Return),         // #97 - block 1 end
+            Instruction::Control(Control::Return),                        // #97 - block 1 end
             Instruction::Control(Control::Jump(0, 101)),                  // #98
             Instruction::Control(Control::Jump(1, 104)),                  // #99
             Instruction::Control(Control::Jump(1, 104)),                  // #100
-            Instruction::Control(Control::Return),         // #101 - block 0 end
-            Instruction::Original(instruction::Instruction::I32Const(2)), // #102
-            Instruction::Original(instruction::Instruction::I32Const(3)), // #103
-            Instruction::Control(Control::Return),         // #104
+            Instruction::Control(Control::Return),                        // #101 - block 0 end
+            Instruction::Sequence(instruction::Instruction::I32Const(2)), // #102
+            Instruction::Sequence(instruction::Instruction::I32Const(3)), // #103
+            Instruction::Control(Control::Return),                        // #104
         ]];
 
         assert_eq!(actual, expected);
@@ -971,37 +1010,37 @@ mod tests {
         let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
-            Instruction::Original(instruction::Instruction::I32Const(0)), // #00
-            Instruction::Original(instruction::Instruction::I32Const(1)), // #01
+            Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
+            Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
             Instruction::Control(Control::CallInternal {
                 type_index: 0,
                 function_index: 1,
                 internal_function_index: 1,
                 addr: 7,
             }), // #02
-            Instruction::Original(instruction::Instruction::I32Const(10)), // #03
+            Instruction::Sequence(instruction::Instruction::I32Const(10)), // #03
             Instruction::Control(Control::CallInternal {
                 type_index: 0,
                 function_index: 2,
                 internal_function_index: 2,
                 addr: 10,
             }), // #04
-            Instruction::Original(instruction::Instruction::I32Const(11)), // #05
-            Instruction::Control(Control::Return),         // #06
+            Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
+            Instruction::Control(Control::Return),                        // #06
             // function 1
-            Instruction::Original(instruction::Instruction::I32Const(2)), // #07
-            Instruction::Original(instruction::Instruction::I32Const(3)), // #08
-            Instruction::Control(Control::Return),         // #09
+            Instruction::Sequence(instruction::Instruction::I32Const(2)), // #07
+            Instruction::Sequence(instruction::Instruction::I32Const(3)), // #08
+            Instruction::Control(Control::Return),                        // #09
             // function 2
-            Instruction::Original(instruction::Instruction::I32Const(4)), // #10
-            Instruction::Original(instruction::Instruction::I32Const(5)), // #11
+            Instruction::Sequence(instruction::Instruction::I32Const(4)), // #10
+            Instruction::Sequence(instruction::Instruction::I32Const(5)), // #11
             Instruction::Control(Control::CallInternal {
                 type_index: 0,
                 function_index: 1,
                 internal_function_index: 1,
                 addr: 7,
             }), // #12
-            Instruction::Control(Control::Return),         // #13
+            Instruction::Control(Control::Return),                        // #13
         ]];
 
         assert_eq!(actual, expected);
@@ -1106,24 +1145,24 @@ mod tests {
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function 0
-                Instruction::Original(instruction::Instruction::I32Const(0)), // #00
-                Instruction::Original(instruction::Instruction::I32Const(1)), // #01
-                Instruction::Control(Control::Return),         // #02
+                Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
+                Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
+                Instruction::Control(Control::Return),                        // #02
                 // function 1
-                Instruction::Original(instruction::Instruction::I32Const(2)), // #03
-                Instruction::Original(instruction::Instruction::I32Const(3)), // #04
+                Instruction::Sequence(instruction::Instruction::I32Const(2)), // #03
+                Instruction::Sequence(instruction::Instruction::I32Const(3)), // #04
                 Instruction::Control(Control::CallInternal {
                     type_index: 0,
                     function_index: 0,
                     internal_function_index: 0,
                     addr: 0,
                 }), // #05
-                Instruction::Control(Control::Return),         // #06
+                Instruction::Control(Control::Return),                        // #06
             ],
             vec![
                 // function index 2
-                Instruction::Original(instruction::Instruction::I32Const(0)), // #00
-                Instruction::Original(instruction::Instruction::I32Const(1)), // #01
+                Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
+                Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
                 Instruction::Control(Control::CallExternal {
                     vm_module_index: 0,
                     type_index: 0,
@@ -1131,7 +1170,7 @@ mod tests {
                     internal_function_index: 0,
                     addr: 0,
                 }), // #02
-                Instruction::Original(instruction::Instruction::I32Const(10)), // #03
+                Instruction::Sequence(instruction::Instruction::I32Const(10)), // #03
                 Instruction::Control(Control::CallExternal {
                     vm_module_index: 0,
                     type_index: 0,
@@ -1139,18 +1178,18 @@ mod tests {
                     internal_function_index: 1,
                     addr: 3,
                 }), // #04
-                Instruction::Original(instruction::Instruction::I32Const(11)), // #05
+                Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
                 Instruction::Control(Control::CallInternal {
                     type_index: 0,
                     function_index: 3,
                     internal_function_index: 1,
                     addr: 9,
                 }), // #06
-                Instruction::Original(instruction::Instruction::I32Const(12)), // #07
-                Instruction::Control(Control::Return),         // #08
+                Instruction::Sequence(instruction::Instruction::I32Const(12)), // #07
+                Instruction::Control(Control::Return),                        // #08
                 // function index 3
-                Instruction::Original(instruction::Instruction::I32Const(2)), // #09
-                Instruction::Original(instruction::Instruction::I32Const(3)), // #10
+                Instruction::Sequence(instruction::Instruction::I32Const(2)), // #09
+                Instruction::Sequence(instruction::Instruction::I32Const(3)), // #10
                 Instruction::Control(Control::CallExternal {
                     vm_module_index: 0,
                     type_index: 0,
@@ -1158,7 +1197,7 @@ mod tests {
                     internal_function_index: 0,
                     addr: 0,
                 }), // #11
-                Instruction::Original(instruction::Instruction::I32Const(20)), // #12
+                Instruction::Sequence(instruction::Instruction::I32Const(20)), // #12
                 Instruction::Control(Control::CallExternal {
                     vm_module_index: 0,
                     type_index: 0,
@@ -1166,8 +1205,8 @@ mod tests {
                     internal_function_index: 1,
                     addr: 3,
                 }), // #13
-                Instruction::Original(instruction::Instruction::I32Const(21)), // #14
-                Instruction::Control(Control::Return),         // #15
+                Instruction::Sequence(instruction::Instruction::I32Const(21)), // #14
+                Instruction::Control(Control::Return),                        // #15
             ],
         ];
 
@@ -1233,44 +1272,44 @@ mod tests {
         let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function index 2
-            Instruction::Original(instruction::Instruction::I32Const(0)), // #00
-            Instruction::Original(instruction::Instruction::I32Const(1)), // #01
+            Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
+            Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
             Instruction::Control(Control::CallNative {
                 native_module_index: 0,
                 type_index: 0,
                 function_index: 0,
             }), // #02
-            Instruction::Original(instruction::Instruction::I32Const(10)), // #03
+            Instruction::Sequence(instruction::Instruction::I32Const(10)), // #03
             Instruction::Control(Control::CallNative {
                 native_module_index: 0,
                 type_index: 0,
                 function_index: 1,
             }), // #04
-            Instruction::Original(instruction::Instruction::I32Const(11)), // #05
+            Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
             Instruction::Control(Control::CallInternal {
                 type_index: 0,
                 function_index: 3,
                 internal_function_index: 1,
                 addr: 9,
             }), // #06
-            Instruction::Original(instruction::Instruction::I32Const(12)), // #07
-            Instruction::Control(Control::Return),         // #08
+            Instruction::Sequence(instruction::Instruction::I32Const(12)), // #07
+            Instruction::Control(Control::Return),                        // #08
             // function index 3
-            Instruction::Original(instruction::Instruction::I32Const(2)), // #09
-            Instruction::Original(instruction::Instruction::I32Const(3)), // #10
+            Instruction::Sequence(instruction::Instruction::I32Const(2)), // #09
+            Instruction::Sequence(instruction::Instruction::I32Const(3)), // #10
             Instruction::Control(Control::CallNative {
                 native_module_index: 0,
                 type_index: 0,
                 function_index: 0,
             }), // #11
-            Instruction::Original(instruction::Instruction::I32Const(20)), // #12
+            Instruction::Sequence(instruction::Instruction::I32Const(20)), // #12
             Instruction::Control(Control::CallNative {
                 native_module_index: 0,
                 type_index: 0,
                 function_index: 1,
             }), // #13
-            Instruction::Original(instruction::Instruction::I32Const(21)), // #14
-            Instruction::Control(Control::Return),         // #15
+            Instruction::Sequence(instruction::Instruction::I32Const(21)), // #14
+            Instruction::Control(Control::Return),                        // #15
         ]];
 
         assert_eq!(actual, expected);
@@ -1453,30 +1492,30 @@ mod tests {
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function index 0
-                Instruction::Original(instruction::Instruction::I32Const(0)), // #00
-                Instruction::Control(Control::Return),         // #01
+                Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
+                Instruction::Control(Control::Return),                        // #01
                 // function index 1
-                Instruction::Original(instruction::Instruction::I32Const(1)), // #02
-                Instruction::Control(Control::Return),         // #03
+                Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
+                Instruction::Control(Control::Return),                        // #03
             ],
             vec![
                 // function index 2
-                Instruction::Original(instruction::Instruction::I32Const(2)), // #00
-                Instruction::Original(instruction::Instruction::Drop),        // #01
-                Instruction::Control(Control::Return),         // #02
+                Instruction::Sequence(instruction::Instruction::I32Const(2)), // #00
+                Instruction::Sequence(instruction::Instruction::Drop),        // #01
+                Instruction::Control(Control::Return),                        // #02
                 // function index 3
-                Instruction::Original(instruction::Instruction::I32Const(3)), // #03
-                Instruction::Control(Control::Return),         // #04
+                Instruction::Sequence(instruction::Instruction::I32Const(3)), // #03
+                Instruction::Control(Control::Return),                        // #04
             ],
             vec![
                 // function index 3
-                Instruction::Original(instruction::Instruction::I32Const(0)), // #00
+                Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
                 Instruction::Control(Control::CallNative {
                     native_module_index: 0,
                     type_index: 0,
                     function_index: 0,
                 }), // #01
-                Instruction::Original(instruction::Instruction::I32Const(1)), // #02
+                Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
                 Instruction::Control(Control::CallExternal {
                     vm_module_index: 0,
                     type_index: 0,
@@ -1484,7 +1523,7 @@ mod tests {
                     internal_function_index: 1,
                     addr: 2,
                 }), // #03
-                Instruction::Original(instruction::Instruction::I32Const(2)), // #04
+                Instruction::Sequence(instruction::Instruction::I32Const(2)), // #04
                 Instruction::Control(Control::CallExternal {
                     vm_module_index: 1,
                     type_index: 2,
@@ -1492,14 +1531,14 @@ mod tests {
                     internal_function_index: 1,
                     addr: 3,
                 }), // #05
-                Instruction::Control(Control::Return),         // #06
+                Instruction::Control(Control::Return),                        // #06
                 Instruction::Control(Control::CallInternal {
                     type_index: 3,
                     function_index: 3,
                     internal_function_index: 0,
                     addr: 0,
                 }), // #07
-                Instruction::Control(Control::Return),         // #08
+                Instruction::Control(Control::Return),                        // #08
             ],
         ];
 

@@ -48,765 +48,622 @@
 //!
 //! f64 有跟 f32 一样的二元运算指令
 
-use std::{cell::RefCell, rc::Rc};
-
 use anvm_ast::types::Value;
 
-use crate::{object::EngineError, vm_module::VMModule};
+use crate::{
+    error::{make_invalid_operand_data_types_engine_error, make_invalid_operand_data_types_2_engine_error, EngineError},
+    vm::VM,
+};
 
 // i32
 
-pub fn i32_add(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_add(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left + right));
+            stack.push(Value::I32(left + right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.add\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.add", "i32")),
     }
 }
 
-pub fn i32_sub(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_sub(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left - right));
+            stack.push(Value::I32(left - right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.sub\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.sub", "i32")),
     }
 }
 
-pub fn i32_mul(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_mul(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left * right));
+            stack.push(Value::I32(left * right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.mul\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.mul", "i32")),
     }
 }
 
-pub fn i32_div_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_div_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left / right));
+            stack.push(Value::I32(left / right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.div_s\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.div_s", "i32")),
     }
 }
 
-pub fn i32_div_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_div_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module
-                .operand_stack
-                .push(Value::I32(((left as u32) / (right as u32)) as i32));
+            stack.push(Value::I32(((left as u32) / (right as u32)) as i32));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.div_u\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.div_u", "i32")),
     }
 }
 
-pub fn i32_rem_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_rem_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left % right));
+            stack.push(Value::I32(left % right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.rem_s\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.rem_s", "i32")),
     }
 }
 
-pub fn i32_rem_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_rem_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module
-                .operand_stack
-                .push(Value::I32(((left as u32) % (right as u32)) as i32));
+            stack.push(Value::I32(((left as u32) % (right as u32)) as i32));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.rem_u\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.rem_u", "i32")),
     }
 }
 
-pub fn i32_and(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_and(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left & right));
+            stack.push(Value::I32(left & right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.and\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.and", "i32")),
     }
 }
 
-pub fn i32_or(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_or(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left | right));
+            stack.push(Value::I32(left | right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.or\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.or", "i32")),
     }
 }
 
-pub fn i32_xor(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_xor(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left ^ right));
+            stack.push(Value::I32(left ^ right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.xor\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.xor", "i32")),
     }
 }
 
-pub fn i32_shl(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_shl(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left << right));
+            stack.push(Value::I32(left << right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.shl\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.shl", "i32")),
     }
 }
 
-pub fn i32_shr_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_shr_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module.operand_stack.push(Value::I32(left >> right));
+            stack.push(Value::I32(left >> right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.shr_s\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.shr_s", "i32")),
     }
 }
 
-pub fn i32_shr_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_shr_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module
-                .operand_stack
-                .push(Value::I32(((left as u32) >> right) as i32));
+            stack.push(Value::I32(((left as u32) >> right) as i32));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.shr_u\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.shr_u", "i32")),
     }
 }
 
-pub fn i32_rotl(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_rotl(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module
-                .operand_stack
-                .push(Value::I32(i32::rotate_left(left, right as u32)));
+            stack.push(Value::I32(i32::rotate_left(left, right as u32)));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.rotl\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.rotl", "i32")),
     }
 }
 
-pub fn i32_rotr(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i32_rotr(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            module
-                .operand_stack
-                .push(Value::I32(i32::rotate_right(left, right as u32)));
+            stack.push(Value::I32(i32::rotate_right(left, right as u32)));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i32.rotr\" should be \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i32.rotr", "i32")),
     }
 }
 
 // i64
 
-pub fn i64_add(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_add(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module.operand_stack.push(Value::I64(left + right));
+            stack.push(Value::I64(left + right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.add\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.add", "i64")),
     }
 }
 
-pub fn i64_sub(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_sub(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module.operand_stack.push(Value::I64(left - right));
+            stack.push(Value::I64(left - right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.sub\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.sub", "i64")),
     }
 }
 
-pub fn i64_mul(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_mul(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module.operand_stack.push(Value::I64(left * right));
+            stack.push(Value::I64(left * right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.mul\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.mul", "i64")),
     }
 }
 
-pub fn i64_div_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_div_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module.operand_stack.push(Value::I64(left / right));
+            stack.push(Value::I64(left / right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.div_s\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.div_s", "i64")),
     }
 }
 
-pub fn i64_div_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_div_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module
-                .operand_stack
-                .push(Value::I64(((left as u64) / (right as u64)) as i64));
+            stack.push(Value::I64(((left as u64) / (right as u64)) as i64));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.div_u\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.div_u", "i64")),
     }
 }
 
-pub fn i64_rem_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_rem_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module.operand_stack.push(Value::I64(left % right));
+            stack.push(Value::I64(left % right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.rem_s\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.rem_s", "i64")),
     }
 }
 
-pub fn i64_rem_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_rem_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module
-                .operand_stack
-                .push(Value::I64(((left as u64) % (right as u64)) as i64));
+            stack.push(Value::I64(((left as u64) % (right as u64)) as i64));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.rem_u\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.rem_u", "i64")),
     }
 }
 
-pub fn i64_and(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_and(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module.operand_stack.push(Value::I64(left & right));
+            stack.push(Value::I64(left & right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.and\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.and", "i64")),
     }
 }
 
-pub fn i64_or(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_or(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module.operand_stack.push(Value::I64(left | right));
+            stack.push(Value::I64(left | right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.or\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.or", "i64")),
     }
 }
 
-pub fn i64_xor(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_xor(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            module.operand_stack.push(Value::I64(left ^ right));
+            stack.push(Value::I64(left ^ right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.xor\" should be \"i64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("i64.xor", "i64")),
     }
 }
 
-pub fn i64_shl(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_shl(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I32(right)) => {
             // RHS 的类型必须是 i32
-            module.operand_stack.push(Value::I64(left << right));
+            stack.push(Value::I64(left << right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.shl\" should be \"i64\" and \"i32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_2_engine_error("i64.shl", "i64", "i32")),
     }
 }
 
-pub fn i64_shr_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_shr_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I32(right)) => {
             // RHS 的类型必须是 i32
-            module.operand_stack.push(Value::I64(left >> right));
+            stack.push(Value::I64(left >> right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.shr_s\" should be \"i64\" and \"i32\""
-                .to_string(),
+        _ => Err(make_invalid_operand_data_types_2_engine_error(
+            "i64.shr_s",
+            "i64",
+            "i32",
         )),
     }
 }
 
-pub fn i64_shr_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_shr_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I32(right)) => {
             // RHS 的类型必须是 i32
-            module
-                .operand_stack
-                .push(Value::I64(((left as u64) >> right) as i64));
+            stack.push(Value::I64(((left as u64) >> right) as i64));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.shr_u\" should be \"i64\" and \"i32\""
-                .to_string(),
+        _ => Err(make_invalid_operand_data_types_2_engine_error(
+            "i64.shr_u",
+            "i64",
+            "i32",
         )),
     }
 }
 
-pub fn i64_rotl(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_rotl(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I32(right)) => {
             // RHS 的类型必须是 i32
-            module
-                .operand_stack
-                .push(Value::I64(i64::rotate_left(left, right as u32)));
+            stack.push(Value::I64(i64::rotate_left(left, right as u32)));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.rotl\" should be \"i64\" and \"i32\""
-                .to_string(),
+        _ => Err(make_invalid_operand_data_types_2_engine_error(
+            "i64.rotl", "i64", "i32",
         )),
     }
 }
 
-pub fn i64_rotr(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn i64_rotr(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I32(right)) => {
             // RHS 的类型必须是 i32
-            module
-                .operand_stack
-                .push(Value::I64(i64::rotate_right(left, right as u32)));
+            stack.push(Value::I64(i64::rotate_right(left, right as u32)));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"i64.rotr\" should be \"i64\" and \"i32\""
-                .to_string(),
+        _ => Err(make_invalid_operand_data_types_2_engine_error(
+            "i64.rotr", "i64", "i32",
         )),
     }
 }
 
 // f32
 
-pub fn f32_add(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f32_add(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F32(left), Value::F32(right)) => {
-            module.operand_stack.push(Value::F32(left + right));
+            stack.push(Value::F32(left + right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f32.add\" should be \"f32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f32.add", "f32")),
     }
 }
 
-pub fn f32_sub(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f32_sub(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F32(left), Value::F32(right)) => {
-            module.operand_stack.push(Value::F32(left - right));
+            stack.push(Value::F32(left - right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f32.sub\" should be \"f32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f32.sub", "f32")),
     }
 }
 
-pub fn f32_mul(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f32_mul(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F32(left), Value::F32(right)) => {
-            module.operand_stack.push(Value::F32(left * right));
+            stack.push(Value::F32(left * right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f32.mul\" should be \"f32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f32.mul", "f32")),
     }
 }
 
-pub fn f32_div(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f32_div(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F32(left), Value::F32(right)) => {
-            module.operand_stack.push(Value::F32(left / right));
+            stack.push(Value::F32(left / right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f32.div\" should be \"f32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f32.div", "f32")),
     }
 }
 
-pub fn f32_min(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f32_min(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F32(left), Value::F32(right)) => {
             if left < right {
-                module.operand_stack.push(lhs)
+                stack.push(lhs)
             } else {
-                module.operand_stack.push(rhs)
+                stack.push(rhs)
             }
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f32.min\" should be \"f32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f32.min", "f32")),
     }
 }
 
-pub fn f32_max(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f32_max(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F32(left), Value::F32(right)) => {
             if left > right {
-                module.operand_stack.push(lhs)
+                stack.push(lhs)
             } else {
-                module.operand_stack.push(rhs)
+                stack.push(rhs)
             }
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f32.max\" should be \"f32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f32.max", "f32")),
     }
 }
 
-pub fn f32_copysign(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f32_copysign(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F32(left), Value::F32(right)) => {
-            module
-                .operand_stack
-                .push(Value::F32(f32::copysign(right, left)));
+            stack.push(Value::F32(f32::copysign(right, left)));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f32.copysign\" should be \"f32\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f32.copysign", "f32")),
     }
 }
 
 // f64
 
-pub fn f64_add(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f64_add(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F64(left), Value::F64(right)) => {
-            module.operand_stack.push(Value::F64(left + right));
+            stack.push(Value::F64(left + right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f64.add\" should be \"f64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f64.add", "f64")),
     }
 }
 
-pub fn f64_sub(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f64_sub(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F64(left), Value::F64(right)) => {
-            module.operand_stack.push(Value::F64(left - right));
+            stack.push(Value::F64(left - right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f64.sub\" should be \"f64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f64.sub", "f64")),
     }
 }
 
-pub fn f64_mul(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f64_mul(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F64(left), Value::F64(right)) => {
-            module.operand_stack.push(Value::F64(left * right));
+            stack.push(Value::F64(left * right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f64.mul\" should be \"f64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f64.mul", "f64")),
     }
 }
 
-pub fn f64_div(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f64_div(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F64(left), Value::F64(right)) => {
-            module.operand_stack.push(Value::F64(left / right));
+            stack.push(Value::F64(left / right));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f64.div\" should be \"f64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f64.div", "f64")),
     }
 }
 
-pub fn f64_min(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f64_min(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F64(left), Value::F64(right)) => {
             if left < right {
-                module.operand_stack.push(lhs)
+                stack.push(lhs)
             } else {
-                module.operand_stack.push(rhs)
+                stack.push(rhs)
             }
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f64.min\" should be \"f64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f64.min", "f64")),
     }
 }
 
-pub fn f64_max(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f64_max(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F64(left), Value::F64(right)) => {
             if left > right {
-                module.operand_stack.push(lhs)
+                stack.push(lhs)
             } else {
-                module.operand_stack.push(rhs)
+                stack.push(rhs)
             }
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f64.max\" should be \"f64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f64.max", "f64")),
     }
 }
 
-pub fn f64_copysign(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let (rhs, lhs) = (module.operand_stack.pop(), module.operand_stack.pop());
+pub fn f64_copysign(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
         (Value::F64(left), Value::F64(right)) => {
-            module
-                .operand_stack
-                .push(Value::F64(f64::copysign(right, left)));
+            stack.push(Value::F64(f64::copysign(right, left)));
             Ok(())
         }
-        _ => Err(EngineError::InvalidOperation(
-            "the value type of two operands for instruction \"f64.copysign\" should be \"f64\""
-                .to_string(),
-        )),
+        _ => Err(make_invalid_operand_data_types_engine_error("f64.copysign", "f64")),
     }
 }

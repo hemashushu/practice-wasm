@@ -38,190 +38,158 @@
 //!
 //! Rust 的 f32::round() 函数是 4 舍 5 入，并不一样。
 
-use std::{cell::RefCell, rc::Rc};
-
 use anvm_ast::types::Value;
 
-use crate::{object::EngineError, vm_module::VMModule};
+use crate::{
+    error::{make_invalid_operand_data_type_engine_error, EngineError},
+    vm::VM,
+};
 
 // i32
 
-pub fn i32_clz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_clz(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = i32::leading_zeros(value);
-        module.operand_stack.push(Value::I32(result as i32));
+        stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.clz\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.clz", "i32"))
     }
 }
 
-pub fn i32_ctz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_ctz(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = i32::trailing_zeros(value);
-        module.operand_stack.push(Value::I32(result as i32));
+        stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.ctz\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.ctz", "i32"))
     }
 }
 
-pub fn i32_popcnt(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_popcnt(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = i32::count_ones(value);
-        module.operand_stack.push(Value::I32(result as i32));
+        stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.popcnt\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.popcnt", "i32"))
     }
 }
 
 // i64
 
-pub fn i64_clz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_clz(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = i64::leading_zeros(value);
-        module.operand_stack.push(Value::I64(result as i64));
+        stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.clz\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.clz", "i64"))
     }
 }
 
-pub fn i64_ctz(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_ctz(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = i64::trailing_zeros(value);
-        module.operand_stack.push(Value::I64(result as i64));
+        stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.ctz\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.ctz", "i64"))
     }
 }
 
-pub fn i64_popcnt(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_popcnt(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = i64::count_ones(value);
-        module.operand_stack.push(Value::I64(result as i64));
+        stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.popcnt\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.popcnt", "i64"))
     }
 }
 
 // f32
 
-pub fn f32_abs(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_abs(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = f32::abs(value);
-        module.operand_stack.push(Value::F32(result as f32));
+        stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.abs\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.abs", "f32"))
     }
 }
 
-pub fn f32_neg(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_neg(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
-        module.operand_stack.push(Value::F32(-value));
+        stack.push(Value::F32(-value));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.neg\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.neg", "f32"))
     }
 }
 
-pub fn f32_ceil(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_ceil(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = f32::ceil(value);
-        module.operand_stack.push(Value::F32(result as f32));
+        stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.ceil\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.ceil", "f32"))
     }
 }
 
-pub fn f32_floor(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_floor(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = f32::floor(value);
-        module.operand_stack.push(Value::F32(result as f32));
+        stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.floor\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.floor", "f32"))
     }
 }
 
-pub fn f32_trunc(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_trunc(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = f32::trunc(value);
-        module.operand_stack.push(Value::F32(result as f32));
+        stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.trunc\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.trunc", "f32"))
     }
 }
 
@@ -229,19 +197,16 @@ pub fn f32_trunc(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
 /// 实际上是 "Round half to even"
 /// https://en.wikipedia.org/wiki/Rounding#Round_half_to_even
 /// https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Numeric/Nearest
-pub fn f32_nearest(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_nearest(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = round_half_to_even_f32(value);
-        module.operand_stack.push(Value::F32(result));
+        stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.nearest\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.nearest", "f32"))
     }
 }
 
@@ -267,100 +232,82 @@ fn round_half_to_even_f32(value: f32) -> f32 {
     }
 }
 
-pub fn f32_sqrt(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_sqrt(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = f32::sqrt(value);
-        module.operand_stack.push(Value::F32(result as f32));
+        stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.sqrt\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.sqrt", "f32"))
     }
 }
 
 // f64
 
-pub fn f64_abs(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_abs(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = f64::abs(value);
-        module.operand_stack.push(Value::F64(result as f64));
+        stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.abs\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.abs", "f64"))
     }
 }
 
-pub fn f64_neg(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_neg(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
-        module.operand_stack.push(Value::F64(-value));
+        stack.push(Value::F64(-value));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.neg\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.neg", "f64"))
     }
 }
 
-pub fn f64_ceil(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_ceil(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = f64::ceil(value);
-        module.operand_stack.push(Value::F64(result as f64));
+        stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.ceil\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.ceil", "f64"))
     }
 }
 
-pub fn f64_floor(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_floor(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = f64::floor(value);
-        module.operand_stack.push(Value::F64(result as f64));
+        stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.floor\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.floor", "f64"))
     }
 }
 
-pub fn f64_trunc(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_trunc(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = f64::trunc(value);
-        module.operand_stack.push(Value::F64(result as f64));
+        stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.trunc\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.trunc", "f64"))
     }
 }
 
@@ -368,19 +315,16 @@ pub fn f64_trunc(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
 /// 实际上是 "Round half to even"
 /// https://en.wikipedia.org/wiki/Rounding#Round_half_to_even
 /// https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Numeric/Nearest
-pub fn f64_nearest(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_nearest(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = round_half_to_even_f64(value);
-        module.operand_stack.push(Value::F64(result));
+        stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.nearest\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.nearest", "f64"))
     }
 }
 
@@ -406,18 +350,15 @@ fn round_half_to_even_f64(value: f64) -> f64 {
     }
 }
 
-pub fn f64_sqrt(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_sqrt(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = f64::sqrt(value);
-        module.operand_stack.push(Value::F64(result as f64));
+        stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.sqrt\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.sqrt", "f64"))
     }
 }

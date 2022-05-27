@@ -4,12 +4,48 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-pub fn make_invalid_operand_data_type(instruction_name: &str, data_type_name: &str) -> EngineError {
-    // INVALID_OPERAND_DATA_TYPE
+/// INVALID_OPERAND_DATA_TYPE
+pub fn make_invalid_operand_data_type_engine_error(
+    instruction_name: &str,
+    data_type_name: &str,
+) -> EngineError {
     EngineError::InvalidOperation(format!(
         "operand data type for instruction \"{}\" should be \"{}\"",
         instruction_name, data_type_name
     ))
+}
+
+/// INVALID_OPERAND_DATA_TYPES
+pub fn make_invalid_operand_data_types_engine_error(
+    instruction_name: &str,
+    data_type_name: &str,
+) -> EngineError {
+    EngineError::InvalidOperation(format!(
+        "operands data type for instruction \"{}\" should be \"{}\"",
+        instruction_name, data_type_name
+    ))
+}
+
+/// INVALID_OPERAND_DATA_TYPES_2
+pub fn make_invalid_operand_data_types_2_engine_error(
+    instruction_name: &str,
+    data_type_name1: &str,
+    data_type_name2: &str,
+) -> EngineError {
+    EngineError::InvalidOperation(format!(
+        "the data type of the two operands of the instruction \"{}\" should be \"{}\" and \"{}\"",
+        instruction_name, data_type_name1, data_type_name2
+    ))
+}
+
+/// INVALID_TABLE_INDEX
+pub fn make_invalid_table_index_engine_error() -> EngineError {
+    EngineError::InvalidOperation("only table index 0 is supported".to_string())
+}
+
+/// INVALID_MEMORY_INDEX
+pub fn make_invalid_memory_index_engine_error() -> EngineError {
+    EngineError::InvalidOperation("only memory index 0 is supported".to_string())
 }
 
 // use std::{any::Any, cell::RefCell, rc::Rc, fmt::Debug};

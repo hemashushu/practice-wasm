@@ -103,508 +103,415 @@
 //!
 //! 不改变操作数的比特位，仅重新解释成其他类型
 
-use std::{cell::RefCell, rc::Rc};
-
 use anvm_ast::types::Value;
 
-use crate::{object::EngineError, vm_module::VMModule};
+use crate::{
+    error::{make_invalid_operand_data_type_engine_error, make_invalid_operand_data_types_2_engine_error, EngineError},
+    vm::VM,
+};
 
 // 整数截断
 
-pub fn i32_wrap_i64(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_wrap_i64(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = value as i32;
-        module.operand_stack.push(Value::I32(result));
+        stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.wrap_i64\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.wrap_i64", "i64"))
     }
 }
 
 // 整数提升
 
-pub fn i32_extend8_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_extend8_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = (value as i8) as i32;
-        module.operand_stack.push(Value::I32(result));
+        stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.extend8_s\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.extend8_s", "i32"))
     }
 }
 
-pub fn i32_extend16_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_extend16_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = (value as i16) as i32;
-        module.operand_stack.push(Value::I32(result));
+        stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.extend16_s\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.extend16_s", "i32"))
     }
 }
 
-pub fn i64_extend_i32_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_extend_i32_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = value as i64;
-        module.operand_stack.push(Value::I64(result));
+        stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.extend_i32_s\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.extend_i32_s", "i32"))
     }
 }
 
-pub fn i64_extend_i32_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_extend_i32_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = (value as u32) as i64;
-        module.operand_stack.push(Value::I64(result));
+        stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.extend_i32_u\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.extend_i32_u", "i32"))
     }
 }
 
-pub fn i64_extend8_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_extend8_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = (value as i8) as i64;
-        module.operand_stack.push(Value::I64(result));
+        stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.extend8_s\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.extend8_s", "i64"))
     }
 }
 
-pub fn i64_extend16_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_extend16_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = (value as i16) as i64;
-        module.operand_stack.push(Value::I64(result));
+        stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.extend16_s\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.extend16_s", "i64"))
     }
 }
 
-pub fn i64_extend32_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_extend32_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = (value as i32) as i64;
-        module.operand_stack.push(Value::I64(result));
+        stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.extend32_s\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.extend32_s", "i64"))
     }
 }
 
 // 浮点数转整数（截断运算）
 
-pub fn i32_trunc_f32_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_trunc_f32_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = value as i32;
-        module.operand_stack.push(Value::I32(result));
+        stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.trunc_f32_s\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.trunc_f32_s", "f32"))
     }
 }
 
-pub fn i32_trunc_f32_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_trunc_f32_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = value as u32;
-        module.operand_stack.push(Value::I32(result as i32));
+        stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.trunc_f32_u\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.trunc_f32_u", "f32"))
     }
 }
 
-pub fn i64_trunc_f32_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_trunc_f32_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = value as i64;
-        module.operand_stack.push(Value::I64(result));
+        stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.trunc_f32_s\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.trunc_f32_s", "f32"))
     }
 }
 
-pub fn i64_trunc_f32_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_trunc_f32_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = value as u64;
-        module.operand_stack.push(Value::I64(result as i64));
+        stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.trunc_f32_u\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.trunc_f32_u", "f32"))
     }
 }
 
-pub fn i32_trunc_f64_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_trunc_f64_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = value as i32;
-        module.operand_stack.push(Value::I32(result));
+        stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.trunc_f64_s\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.trunc_f64_s", "f64"))
     }
 }
 
-pub fn i32_trunc_f64_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_trunc_f64_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = value as u32;
-        module.operand_stack.push(Value::I32(result as i32));
+        stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.trunc_f64_u\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.trunc_f64_u", "f64"))
     }
 }
 
-pub fn i64_trunc_f64_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_trunc_f64_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = value as i64;
-        module.operand_stack.push(Value::I64(result));
+        stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.trunc_f64_s\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.trunc_f64_s", "f64"))
     }
 }
 
-pub fn i64_trunc_f64_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_trunc_f64_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = value as u64;
-        module.operand_stack.push(Value::I64(result as i64));
+        stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.trunc_f64_u\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.trunc_f64_u", "f64"))
     }
 }
 
 // 饱和截断
 
-pub fn trunc_sat(_vm_module: Rc<RefCell<VMModule>>, _kind: u8) -> Result<(), EngineError> {
-    Err(EngineError::InvalidOperation(
-        "the instruction \"iNN.trunc_sat_fNN_S\" not implemented yet".to_string(),
-    ))
-}
+// todo::
 
 // 整数转浮点数（转换运算）
 
-pub fn f32_convert_i32_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_convert_i32_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = value as f32;
-        module.operand_stack.push(Value::F32(result));
+        stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.convert_i32_s\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.convert_i32_s", "i32"))
     }
 }
 
-pub fn f32_convert_i32_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_convert_i32_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = (value as u32) as f32;
-        module.operand_stack.push(Value::F32(result));
+        stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.convert_i32_u\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.convert_i32_u", "i32"))
     }
 }
 
-pub fn f64_convert_i32_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_convert_i32_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = value as f64;
-        module.operand_stack.push(Value::F64(result));
+        stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.convert_i32_s\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.convert_i32_s", "i32"))
     }
 }
 
-pub fn f64_convert_i32_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_convert_i32_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = (value as u32) as f64;
-        module.operand_stack.push(Value::F64(result));
+        stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.convert_i32_u\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.convert_i32_u", "i32"))
     }
 }
 
-pub fn f32_convert_i64_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_convert_i64_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = value as f32;
-        module.operand_stack.push(Value::F32(result));
+        stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.convert_i64_s\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.convert_i64_s", "i64"))
     }
 }
 
-pub fn f32_convert_i64_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = (value as u64) as f32;
-        module.operand_stack.push(Value::F32(result));
+        stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.convert_i64_u\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.convert_i64_u", "i64"))
     }
 }
 
-pub fn f64_convert_i64_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_convert_i64_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = value as f64;
-        module.operand_stack.push(Value::F64(result));
+        stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.convert_i64_s\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.convert_i64_s", "i64"))
     }
 }
 
-pub fn f64_convert_i64_u(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = (value as u64) as f64;
-        module.operand_stack.push(Value::F64(result));
+        stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.convert_i64_u\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.convert_i64_u", "i64"))
     }
 }
 
 // 浮点数精度调整
 
-pub fn f32_demote_f64_s(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_demote_f64_s(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = value as f32;
-        module.operand_stack.push(Value::F32(result));
+        stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.demote_f64_s\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.demote_f64_s", "f64"))
     }
 }
 
-pub fn f64_promote_f32(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_promote_f32(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = value as f64;
-        module.operand_stack.push(Value::F64(result));
+        stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.promote_f32\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.promote_f32", "f32"))
     }
 }
 
 // 比特位重新解释
 
-pub fn i32_reinterpret_f32(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i32_reinterpret_f32(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F32(value) = operand {
         let result = i32::from_le_bytes(value.to_le_bytes());
-        module.operand_stack.push(Value::I32(result));
+        stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i32.reinterpret_f32\" should be \"f32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i32.reinterpret_f32", "f32"))
     }
 }
 
-pub fn i64_reinterpret_f64(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn i64_reinterpret_f64(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::F64(value) = operand {
         let result = i64::from_le_bytes(value.to_le_bytes());
-        module.operand_stack.push(Value::I64(result));
+        stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"i64.reinterpret_f64\" should be \"f64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("i64.reinterpret_f64", "f64"))
     }
 }
 
-pub fn f32_reinterpret_i32(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f32_reinterpret_i32(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I32(value) = operand {
         let result = f32::from_le_bytes(value.to_le_bytes());
-        module.operand_stack.push(Value::F32(result));
+        stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f32.reinterpret_i32\" should be \"i32\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f32.reinterpret_i32", "i32"))
     }
 }
 
-pub fn f64_reinterpret_i64(vm_module: Rc<RefCell<VMModule>>) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-    let operand = module.operand_stack.pop();
+pub fn f64_reinterpret_i64(vm: &mut VM) -> Result<(), EngineError> {
+    let stack = &mut vm.context.stack;
+    let operand = stack.pop();
 
     if let Value::I64(value) = operand {
         let result = f64::from_le_bytes(value.to_le_bytes());
-        module.operand_stack.push(Value::F64(result));
+        stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of the operand for instruction \"f64.reinterpret_i64\" should be \"i64\""
-                .to_string(),
-        ))
+        Err(make_invalid_operand_data_type_engine_error("f64.reinterpret_i64", "i64"))
     }
 }

@@ -108,464 +108,332 @@
 //! - f32.store
 //! - f64.store
 
-use std::{cell::RefCell, rc::Rc};
-
 use anvm_ast::{instruction::MemoryArgument, types::Value};
 
-use crate::{object::EngineError, vm_module::VMModule};
+use crate::{
+    error::{
+        make_invalid_memory_index_engine_error, make_invalid_operand_data_type_engine_error,
+        make_invalid_operand_data_types_2_engine_error, EngineError,
+    },
+    vm::VM,
+    vm_memory::VMMemory,
+    vm_stack::VMStack,
+};
 
-pub fn memory_size(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_block_index: u32,
-) -> Result<(), EngineError> {
+pub fn memory_size(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineError> {
     if memory_block_index != 0 {
-        return Err(EngineError::InvalidOperation(
-            "only memory with index value of 0 is allowed".to_string(),
-        ));
+        return Err(make_invalid_memory_index_engine_error());
     }
 
-    let mut module = vm_module.as_ref().borrow_mut();
-    let page_count = module.memory.as_ref().borrow().get_page_count();
-    module.operand_stack.push(Value::I32(page_count as i32));
+    let instance_memory_block_index = vm.context.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.context.memory_blocks[instance_memory_block_index];
+    let page_count = memory_block.get_page_count();
+
+    let stack = &mut vm.context.stack;
+    stack.push(Value::I32(page_count as i32));
+
     Ok(())
 }
 
-pub fn memory_grow(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_block_index: u32,
-) -> Result<(), EngineError> {
+pub fn memory_grow(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineError> {
     if memory_block_index != 0 {
-        return Err(EngineError::InvalidOperation(
-            "only memory with index value of 0 is allowed".to_string(),
-        ));
+        return Err(make_invalid_memory_index_engine_error());
     }
 
-    let mut module = vm_module.as_ref().borrow_mut();
-    let increase_number = module.operand_stack.pop();
+    let stack = &mut vm.context.stack;
+    let increase_number = stack.pop();
+
+    let instance_memory_block_index = vm.context.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.context.memory_blocks[instance_memory_block_index];
 
     if let Value::I32(value) = increase_number {
-        // 限制 mut memory 的作用范围
-        let result = {
-            let mut memory = module.memory.as_ref().borrow_mut();
-            memory.incrase_page(value as u32)
-        };
-
+        let result = memory_block.increase_page(value as u32);
         match result {
             Ok(previous_page_count) => {
-                module
-                    .operand_stack
-                    .push(Value::I32(previous_page_count as i32));
+                stack.push(Value::I32(previous_page_count as i32));
             }
             _ => {
-                module.operand_stack.push(Value::I32(-1));
+                stack.push(Value::I32(-1));
             }
         }
 
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"memory.grow\" should be \"i32\""
-                .to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "memory.grow",
+            "i32",
         ))
     }
 }
 
-/// 注意，因为指令中的 offset 立即数是 uint32，而操作数栈弹出的值也是 uint32，
-/// 所以有效地址（uint32 + uint32）是一个 33 位的无符号整数，实际的值有可能会超出了 uint32 的范围。
+/// 计算有效内存地址，即内存读写指令最终所访问内存的实际地址。
+///
+/// 注意，
+/// 因为指令中的 offset 立即数是 u32，而操作数栈弹出的值也是 i32（实际是 u32），
+/// 所以有效地址是一个 33 位（u32 + u32）的无符号整数，实际的值有可能会超出了 u32 的范围。
 fn get_effective_address(
-    module: &mut VMModule,
+    stack: &mut VMStack,
     memory_args: &MemoryArgument,
 ) -> Result<usize, EngineError> {
     // MemoryArg 里头的 align 暂时无用
     let offset = memory_args.offset;
-    let address = module.operand_stack.pop();
+    let address = stack.pop();
 
     if let Value::I32(value) = address {
         Ok((offset + value as u32) as usize)
     } else {
         Err(EngineError::InvalidOperation(
-            "the value type of operand for memory access instruction should be \"i32\"".to_string(),
+            "the data type of the memory offset value of the memory access instruction should be \"i32\"".to_string(),
         ))
     }
 }
 
+fn get_load_access_meterial<'a>(
+    vm: &'a mut VM,
+    memory_args: &MemoryArgument,
+) -> Result<(&'a mut VMMemory, &'a mut VMStack, usize), EngineError> {
+    let stack = &mut vm.context.stack;
+    let instance_memory_block_index = vm.context.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.context.memory_blocks[instance_memory_block_index];
+
+    let address = get_effective_address(stack, memory_args)?;
+    Ok((memory_block, stack, address))
+}
+
+fn get_store_access_meterial<'a>(
+    vm: &'a mut VM,
+    memory_args: &MemoryArgument,
+) -> Result<(&'a mut VMMemory, usize, Value), EngineError> {
+    let stack = &mut vm.context.stack;
+    let instance_memory_block_index = vm.context.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.context.memory_blocks[instance_memory_block_index];
+
+    let operand = stack.pop();
+    let address = get_effective_address(stack, memory_args)?;
+    Ok((memory_block, address, operand))
+}
+
 // i32 load
 
-pub fn i32_load(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i32(address);
-    module.operand_stack.push(Value::I32(value));
+pub fn i32_load(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i32(address);
+    stack.push(Value::I32(value));
     Ok(())
 }
 
-pub fn i32_load16_s(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i16(address);
-    module.operand_stack.push(Value::I32(value as i32));
+pub fn i32_load16_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i16(address);
+    stack.push(Value::I32(value as i32));
     Ok(())
 }
 
-pub fn i32_load16_u(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i16(address);
-    module.operand_stack.push(Value::I32((value as u16) as i32));
+pub fn i32_load16_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i16(address);
+    stack.push(Value::I32((value as u16) as i32));
     Ok(())
 }
 
-pub fn i32_load8_s(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i8(address);
-    module.operand_stack.push(Value::I32(value as i32));
+pub fn i32_load8_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i8(address);
+    stack.push(Value::I32(value as i32));
     Ok(())
 }
 
-pub fn i32_load8_u(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i8(address);
-    module.operand_stack.push(Value::I32((value as u8) as i32));
+pub fn i32_load8_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i8(address);
+    stack.push(Value::I32((value as u8) as i32));
     Ok(())
 }
 
 // i64 load
 
-pub fn i64_load(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i64(address);
-    module.operand_stack.push(Value::I64(value));
+pub fn i64_load(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i64(address);
+    stack.push(Value::I64(value));
     Ok(())
 }
 
-pub fn i64_load32_s(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i32(address);
-    module.operand_stack.push(Value::I64(value as i64));
+pub fn i64_load32_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i32(address);
+    stack.push(Value::I64(value as i64));
     Ok(())
 }
 
-pub fn i64_load32_u(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i32(address);
-    module.operand_stack.push(Value::I64((value as u32) as i64));
+pub fn i64_load32_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i32(address);
+    stack.push(Value::I64((value as u32) as i64));
     Ok(())
 }
 
-pub fn i64_load16_s(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i16(address);
-    module.operand_stack.push(Value::I64(value as i64));
+pub fn i64_load16_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i16(address);
+    stack.push(Value::I64(value as i64));
     Ok(())
 }
 
-pub fn i64_load16_u(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i16(address);
-    module.operand_stack.push(Value::I64((value as u16) as i64));
+pub fn i64_load16_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i16(address);
+    stack.push(Value::I64((value as u16) as i64));
     Ok(())
 }
 
-pub fn i64_load8_s(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i8(address);
-    module.operand_stack.push(Value::I64(value as i64));
+pub fn i64_load8_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i8(address);
+    stack.push(Value::I64(value as i64));
     Ok(())
 }
 
-pub fn i64_load8_u(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_i8(address);
-    module.operand_stack.push(Value::I64((value as u8) as i64));
+pub fn i64_load8_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_i8(address);
+    stack.push(Value::I64((value as u8) as i64));
     Ok(())
 }
 
 // float load
 
-pub fn f32_load(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_f32(address);
-    module.operand_stack.push(Value::F32(value));
+pub fn f32_load(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_f32(address);
+    stack.push(Value::F32(value));
     Ok(())
 }
 
-pub fn f64_load(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let address = get_effective_address(&mut module, memory_args)?;
-    let value = module.memory.as_ref().borrow().read_f64(address);
-    module.operand_stack.push(Value::F64(value));
+pub fn f64_load(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
+    let value = memory_block.read_f64(address);
+    stack.push(Value::F64(value));
     Ok(())
 }
 
 // i32 store
 
-pub fn i32_store(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn i32_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::I32(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_i32(address, value);
+        memory_block.write_i32(address, value);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"i32.store\" should be \"i32\"".to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.store",
+            "i32",
         ))
     }
 }
 
-pub fn i32_store_16(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn i32_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::I32(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_i16(address, value as i16);
+        memory_block.write_i16(address, value as i16);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"i32.store_16\" should be \"i32\""
-                .to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.store_16",
+            "i32",
         ))
     }
 }
 
-pub fn i32_store_8(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn i32_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::I32(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_i8(address, value as i8);
+        memory_block.write_i8(address, value as i8);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"i32.store_8\" should be \"i32\""
-                .to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.store_8",
+            "i32",
         ))
     }
 }
 
-pub fn i64_store(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn i64_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::I64(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_i64(address, value);
+        memory_block.write_i64(address, value);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"i64.store\" should be \"i64\"".to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.store",
+            "i64",
         ))
     }
 }
 
-pub fn i64_store_32(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn i64_store_32(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::I64(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_i32(address, value as i32);
+        memory_block.write_i32(address, value as i32);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"i64.store_32\" should be \"i64\""
-                .to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.store_32",
+            "i64",
         ))
     }
 }
 
-pub fn i64_store_16(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn i64_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::I64(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_i16(address, value as i16);
+        memory_block.write_i16(address, value as i16);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"i64.store_16\" should be \"i64\""
-                .to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.store_16",
+            "i64",
         ))
     }
 }
 
-pub fn i64_store_8(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn i64_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::I64(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_i8(address, value as i8);
+        memory_block.write_i8(address, value as i8);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"i64.store_8\" should be \"i64\""
-                .to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.store_8",
+            "i64",
         ))
     }
 }
 
 // float store
 
-pub fn f32_store(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn f32_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::F32(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_f32(address, value);
+        memory_block.write_f32(address, value);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"f32.store\" should be \"f32\"".to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.store",
+            "f32",
         ))
     }
 }
 
-pub fn f64_store(
-    vm_module: Rc<RefCell<VMModule>>,
-    memory_args: &MemoryArgument,
-) -> Result<(), EngineError> {
-    let mut module = vm_module.as_ref().borrow_mut();
-
-    let operand = module.operand_stack.pop();
-    let address = get_effective_address(&mut module, memory_args)?;
+pub fn f64_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
     if let Value::F64(value) = operand {
-        module
-            .memory
-            .as_ref()
-            .borrow_mut()
-            .write_f64(address, value);
+        memory_block.write_f64(address, value);
         Ok(())
     } else {
-        Err(EngineError::InvalidOperation(
-            "the value type of operand for instruction \"f64.store\" should be \"f64\"".to_string(),
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.store",
+            "f64",
         ))
     }
 }
