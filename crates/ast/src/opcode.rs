@@ -4,11 +4,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// # WebAssembly 指令的操作码
-//
-// 在二进制格式里，指令的操作码使用一个 u8 类型整数存储
-//
-// # 指令操作码列表
+//! # WebAssembly 指令的操作码
+//!
+//! 在二进制格式里，指令的操作码使用一个 u8 类型整数存储
+
+// ## 指令操作码列表
 //
 // ### 控制类指令
 //
@@ -201,7 +201,10 @@ pub const I32_EXTEND16_S: u8 = 0xC1;
 pub const I64_EXTEND8_S: u8 = 0xC2;
 pub const I64_EXTEND16_S: u8 = 0xC3;
 pub const I64_EXTEND32_S: u8 = 0xC4;
-pub const TRUNC_SAT: u8 = 0xFC;
+
+// ## 扩展指令码
+//
+pub const EXTENSION: u8 = 0xFC;
 //
 // ### `饱和截断` 指令的次操作码
 //

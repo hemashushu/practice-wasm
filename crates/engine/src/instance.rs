@@ -31,31 +31,31 @@ pub fn create_instance(
     let mut function_items_list = link_functions(&native_modules, named_ast_modules)?;
     let mut instructions_list = transform(named_ast_modules, &function_items_list)?;
 
+    // 获取 "表" 实例列表，以及 "AST 模块 - 表" 映射表
+    let (mut tables, mut module_to_table_index_list) = link_tables(named_ast_modules)?;
+
     // 获取内存块实例列表，以及 "AST 模块 - 内存块" 映射表
     let (mut memory_blocks, mut module_to_memory_block_index_list) =
         link_memorys(named_ast_modules)?;
-
-    // 获取 "表" 实例列表，以及 "AST 模块 - 表" 映射表
-    let (mut tables, mut module_to_table_index_list) = link_tables(named_ast_modules)?;
 
     // 获取全局变量实例列表，以及 "AST 模块 - 全局变量列表" 映射表
     let (global_variables, mut module_to_global_variables_list) =
         link_global_variables(named_ast_modules)?;
 
-    let module_count = named_ast_modules.len();
+    let ast_module_count = named_ast_modules.len();
     let mut vm_modules: Vec<VMModule> = vec![];
 
-    // 创建一个 `裸 VM`，用于 data 项以及 element 项的偏移值常量表达式的求值
-    let mut bare_vm = VM::new_bare_vm();
+    // // 创建一个 `裸 VM`，用于 data 项以及 element 项的偏移值常量表达式的求值
+    // let mut bare_vm = VM::new_bare_vm();
 
-    for index in 0..module_count {
+    for reverse_index in 0..ast_module_count {
         let function_items = function_items_list.pop().unwrap();
         let instructions = instructions_list.pop().unwrap();
-        let memory_index = module_to_memory_block_index_list.pop().unwrap();
         let table_index = module_to_table_index_list.pop().unwrap();
+        let memory_index = module_to_memory_block_index_list.pop().unwrap();
         let global_variable_indexes = module_to_global_variables_list.pop().unwrap();
 
-        let ast_module_index = module_count - index - 1;
+        let ast_module_index = ast_module_count - reverse_index - 1;
         let named_ast_module = &named_ast_modules[ast_module_index];
 
         let name = named_ast_module.name.clone();
@@ -70,7 +70,7 @@ pub fn create_instance(
             })
             .collect::<Vec<FunctionType>>();
 
-        let internal_function_local_variables_list = ast_module
+        let internal_function_local_variable_types_list = ast_module
             .code_items
             .iter()
             .map(|item| {
@@ -89,65 +89,18 @@ pub fn create_instance(
             memory_index,
             global_variable_indexes,
             function_types,
-            internal_function_local_variables_list,
+            internal_function_local_variable_types_list,
             function_items,
             instructions,
         );
-
-        // 填充 data 到 memory
-        for data_item in &ast_module.data_items {
-            // 内存块索引，目前 WebAssembly 标准只支持 0
-            if data_item.memory_block_index != 0 {
-                return Err(make_invalid_memory_index_engine_error());
-            }
-
-            let offset_instruction_items = &data_item.offset_instruction_items;
-            let constant_expression = transform_constant_expression(offset_instruction_items)?;
-            let offset = bare_vm.eval_constant_expression(&constant_expression)?;
-
-            let address = match offset {
-                Value::I32(v) => v as usize,
-                _ => {
-                    return Err(EngineError::InvalidOperation(
-                        "memory data offset should be a i32 number".to_string(),
-                    ));
-                }
-            };
-
-            let data = &data_item.data;
-            memory_blocks[memory_index].write_bytes(address, data);
-        }
-
-        // 填充 element 到 table
-        for element_item in &ast_module.element_items {
-            // 表索引，目前 WebAssembly 标准只支持 0
-            if element_item.table_index != 0 {
-                return Err(make_invalid_table_index_engine_error());
-            }
-
-            let offset_instruction_items = &element_item.offset_instruction_items;
-            let constant_expression = transform_constant_expression(offset_instruction_items)?;
-            let offset_value = bare_vm.eval_constant_expression(&constant_expression)?;
-
-            let offset = match offset_value {
-                Value::I32(v) => v as usize,
-                _ => {
-                    return Err(EngineError::InvalidOperation(
-                        "table element offset should be a i32 number".to_string(),
-                    ));
-                }
-            };
-
-            for (index, function_index) in element_item.function_indices.iter().enumerate() {
-                tables[table_index].set_element(offset + index, *function_index)?;
-            }
-        }
 
         vm_modules.push(vm_module);
     }
 
     // 因为 vm_modules 的元素是反序添加的，所以这里需要翻转一次
     vm_modules.reverse();
+
+    // 构建 VM 实例
 
     let stack = VMStack::new();
 
@@ -162,7 +115,71 @@ pub fn create_instance(
 
     let status = Status::new();
 
-    let vm = VM { context, status };
+    let mut vm = VM { context, status };
+
+    // 填充 data 和 element 到 memory 和 table
+    //
+    // 因为 data 和 element 的常量表达式里可能存在引用数据，所以需要先构造了 vm 之后
+    // 再对表达式进行求值。
+    // https://webassembly.github.io/spec/core/valid/instructions.html#constant-expressions
+    for ast_module_index in 0..ast_module_count {
+        let named_ast_module = &named_ast_modules[ast_module_index];
+        let ast_module = &named_ast_module.module;
+
+        let instance_memory_index = vm.context.vm_modules[ast_module_index].memory_index;
+        let instance_table_index = vm.context.vm_modules[ast_module_index].table_index;
+
+        // 填充 data 到 memory
+        for data_item in &ast_module.data_items {
+            // 内存块索引，目前 WebAssembly 标准只支持 0
+            if data_item.memory_block_index != 0 {
+                return Err(make_invalid_memory_index_engine_error());
+            }
+
+            let offset_instruction_items = &data_item.offset_instruction_items;
+            let constant_expression = transform_constant_expression(offset_instruction_items)?;
+            let offset = vm.eval_constant_expression(&constant_expression)?;
+
+            let address = match offset {
+                Value::I32(v) => v as usize,
+                _ => {
+                    return Err(EngineError::InvalidOperation(
+                        "memory data offset should be a i32 number".to_string(),
+                    ));
+                }
+            };
+
+            let data = &data_item.data;
+            vm.context.memory_blocks[instance_memory_index].write_bytes(address, data);
+        }
+
+        // 填充 element 到 table
+        for element_item in &ast_module.element_items {
+            // 表索引，目前 WebAssembly 标准只支持 0
+            if element_item.table_index != 0 {
+                return Err(make_invalid_table_index_engine_error());
+            }
+
+            let offset_instruction_items = &element_item.offset_instruction_items;
+            let constant_expression = transform_constant_expression(offset_instruction_items)?;
+            let offset_value = vm.eval_constant_expression(&constant_expression)?;
+
+            let offset = match offset_value {
+                Value::I32(v) => v as usize,
+                _ => {
+                    return Err(EngineError::InvalidOperation(
+                        "table element offset should be a i32 number".to_string(),
+                    ));
+                }
+            };
+
+            for (index, function_index) in element_item.function_indices.iter().enumerate() {
+                vm.context.tables[instance_table_index]
+                    .set_element(offset + index, *function_index)?;
+            }
+        }
+    }
+
     Ok(vm)
 }
 

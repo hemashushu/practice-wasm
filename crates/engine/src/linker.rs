@@ -649,9 +649,6 @@ pub fn link_global_variables(
     // 所有实例表
     let mut instance_global_variables: Vec<VMGlobalVariable> = vec![];
 
-    // 创建一个 `裸 VM` 实例，用于对 `常量表达式` 求值
-    let mut bare_vm = VM::new_bare_vm();
-
     for ast_module in named_ast_modules.iter().map(|item| &item.module) {
         let mut module_global_variable_map_item: Vec<Option<usize>> = vec![];
 
@@ -673,7 +670,7 @@ pub fn link_global_variables(
             // 求值 global_item 的初始化常量表达式
             let constant_expression =
                 transform_constant_expression(&global_item.initialize_instruction_items)?;
-            let value = bare_vm.eval_constant_expression(&constant_expression)?;
+            let value = VM::get_constant_value(&constant_expression)?;
 
             // 检查数据类型是否匹配
             if value.get_type() != global_type.value_type {

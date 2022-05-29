@@ -234,9 +234,9 @@ impl VMStack {
         &self.slots[start..end]
     }
 
-    pub fn reset(&mut self) {
-        self.slots.clear()
-    }
+    // pub fn reset(&mut self) {
+    //     self.slots.clear()
+    // }
 }
 
 #[cfg(test)]

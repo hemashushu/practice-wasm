@@ -86,6 +86,8 @@ const NAME_COLLECTION_KIND_TYPE_NAMES: u8 = 0x04;
 const NAME_COLLECTION_KIND_TABLE_NAMES: u8 = 0x05;
 const NAME_COLLECTION_KIND_MEMORY_BLOCK_NAMES: u8 = 0x06;
 const NAME_COLLECTION_KIND_GLOBAL_VARIABLE_NAMES: u8 = 0x07;
+const NAME_COLLECTION_KIND_ELEMENT_NAMES: u8 = 0x08;
+const NAME_COLLECTION_KIND_DATA_NAMES: u8 = 0x09;
 
 pub fn parse(source: &[u8]) -> Result<Module, ParseError> {
     parse_module(source)
@@ -1243,12 +1245,12 @@ fn continue_parse_instruction_item(
         opcode::I64_EXTEND8_S => Instruction::I64Extend8S,
         opcode::I64_EXTEND16_S => Instruction::I64Extend16S,
         opcode::I64_EXTEND32_S => Instruction::I64Extend32S,
-        opcode::TRUNC_SAT => {
+        opcode::EXTENSION => {
             // trunc_sat = opcode_trunc_sat:byte + opcode_trunc_sat_sub_opcode:byte
             let (sub_opcode, post_sub_opcode) = read_byte(remains)?;
             remains = post_sub_opcode;
 
-            get_trunc_sat_instruction(sub_opcode)?
+            continue_parse_extension_instructions(sub_opcode)?
         }
         _ => {
             return Err(ParseError::Unsupported(format!(
@@ -1269,7 +1271,7 @@ fn continue_parse_instruction_item(
     Ok((instruction, remains, next_block_index))
 }
 
-fn get_trunc_sat_instruction(sub_opcode: u8) -> Result<Instruction, ParseError> {
+fn continue_parse_extension_instructions(sub_opcode: u8) -> Result<Instruction, ParseError> {
     match sub_opcode {
         opcode::I32_TRUNC_SAT_F32_S => Ok(Instruction::I32TruncSatF32S),
         opcode::I32_TRUNC_SAT_F32_U => Ok(Instruction::I32TruncSatF32U),
@@ -1280,7 +1282,7 @@ fn get_trunc_sat_instruction(sub_opcode: u8) -> Result<Instruction, ParseError> 
         opcode::I64_TRUNC_SAT_F64_S => Ok(Instruction::I64TruncSatF64S),
         opcode::I64_TRUNC_SAT_F64_U => Ok(Instruction::I64TruncSatF64U),
         _ => Err(ParseError::Unsupported(format!(
-            "unsupported trunc_sat sub-opcode: {}",
+            "unsupported extension instruction sub-opcode: {}",
             sub_opcode
         ))),
     }

@@ -1,11 +1,6 @@
-# XiaoXuan VM - Native
+# XiaoXuan VM - Native WASI
 
-Native functions provided to the WebAssembly VM, including module
-
-- Wasi
-- Alloc
-
-## Wasi
+Native I/O functions provided to the WebAssembly VM:
 
 - arg and env access
 - file access
@@ -13,7 +8,7 @@ Native functions provided to the WebAssembly VM, including module
 - socket access
 - clock, random, process etc.
 
-api list
+## API list
 
 - args_get
 - args_sizes_get
@@ -63,6 +58,7 @@ api list
 
 see: https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md
 
+<!--
 ## Alloc
 
 api list
@@ -71,3 +67,4 @@ api list
 - dealloc
 - alloc_zeroed
 - realloc
+-->

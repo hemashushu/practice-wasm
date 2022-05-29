@@ -23,9 +23,9 @@
 //!   * 有时 `if 指令` 的结构里不一定存在 `else 指令`，这时相当于在 `end 指令` 前有一个隐藏的 `else 指令`，
 //!     为了简化起见，如果 `if 指令` 的结构里不存在 `else 指令`，则直接让跳转目标为 `end 指令` 所在的位置。
 //! - `else 指令` 转换为 `jump 控制指令`，跳转目标为 if 结构块当中 `end 指令` 所在的位置；
-//! - `br 指令` 转换为 `jump 控制指令`，跳转目标由目标 block 类型所决定，即
-//!   * 对于原 block/if 结构块，跳转目标为原始结构块的 `end 指令` 所在的位置，
-//!   * 对于原 loop 结构块，跳转目标为原始结构块的开始位置；
+//! - `br 指令`
+//!   * 对于原 block/if 结构块，转换为 `jump 控制指令`，跳转目标为原始结构块的 `end 指令` 所在的位置，
+//!   * 对于原 loop 结构块，转换为 `recur 控制指令`，跳转目标为原始结构块的开始位置；
 //! - `br_if 指令` 转换为 `jump_not_eq_zero 控制指令`；
 //! - `return 指令` 转换为 `jump 控制指令`，跳转目标为函数的最后一条指令（即 `end 指令`）所在的位置；
 //! - `call 指令`：
@@ -40,6 +40,7 @@
 //! - block_jump_eq_zero (block_type, alternate_addr, end_addr)
 //! - jump (relative_depth, addr)
 //! - jump_not_eq_zero (relative_depth, addr)
+//! - recur (addr)
 //! - call_internal (type_index, function_index, addr)
 //! - call_external (module_index, type_index, function_index, addr)
 //! - call_native (module_index, type_index, function_index)
@@ -145,7 +146,7 @@ pub fn transform(
                         Instruction::Control(Control::Jump(0, function_addr_offset + end_index))
                     }
                     instruction::Instruction::Br(relative_depth) => {
-                        // target_depth 为目标层的层级，函数本层的层级为 0，第一层 block 的层级为 1，比如
+                        // target_level 为目标层的层级，函数本层的层级为 0，第一层 block 的层级为 1，比如
                         //
                         // function
                         //  |         <--- level 0
@@ -153,36 +154,46 @@ pub fn transform(
                         //  |   |     <--- level 1
                         //  |-- end
                         //
-                        let target_depth = block_index_stack.len() - *relative_depth as usize;
+                        let target_level = block_index_stack.len() - *relative_depth as usize;
 
-                        if (target_depth as isize) < 0 {
+                        if (target_level as isize) < 0 {
                             // 目标层级超出了范围
                             return Err(EngineError::OutOfIndex(
                                 "target depth out of index for instruction \"br\"".to_string(),
                             ));
                         }
 
-                        let target_addr = if target_depth == 0 {
+                        if target_level == 0 {
                             // 跳到函数本层了
                             // 目标位置应该是函数的最后一个指令，即 `end 指令` 所在的位置
-                            original_instructions.len() - 1
+                            let target_addr = original_instructions.len() - 1;
+
+                            Instruction::Control(Control::Jump(
+                                *relative_depth as usize,
+                                function_addr_offset + target_addr,
+                            ))
                         } else {
-                            let target_block_index = block_index_stack[target_depth - 1];
+                            let target_block_index = block_index_stack[target_level - 1];
 
                             // 获取目标层的位置信息
                             let block_location = &block_locations[target_block_index];
 
                             if block_location.block_structure_type == BlockStructureType::Loop {
-                                block_location.start_index
-                            } else {
-                                block_location.end_index
-                            }
-                        };
+                                let target_addr = block_location.start_index;
 
-                        Instruction::Control(Control::Jump(
-                            *relative_depth as usize,
-                            function_addr_offset + target_addr,
-                        ))
+                                Instruction::Control(Control::Recur(
+                                    *relative_depth as usize,
+                                    function_addr_offset + target_addr,
+                                ))
+                            } else {
+                                let target_addr = block_location.end_index;
+
+                                Instruction::Control(Control::Jump(
+                                    *relative_depth as usize,
+                                    function_addr_offset + target_addr,
+                                ))
+                            }
+                        }
                     }
                     instruction::Instruction::BrIf(relative_depth) => {
                         let target_depth = block_index_stack.len() - *relative_depth as usize;
@@ -301,8 +312,17 @@ pub fn transform(
 /// - 全局变量的初始值
 ///
 /// 都使用一条指令序列来表达，此序列也称为 `常量表达式`，表达式里的
-/// 指令一般是一个 `iNN.const 指令` 和一个 `end 指令`，
-/// https://webassembly.github.io/spec/core/valid/instructions.html#valid-constant
+/// 指令一般是一个 `t.const 指令` 和一个 `end 指令`，规范里允许的指令有：
+///
+/// - t.const
+/// - ref.null
+/// - ref.func x
+/// - global.get x （目标只允许是导入的 global item）
+///
+/// 详细见：
+/// https://webassembly.github.io/spec/core/valid/instructions.html#constant-expressions
+///
+/// 目前这里只支持 `t.const 指令`
 pub fn transform_constant_expression(
     original_instructions: &[instruction::Instruction],
 ) -> Result<Vec<Instruction>, EngineError> {
@@ -829,7 +849,7 @@ mod tests {
                 block_type: BlockType::Builtin(None),
                 end_addr: 24,
             }), // #08 - block 1 - loop
-            Instruction::Control(Control::Jump(0, 8)),                    // #09
+            Instruction::Control(Control::Recur(0, 8)),                    // #09
             Instruction::Control(Control::Jump(1, 28)),                   // #10
             Instruction::Control(Control::Jump(2, 35)),                   // #11
             Instruction::Control(Control::Jump(2, 35)),                   // #12
@@ -838,12 +858,12 @@ mod tests {
                 end_addr: 19,
             }), // #13 - block 2
             Instruction::Control(Control::Jump(0, 19)),                   // #14
-            Instruction::Control(Control::Jump(1, 8)),                    // #15
+            Instruction::Control(Control::Recur(1, 8)),                    // #15
             Instruction::Control(Control::Jump(2, 28)),                   // #16
             Instruction::Control(Control::Jump(3, 35)),                   // #17
             Instruction::Control(Control::Jump(3, 35)),                   // #18
             Instruction::Control(Control::Return),                        // #19 - block 2 end
-            Instruction::Control(Control::Jump(0, 8)),                    // #20
+            Instruction::Control(Control::Recur(0, 8)),                    // #20
             Instruction::Control(Control::Jump(1, 28)),                   // #21
             Instruction::Control(Control::Jump(2, 35)),                   // #22
             Instruction::Control(Control::Jump(2, 35)),                   // #23

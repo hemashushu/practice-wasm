@@ -14,6 +14,31 @@ use crate::{instruction::Instruction, types::ValueType};
 /// 结构的详细文档参阅：
 /// <https://webassembly.github.io/spec/core/binary/modules.html>
 ///
+/// # 与传统的进程的内存映像结构对比
+///
+/// ```diagram
+///       传统进程。。          WebAssembly 模块。
+///       =========           ================
+///
+/// |------------------|
+/// |      Stack     | |  <-- 相当于 Stack
+/// |                v |
+/// |------------------|
+/// | Memory Mapping ^ |  <-- 无类似的项目
+/// | Share Lib etc. | |
+/// |------------------|
+/// |                ^ |  <-- 相当于 Memory
+/// |      Heap      | |
+/// |------------------|
+/// |    BSS Segment   |  <-- 未初始化的静态变量，**近似于** "可变的" 全局变量
+/// |------------------|
+/// |   Data Segment   |  <-- 已初始化的静态变量（常量），**近似于** "不可变的" 全局变量
+/// |------------------|
+/// |                  |
+/// |   Text Segment   |  <-- 相当于 Code 段
+/// |------------------|
+/// ```
+///
 #[derive(Debug, PartialEq, Clone)]
 pub struct Module {
     /// 自定义项目列表，（section id 0）

@@ -63,7 +63,9 @@ pub fn select(vm: &mut VM) -> Result<(), EngineError> {
             }
             Ok(())
         } else {
-            Err(make_invalid_operand_data_types_engine_error("select", "i32"))
+            Err(make_invalid_operand_data_types_engine_error(
+                "select", "i32",
+            ))
         }
     }
 }

@@ -113,7 +113,7 @@ use anvm_ast::{instruction::MemoryArgument, types::Value};
 use crate::{
     error::{
         make_invalid_memory_index_engine_error, make_invalid_operand_data_type_engine_error,
-        make_invalid_operand_data_types_2_engine_error, EngineError,
+        EngineError,
     },
     vm::VM,
     vm_memory::VMMemory,

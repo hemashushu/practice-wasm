@@ -278,17 +278,39 @@ pub fn exec_instruction(
                 }
             };
 
-            result.map(|_| false)
+            match result {
+                Ok(_) => {
+                    vm.status.program_counter += 1;
+                    Ok(false)
+                }
+                Err(e) => Err(e),
+            }
         }
         object::Instruction::Control(control) => {
-            let result = match control {
-                Control::Return => vm.pop_frame(),
+            let is_program_end = match control {
+                Control::Return => {
+                    // todo:: 这里先判断当前是否结构帧的内置返回类型
+                    let result_count = {
+                        let type_index = vm.status.type_index;
+                        let signed_type_index = type_index as isize;
+
+                        if signed_type_index < 0 {
+                            todo!()
+                        } else {
+                            let vm_module_index = vm.status.vm_module_index;
+                            let vm_module = &vm.context.vm_modules[vm_module_index];
+                            let function_type = &vm_module.function_types[type_index];
+                            function_type.results.len()
+                        }
+                    };
+                    vm.pop_frame(result_count)
+                }
                 _ => {
                     panic!();
                 }
             };
 
-            Ok(result)
+            Ok(is_program_end)
         }
     }
 }

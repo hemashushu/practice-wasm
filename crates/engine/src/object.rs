@@ -79,6 +79,14 @@ pub enum Control {
     /// 对应 br_if 指令
     JumpNotEqZero(/* relative_depth */ usize, /* addr */ usize),
 
+    /// 重复执行当前结构块
+    /// 对应 br 跳转到 loop 结构块的情况
+    /// - 如果 relative_depth 为 0，只需简单地跳到 loop 指令所在地位置即可，
+    ///   不需要弹出/压入参数，也不需要弹出/压入栈帧
+    /// - 如果 relative_depth 大于 0，则需要弹出目标 loop 结构块所需要的参数，
+    ///   然后弹出跟 relative_depth 的值一样数量的栈帧，再压入实参，然而还是不需要创建新的栈帧
+    Recur(/* relative_depth */ usize, /* addr */ usize),
+
     /// 调用模块内的函数
     CallInternal {
         /// 被调用者的类型索引

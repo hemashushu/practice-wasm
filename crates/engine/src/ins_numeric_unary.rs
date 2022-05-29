@@ -56,7 +56,9 @@ pub fn i32_clz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.clz", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.clz", "i32",
+        ))
     }
 }
 
@@ -69,7 +71,9 @@ pub fn i32_ctz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.ctz", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.ctz", "i32",
+        ))
     }
 }
 
@@ -82,7 +86,10 @@ pub fn i32_popcnt(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.popcnt", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.popcnt",
+            "i32",
+        ))
     }
 }
 
@@ -97,7 +104,9 @@ pub fn i64_clz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.clz", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.clz", "i64",
+        ))
     }
 }
 
@@ -110,7 +119,9 @@ pub fn i64_ctz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.ctz", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.ctz", "i64",
+        ))
     }
 }
 
@@ -123,7 +134,10 @@ pub fn i64_popcnt(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.popcnt", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.popcnt",
+            "i64",
+        ))
     }
 }
 
@@ -138,7 +152,9 @@ pub fn f32_abs(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.abs", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.abs", "f32",
+        ))
     }
 }
 
@@ -150,7 +166,9 @@ pub fn f32_neg(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(-value));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.neg", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.neg", "f32",
+        ))
     }
 }
 
@@ -163,7 +181,9 @@ pub fn f32_ceil(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.ceil", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.ceil", "f32",
+        ))
     }
 }
 
@@ -176,7 +196,10 @@ pub fn f32_floor(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.floor", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.floor",
+            "f32",
+        ))
     }
 }
 
@@ -189,7 +212,10 @@ pub fn f32_trunc(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.trunc", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.trunc",
+            "f32",
+        ))
     }
 }
 
@@ -206,27 +232,32 @@ pub fn f32_nearest(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.nearest", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.nearest",
+            "f32",
+        ))
     }
 }
 
+/// 土制 "4 舍 6 入，奇进偶不进"
 fn round_half_to_even_f32(value: f32) -> f32 {
-    let round_half_away_from_zero = f32::round(value); // 4 舍 5 入，即 "Round half away from zero"
-    let first_digit_of_fractional = ((value - f32::trunc(value)) * 10.0) as i32; // 获取第 1 位小数
+    let round_half_away_from_zero = f32::round(value); // “4 舍 5 入”，即 "Round half away from zero"
+    let first_digit_of_fractional = ((value - f32::trunc(value)) * 10.0) as i32; // 获取第 1 个小数
 
     if first_digit_of_fractional != 5 && first_digit_of_fractional != -5 {
-        // 第 1 位小数不是 5，结果跟 4 舍 5 入 一样
+        // 第 1 个小数不是 5，结果跟 "4 舍 5 入" 一样
         round_half_away_from_zero
     } else {
+        // 第 1 个小数是 5，"奇进偶不进"
         if (value as i32) % 2 == 0 {
-            // 整数部分是偶数，减少降低 0.1
+            // 整数部分是偶数，减少 0.1 再进行 "4 舍 5 入"（结果就是舍弃小数部分）
             if value > 0.0 {
                 f32::round(value - 0.1)
             } else {
                 f32::round(value + 0.1)
             }
         } else {
-            // 整数部分是奇数，结果跟 4 舍 5 入 一样
+            // 整数部分是奇数，结果跟 "4 舍 5 入" 一样
             round_half_away_from_zero
         }
     }
@@ -241,7 +272,9 @@ pub fn f32_sqrt(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.sqrt", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.sqrt", "f32",
+        ))
     }
 }
 
@@ -256,7 +289,9 @@ pub fn f64_abs(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.abs", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.abs", "f64",
+        ))
     }
 }
 
@@ -268,7 +303,9 @@ pub fn f64_neg(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(-value));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.neg", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.neg", "f64",
+        ))
     }
 }
 
@@ -281,7 +318,9 @@ pub fn f64_ceil(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.ceil", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.ceil", "f64",
+        ))
     }
 }
 
@@ -294,7 +333,10 @@ pub fn f64_floor(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.floor", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.floor",
+            "f64",
+        ))
     }
 }
 
@@ -307,7 +349,10 @@ pub fn f64_trunc(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.trunc", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.trunc",
+            "f64",
+        ))
     }
 }
 
@@ -324,27 +369,32 @@ pub fn f64_nearest(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.nearest", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.nearest",
+            "f64",
+        ))
     }
 }
 
+/// 土制 "4 舍 6 入，奇进偶不进"
 fn round_half_to_even_f64(value: f64) -> f64 {
-    let round_half_away_from_zero = f64::round(value); // 4 舍 5 入，即 "Round half away from zero"
-    let first_digit_of_fractional = ((value - f64::trunc(value)) * 10.0) as i32; // 获取第 1 位小数
+    let round_half_away_from_zero = f64::round(value); // “4 舍 5 入”，即 "Round half away from zero"
+    let first_digit_of_fractional = ((value - f64::trunc(value)) * 10.0) as i32; // 获取第 1 个小数
 
     if first_digit_of_fractional != 5 && first_digit_of_fractional != -5 {
-        // 第 1 位小数不是 5，结果跟 4 舍 5 入 一样
+        // 第 1 个小数不是 5，结果跟 "4 舍 5 入" 一样
         round_half_away_from_zero
     } else {
+        // 第 1 个小数是 5，"奇进偶不进"
         if (value as i32) % 2 == 0 {
-            // 整数部分是偶数，减少降低 0.1
+            // 整数部分是偶数，减少 0.1 再进行 "4 舍 5 入"（结果就是舍弃小数部分）
             if value > 0.0 {
                 f64::round(value - 0.1)
             } else {
                 f64::round(value + 0.1)
             }
         } else {
-            // 整数部分是奇数，结果跟 4 舍 5 入 一样
+            // 整数部分是奇数，结果跟 "4 舍 5 入" 一样
             round_half_away_from_zero
         }
     }
@@ -359,6 +409,8 @@ pub fn f64_sqrt(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.sqrt", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.sqrt", "f64",
+        ))
     }
 }

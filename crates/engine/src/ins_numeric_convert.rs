@@ -106,7 +106,7 @@
 use anvm_ast::types::Value;
 
 use crate::{
-    error::{make_invalid_operand_data_type_engine_error, make_invalid_operand_data_types_2_engine_error, EngineError},
+    error::{make_invalid_operand_data_type_engine_error, EngineError},
     vm::VM,
 };
 
@@ -121,7 +121,10 @@ pub fn i32_wrap_i64(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.wrap_i64", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.wrap_i64",
+            "i64",
+        ))
     }
 }
 
@@ -136,7 +139,10 @@ pub fn i32_extend8_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.extend8_s", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.extend8_s",
+            "i32",
+        ))
     }
 }
 
@@ -149,7 +155,10 @@ pub fn i32_extend16_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.extend16_s", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.extend16_s",
+            "i32",
+        ))
     }
 }
 
@@ -162,7 +171,10 @@ pub fn i64_extend_i32_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.extend_i32_s", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.extend_i32_s",
+            "i32",
+        ))
     }
 }
 
@@ -175,7 +187,10 @@ pub fn i64_extend_i32_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.extend_i32_u", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.extend_i32_u",
+            "i32",
+        ))
     }
 }
 
@@ -188,7 +203,10 @@ pub fn i64_extend8_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.extend8_s", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.extend8_s",
+            "i64",
+        ))
     }
 }
 
@@ -201,7 +219,10 @@ pub fn i64_extend16_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.extend16_s", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.extend16_s",
+            "i64",
+        ))
     }
 }
 
@@ -214,7 +235,10 @@ pub fn i64_extend32_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.extend32_s", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.extend32_s",
+            "i64",
+        ))
     }
 }
 
@@ -229,7 +253,10 @@ pub fn i32_trunc_f32_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.trunc_f32_s", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.trunc_f32_s",
+            "f32",
+        ))
     }
 }
 
@@ -242,7 +269,10 @@ pub fn i32_trunc_f32_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.trunc_f32_u", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.trunc_f32_u",
+            "f32",
+        ))
     }
 }
 
@@ -255,7 +285,10 @@ pub fn i64_trunc_f32_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.trunc_f32_s", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.trunc_f32_s",
+            "f32",
+        ))
     }
 }
 
@@ -268,7 +301,10 @@ pub fn i64_trunc_f32_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.trunc_f32_u", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.trunc_f32_u",
+            "f32",
+        ))
     }
 }
 
@@ -281,7 +317,10 @@ pub fn i32_trunc_f64_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.trunc_f64_s", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.trunc_f64_s",
+            "f64",
+        ))
     }
 }
 
@@ -294,7 +333,10 @@ pub fn i32_trunc_f64_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.trunc_f64_u", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.trunc_f64_u",
+            "f64",
+        ))
     }
 }
 
@@ -307,7 +349,10 @@ pub fn i64_trunc_f64_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.trunc_f64_s", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.trunc_f64_s",
+            "f64",
+        ))
     }
 }
 
@@ -320,7 +365,10 @@ pub fn i64_trunc_f64_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.trunc_f64_u", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.trunc_f64_u",
+            "f64",
+        ))
     }
 }
 
@@ -339,7 +387,10 @@ pub fn f32_convert_i32_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.convert_i32_s", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.convert_i32_s",
+            "i32",
+        ))
     }
 }
 
@@ -352,7 +403,10 @@ pub fn f32_convert_i32_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.convert_i32_u", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.convert_i32_u",
+            "i32",
+        ))
     }
 }
 
@@ -365,7 +419,10 @@ pub fn f64_convert_i32_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.convert_i32_s", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.convert_i32_s",
+            "i32",
+        ))
     }
 }
 
@@ -378,7 +435,10 @@ pub fn f64_convert_i32_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.convert_i32_u", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.convert_i32_u",
+            "i32",
+        ))
     }
 }
 
@@ -391,7 +451,10 @@ pub fn f32_convert_i64_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.convert_i64_s", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.convert_i64_s",
+            "i64",
+        ))
     }
 }
 
@@ -404,7 +467,10 @@ pub fn f32_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.convert_i64_u", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.convert_i64_u",
+            "i64",
+        ))
     }
 }
 
@@ -417,7 +483,10 @@ pub fn f64_convert_i64_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.convert_i64_s", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.convert_i64_s",
+            "i64",
+        ))
     }
 }
 
@@ -430,7 +499,10 @@ pub fn f64_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.convert_i64_u", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.convert_i64_u",
+            "i64",
+        ))
     }
 }
 
@@ -445,7 +517,10 @@ pub fn f32_demote_f64_s(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.demote_f64_s", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.demote_f64_s",
+            "f64",
+        ))
     }
 }
 
@@ -458,7 +533,10 @@ pub fn f64_promote_f32(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.promote_f32", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.promote_f32",
+            "f32",
+        ))
     }
 }
 
@@ -473,7 +551,10 @@ pub fn i32_reinterpret_f32(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i32.reinterpret_f32", "f32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i32.reinterpret_f32",
+            "f32",
+        ))
     }
 }
 
@@ -486,7 +567,10 @@ pub fn i64_reinterpret_f64(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("i64.reinterpret_f64", "f64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "i64.reinterpret_f64",
+            "f64",
+        ))
     }
 }
 
@@ -499,7 +583,10 @@ pub fn f32_reinterpret_i32(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f32.reinterpret_i32", "i32"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f32.reinterpret_i32",
+            "i32",
+        ))
     }
 }
 
@@ -512,6 +599,9 @@ pub fn f64_reinterpret_i64(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error("f64.reinterpret_i64", "i64"))
+        Err(make_invalid_operand_data_type_engine_error(
+            "f64.reinterpret_i64",
+            "i64",
+        ))
     }
 }
