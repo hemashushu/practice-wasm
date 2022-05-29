@@ -17,7 +17,7 @@ use crate::{
     native_module::NativeModule,
     object::NamedAstModule,
     transformer::{transform, transform_constant_expression},
-    vm::{Context, Status, VM},
+    vm::{Resource, Status, VM},
     vm_module::VMModule,
     vm_stack::VMStack,
 };
@@ -104,8 +104,8 @@ pub fn create_instance(
 
     let stack = VMStack::new();
 
-    let context = Context::new(
-        stack,
+    let resource = Resource::new(
+        // stack,
         memory_blocks,
         tables,
         global_variables,
@@ -115,7 +115,11 @@ pub fn create_instance(
 
     let status = Status::new();
 
-    let mut vm = VM { context, status };
+    let mut vm = VM {
+        stack,
+        status,
+        resource,
+    };
 
     // 填充 data 和 element 到 memory 和 table
     //
@@ -126,8 +130,8 @@ pub fn create_instance(
         let named_ast_module = &named_ast_modules[ast_module_index];
         let ast_module = &named_ast_module.module;
 
-        let instance_memory_index = vm.context.vm_modules[ast_module_index].memory_index;
-        let instance_table_index = vm.context.vm_modules[ast_module_index].table_index;
+        let instance_memory_index = vm.resource.vm_modules[ast_module_index].memory_index;
+        let instance_table_index = vm.resource.vm_modules[ast_module_index].table_index;
 
         // 填充 data 到 memory
         for data_item in &ast_module.data_items {
@@ -150,7 +154,7 @@ pub fn create_instance(
             };
 
             let data = &data_item.data;
-            vm.context.memory_blocks[instance_memory_index].write_bytes(address, data);
+            vm.resource.memory_blocks[instance_memory_index].write_bytes(address, data);
         }
 
         // 填充 element 到 table
@@ -174,7 +178,7 @@ pub fn create_instance(
             };
 
             for (index, function_index) in element_item.function_indices.iter().enumerate() {
-                vm.context.tables[instance_table_index]
+                vm.resource.tables[instance_table_index]
                     .set_element(offset + index, *function_index)?;
             }
         }
@@ -363,7 +367,7 @@ mod tests {
         let named_ast_module = NamedAstModule::new("test", ast_module);
         let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
-        vm.context.memory_blocks[0].write_bytes(0, initial_memory_data);
+        vm.resource.memory_blocks[0].write_bytes(0, initial_memory_data);
         vm.eval_function_by_index(0, index, args)
     }
 
@@ -379,7 +383,7 @@ mod tests {
         let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
         let result = vm.eval_function_by_index(0, index, args)?;
-        let data = vm.context.memory_blocks[0]
+        let data = vm.resource.memory_blocks[0]
             .read_bytes(address, length)
             .to_vec();
         Ok((result, data))

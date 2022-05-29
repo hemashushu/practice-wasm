@@ -113,7 +113,7 @@ use crate::{
 // 整数截断
 
 pub fn i32_wrap_i64(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -131,7 +131,7 @@ pub fn i32_wrap_i64(vm: &mut VM) -> Result<(), EngineError> {
 // 整数提升
 
 pub fn i32_extend8_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -147,7 +147,7 @@ pub fn i32_extend8_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_extend16_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -163,7 +163,7 @@ pub fn i32_extend16_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_extend_i32_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -179,7 +179,7 @@ pub fn i64_extend_i32_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_extend_i32_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -195,7 +195,7 @@ pub fn i64_extend_i32_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_extend8_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -211,7 +211,7 @@ pub fn i64_extend8_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_extend16_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -227,7 +227,7 @@ pub fn i64_extend16_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_extend32_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -245,7 +245,7 @@ pub fn i64_extend32_s(vm: &mut VM) -> Result<(), EngineError> {
 // 浮点数转整数（截断运算）
 
 pub fn i32_trunc_f32_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -261,7 +261,7 @@ pub fn i32_trunc_f32_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_trunc_f32_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -277,7 +277,7 @@ pub fn i32_trunc_f32_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_trunc_f32_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -293,7 +293,7 @@ pub fn i64_trunc_f32_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_trunc_f32_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -309,7 +309,7 @@ pub fn i64_trunc_f32_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_trunc_f64_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -325,7 +325,7 @@ pub fn i32_trunc_f64_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_trunc_f64_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -341,7 +341,7 @@ pub fn i32_trunc_f64_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_trunc_f64_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -357,7 +357,7 @@ pub fn i64_trunc_f64_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_trunc_f64_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -379,7 +379,7 @@ pub fn i64_trunc_f64_u(vm: &mut VM) -> Result<(), EngineError> {
 // 整数转浮点数（转换运算）
 
 pub fn f32_convert_i32_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -395,7 +395,7 @@ pub fn f32_convert_i32_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_convert_i32_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -411,7 +411,7 @@ pub fn f32_convert_i32_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_convert_i32_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -427,7 +427,7 @@ pub fn f64_convert_i32_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_convert_i32_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -443,7 +443,7 @@ pub fn f64_convert_i32_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_convert_i64_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -459,7 +459,7 @@ pub fn f32_convert_i64_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -475,7 +475,7 @@ pub fn f32_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_convert_i64_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -491,7 +491,7 @@ pub fn f64_convert_i64_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -509,7 +509,7 @@ pub fn f64_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
 // 浮点数精度调整
 
 pub fn f32_demote_f64_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -525,7 +525,7 @@ pub fn f32_demote_f64_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_promote_f32(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -543,7 +543,7 @@ pub fn f64_promote_f32(vm: &mut VM) -> Result<(), EngineError> {
 // 比特位重新解释
 
 pub fn i32_reinterpret_f32(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -559,7 +559,7 @@ pub fn i32_reinterpret_f32(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_reinterpret_f64(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -575,7 +575,7 @@ pub fn i64_reinterpret_f64(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_reinterpret_i32(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -591,7 +591,7 @@ pub fn f32_reinterpret_i32(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_reinterpret_i64(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {

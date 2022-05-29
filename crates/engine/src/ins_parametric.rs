@@ -22,7 +22,7 @@ use crate::{
 ///
 /// 弹出栈顶的一个操作数并扔掉
 pub fn drop(vm: &mut VM) -> Result<(), EngineError> {
-    vm.context.stack.pop();
+    vm.stack.pop();
     Ok(())
 }
 
@@ -47,7 +47,7 @@ pub fn drop(vm: &mut VM) -> Result<(), EngineError> {
 /// - 栈顶元素（第一个操作数）必须是 int32，
 /// - 第二个和第三个操作数的类型必须相同
 pub fn select(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (testing, consequent, alternate) = (stack.pop(), stack.pop(), stack.pop());
 
     if consequent.get_type() != alternate.get_type() {

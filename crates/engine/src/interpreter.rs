@@ -298,7 +298,7 @@ pub fn exec_instruction(
                             todo!()
                         } else {
                             let vm_module_index = vm.status.vm_module_index;
-                            let vm_module = &vm.context.vm_modules[vm_module_index];
+                            let vm_module = &vm.resource.vm_modules[vm_module_index];
                             let function_type = &vm_module.function_types[type_index];
                             function_type.results.len()
                         }

@@ -22,7 +22,7 @@ use crate::{error::EngineError, vm::VM};
 pub fn local_get(vm: &mut VM, index: u32) -> Result<(), EngineError> {
     let offset = vm.status.local_pointer + (index as usize);
 
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let value = stack.get_value(offset);
     stack.push(value);
     Ok(())
@@ -31,7 +31,7 @@ pub fn local_get(vm: &mut VM, index: u32) -> Result<(), EngineError> {
 pub fn local_set(vm: &mut VM, index: u32) -> Result<(), EngineError> {
     let offset = vm.status.local_pointer + (index as usize);
 
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let value = stack.pop();
     stack.set_value(offset, value);
     Ok(())
@@ -40,7 +40,7 @@ pub fn local_set(vm: &mut VM, index: u32) -> Result<(), EngineError> {
 pub fn local_tee(vm: &mut VM, index: u32) -> Result<(), EngineError> {
     let offset = vm.status.local_pointer + (index as usize);
 
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let value = stack.peek();
     stack.set_value(offset, value);
     Ok(())
@@ -48,20 +48,20 @@ pub fn local_tee(vm: &mut VM, index: u32) -> Result<(), EngineError> {
 
 pub fn global_get(vm: &mut VM, index: u32) -> Result<(), EngineError> {
     let instance_global_variable_index =
-        vm.context.vm_modules[vm.status.vm_module_index].global_variable_indexes[index as usize];
-    let value = vm.context.global_variables[instance_global_variable_index].get_value();
+        vm.resource.vm_modules[vm.status.vm_module_index].global_variable_indexes[index as usize];
+    let value = vm.resource.global_variables[instance_global_variable_index].get_value();
 
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     stack.push(value);
     Ok(())
 }
 
 pub fn global_set(vm: &mut VM, index: u32) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let value = stack.pop();
 
     let instance_global_variable_index =
-        vm.context.vm_modules[vm.status.vm_module_index].global_variable_indexes[index as usize];
-    vm.context.global_variables[instance_global_variable_index].set_value(value)?;
+        vm.resource.vm_modules[vm.status.vm_module_index].global_variable_indexes[index as usize];
+    vm.resource.global_variables[instance_global_variable_index].set_value(value)?;
     Ok(())
 }

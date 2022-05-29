@@ -118,8 +118,7 @@ impl Status {
     // }
 }
 
-pub struct Context {
-    pub stack: VMStack,
+pub struct Resource {
     pub memory_blocks: Vec<VMMemory>,
     pub tables: Vec<VMTable>,
     pub global_variables: Vec<VMGlobalVariable>,
@@ -128,9 +127,9 @@ pub struct Context {
     pub vm_modules: Vec<VMModule>,
 }
 
-impl Context {
+impl Resource {
     pub fn new(
-        stack: VMStack,
+        // stack: VMStack,
         memory_blocks: Vec<VMMemory>,
         tables: Vec<VMTable>,
         global_variables: Vec<VMGlobalVariable>,
@@ -138,7 +137,7 @@ impl Context {
         vm_modules: Vec<VMModule>,
     ) -> Self {
         Self {
-            stack,
+            // stack,
             memory_blocks,
             tables,
             global_variables,
@@ -149,8 +148,9 @@ impl Context {
 }
 
 pub struct VM {
+    pub stack: VMStack,
     pub status: Status,
-    pub context: Context,
+    pub resource: Resource,
 }
 
 impl VM {
@@ -172,7 +172,7 @@ impl VM {
         }
 
         // 栈留下的所有操作数应该都是函数返回的值
-        let result_count = self.context.stack.get_size();
+        let result_count = self.stack.get_size();
         Ok(self.pop_results(result_count))
     }
 
@@ -185,7 +185,7 @@ impl VM {
         arguments: &[Value],
     ) -> Result<(), EngineError> {
         let function_item = {
-            let vm_module = &self.context.vm_modules[vm_module_index];
+            let vm_module = &self.resource.vm_modules[vm_module_index];
             let function_item = &vm_module.function_items[function_index];
             function_item.to_owned()
         };
@@ -215,7 +215,7 @@ impl VM {
                 end_index,
             } => {
                 let (argument_count, /* result_count, */ local_variable_types) = {
-                    let vm_module = &self.context.vm_modules[vm_module_index];
+                    let vm_module = &self.resource.vm_modules[vm_module_index];
                     let function_type = &vm_module.function_types[type_index];
                     let local_variable_types = &vm_module
                         .internal_function_local_variable_types_list[internal_function_index];
@@ -272,7 +272,7 @@ impl VM {
         let vm_module_index = self.status.vm_module_index;
         let addr = self.status.program_counter;
 
-        let instruction = self.context.vm_modules[vm_module_index].instructions[addr].to_owned();
+        let instruction = self.resource.vm_modules[vm_module_index].instructions[addr].to_owned();
         let is_program_end = interpreter::exec_instruction(self, &instruction)?;
 
         // if !is_program_end {
@@ -306,13 +306,13 @@ impl VM {
     /// |    internal function        |
     /// |-----------------------------|
     fn push_arguments(&mut self, arguments: &[Value]) {
-        self.context.stack.push_values(arguments);
+        self.stack.push_values(arguments);
     }
 
     /// 从 vm 内部返回结果给外部（即宿主）函数调用者
     /// 先弹出的数值放置在结果数组的右边（大索引端）。
     fn pop_results(&mut self, result_count: usize) -> Vec<Value> {
-        self.context.stack.pop_values(result_count)
+        self.stack.pop_values(result_count)
     }
 
     pub fn push_call_frame(
@@ -339,7 +339,7 @@ impl VM {
         let return_function_index = status.function_index;
         let return_function_type = status.type_index;
 
-        let stack = &mut self.context.stack;
+        let stack = &mut self.stack;
         let previous_stack_pointer = stack.get_size();
 
         // 栈帧的起始位置为：
@@ -405,7 +405,7 @@ impl VM {
         let return_function_index = status.function_index;
         let return_function_type = status.type_index;
 
-        let stack = &mut self.context.stack;
+        let stack = &mut self.stack;
         let previous_stack_pointer = stack.get_size();
 
         // 栈帧的起始位置为：
@@ -453,7 +453,7 @@ impl VM {
         // let local_pointer = status.local_pointer;
         let base_pointer = status.base_pointer;
 
-        let stack = &mut self.context.stack;
+        let stack = &mut self.stack;
 
         // 读取信息段
         let previous_frame_pointer: usize = stack.get_value(base_pointer).into();

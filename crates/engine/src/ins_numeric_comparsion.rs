@@ -48,7 +48,7 @@ use crate::{
 // i32
 
 pub fn i32_eq(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -61,7 +61,7 @@ pub fn i32_eq(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_ne(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -74,7 +74,7 @@ pub fn i32_ne(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_lt_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -87,7 +87,7 @@ pub fn i32_lt_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_lt_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -100,7 +100,7 @@ pub fn i32_lt_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_gt_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -113,7 +113,7 @@ pub fn i32_gt_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_gt_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -126,7 +126,7 @@ pub fn i32_gt_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_le_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -139,7 +139,7 @@ pub fn i32_le_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_le_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -152,7 +152,7 @@ pub fn i32_le_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_ge_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -165,7 +165,7 @@ pub fn i32_ge_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_ge_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -180,7 +180,7 @@ pub fn i32_ge_u(vm: &mut VM) -> Result<(), EngineError> {
 // i64
 
 pub fn i64_eq(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -193,7 +193,7 @@ pub fn i64_eq(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_ne(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -206,7 +206,7 @@ pub fn i64_ne(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_lt_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -219,7 +219,7 @@ pub fn i64_lt_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_lt_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -232,7 +232,7 @@ pub fn i64_lt_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_gt_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -245,7 +245,7 @@ pub fn i64_gt_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_gt_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -258,7 +258,7 @@ pub fn i64_gt_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_le_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -271,7 +271,7 @@ pub fn i64_le_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_le_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -284,7 +284,7 @@ pub fn i64_le_u(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_ge_s(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -297,7 +297,7 @@ pub fn i64_ge_s(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_ge_u(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -312,7 +312,7 @@ pub fn i64_ge_u(vm: &mut VM) -> Result<(), EngineError> {
 // f32
 
 pub fn f32_eq(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -325,7 +325,7 @@ pub fn f32_eq(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_ne(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -338,7 +338,7 @@ pub fn f32_ne(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_lt(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -351,7 +351,7 @@ pub fn f32_lt(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_gt(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -364,7 +364,7 @@ pub fn f32_gt(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_le(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -377,7 +377,7 @@ pub fn f32_le(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_ge(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -392,7 +392,7 @@ pub fn f32_ge(vm: &mut VM) -> Result<(), EngineError> {
 // f64
 
 pub fn f64_eq(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -405,7 +405,7 @@ pub fn f64_eq(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_ne(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -418,7 +418,7 @@ pub fn f64_ne(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_lt(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -431,7 +431,7 @@ pub fn f64_lt(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_gt(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -444,7 +444,7 @@ pub fn f64_gt(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_le(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
@@ -457,7 +457,7 @@ pub fn f64_le(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_ge(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {

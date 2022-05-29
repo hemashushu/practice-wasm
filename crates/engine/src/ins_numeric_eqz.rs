@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub fn i32_eqz(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let testing = stack.pop();
 
     if let Value::I32(value) = testing {
@@ -32,7 +32,7 @@ pub fn i32_eqz(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_eqz(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let testing = stack.pop();
 
     if let Value::I64(value) = testing {

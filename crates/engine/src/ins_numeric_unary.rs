@@ -48,7 +48,7 @@ use crate::{
 // i32
 
 pub fn i32_clz(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -63,7 +63,7 @@ pub fn i32_clz(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_ctz(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -78,7 +78,7 @@ pub fn i32_ctz(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i32_popcnt(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I32(value) = operand {
@@ -96,7 +96,7 @@ pub fn i32_popcnt(vm: &mut VM) -> Result<(), EngineError> {
 // i64
 
 pub fn i64_clz(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -111,7 +111,7 @@ pub fn i64_clz(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_ctz(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -126,7 +126,7 @@ pub fn i64_ctz(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn i64_popcnt(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::I64(value) = operand {
@@ -144,7 +144,7 @@ pub fn i64_popcnt(vm: &mut VM) -> Result<(), EngineError> {
 // f32
 
 pub fn f32_abs(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -159,7 +159,7 @@ pub fn f32_abs(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_neg(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -173,7 +173,7 @@ pub fn f32_neg(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_ceil(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -188,7 +188,7 @@ pub fn f32_ceil(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_floor(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -204,7 +204,7 @@ pub fn f32_floor(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f32_trunc(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -224,7 +224,7 @@ pub fn f32_trunc(vm: &mut VM) -> Result<(), EngineError> {
 /// https://en.wikipedia.org/wiki/Rounding#Round_half_to_even
 /// https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Numeric/Nearest
 pub fn f32_nearest(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -264,7 +264,7 @@ fn round_half_to_even_f32(value: f32) -> f32 {
 }
 
 pub fn f32_sqrt(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F32(value) = operand {
@@ -281,7 +281,7 @@ pub fn f32_sqrt(vm: &mut VM) -> Result<(), EngineError> {
 // f64
 
 pub fn f64_abs(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -296,7 +296,7 @@ pub fn f64_abs(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_neg(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -310,7 +310,7 @@ pub fn f64_neg(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_ceil(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -325,7 +325,7 @@ pub fn f64_ceil(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_floor(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -341,7 +341,7 @@ pub fn f64_floor(vm: &mut VM) -> Result<(), EngineError> {
 }
 
 pub fn f64_trunc(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -361,7 +361,7 @@ pub fn f64_trunc(vm: &mut VM) -> Result<(), EngineError> {
 /// https://en.wikipedia.org/wiki/Rounding#Round_half_to_even
 /// https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Numeric/Nearest
 pub fn f64_nearest(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {
@@ -401,7 +401,7 @@ fn round_half_to_even_f64(value: f64) -> f64 {
 }
 
 pub fn f64_sqrt(vm: &mut VM) -> Result<(), EngineError> {
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let operand = stack.pop();
 
     if let Value::F64(value) = operand {

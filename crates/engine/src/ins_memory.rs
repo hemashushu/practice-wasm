@@ -125,11 +125,11 @@ pub fn memory_size(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineErr
         return Err(make_invalid_memory_index_engine_error());
     }
 
-    let instance_memory_block_index = vm.context.vm_modules[vm.status.vm_module_index].memory_index;
-    let memory_block = &mut vm.context.memory_blocks[instance_memory_block_index];
+    let instance_memory_block_index = vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
     let page_count = memory_block.get_page_count();
 
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     stack.push(Value::I32(page_count as i32));
 
     Ok(())
@@ -140,11 +140,11 @@ pub fn memory_grow(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineErr
         return Err(make_invalid_memory_index_engine_error());
     }
 
-    let stack = &mut vm.context.stack;
+    let stack = &mut vm.stack;
     let increase_number = stack.pop();
 
-    let instance_memory_block_index = vm.context.vm_modules[vm.status.vm_module_index].memory_index;
-    let memory_block = &mut vm.context.memory_blocks[instance_memory_block_index];
+    let instance_memory_block_index = vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
 
     if let Value::I32(value) = increase_number {
         let result = memory_block.increase_page(value as u32);
@@ -192,9 +192,9 @@ fn get_load_access_meterial<'a>(
     vm: &'a mut VM,
     memory_args: &MemoryArgument,
 ) -> Result<(&'a mut VMMemory, &'a mut VMStack, usize), EngineError> {
-    let stack = &mut vm.context.stack;
-    let instance_memory_block_index = vm.context.vm_modules[vm.status.vm_module_index].memory_index;
-    let memory_block = &mut vm.context.memory_blocks[instance_memory_block_index];
+    let stack = &mut vm.stack;
+    let instance_memory_block_index = vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
 
     let address = get_effective_address(stack, memory_args)?;
     Ok((memory_block, stack, address))
@@ -204,9 +204,9 @@ fn get_store_access_meterial<'a>(
     vm: &'a mut VM,
     memory_args: &MemoryArgument,
 ) -> Result<(&'a mut VMMemory, usize, Value), EngineError> {
-    let stack = &mut vm.context.stack;
-    let instance_memory_block_index = vm.context.vm_modules[vm.status.vm_module_index].memory_index;
-    let memory_block = &mut vm.context.memory_blocks[instance_memory_block_index];
+    let stack = &mut vm.stack;
+    let instance_memory_block_index = vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
 
     let operand = stack.pop();
     let address = get_effective_address(stack, memory_args)?;

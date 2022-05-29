@@ -18,21 +18,21 @@ use anvm_ast::types::Value;
 use crate::{error::EngineError, vm::VM};
 
 pub fn i32_const(vm: &mut VM, value: i32) -> Result<(), EngineError> {
-    vm.context.stack.push(Value::I32(value));
+    vm.stack.push(Value::I32(value));
     Ok(())
 }
 
 pub fn i64_const(vm: &mut VM, value: i64) -> Result<(), EngineError> {
-    vm.context.stack.push(Value::I64(value));
+    vm.stack.push(Value::I64(value));
     Ok(())
 }
 
 pub fn f32_const(vm: &mut VM, value: f32) -> Result<(), EngineError> {
-    vm.context.stack.push(Value::F32(value));
+    vm.stack.push(Value::F32(value));
     Ok(())
 }
 
 pub fn f64_const(vm: &mut VM, value: f64) -> Result<(), EngineError> {
-    vm.context.stack.push(Value::F64(value));
+    vm.stack.push(Value::F64(value));
     Ok(())
 }
