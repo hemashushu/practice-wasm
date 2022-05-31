@@ -56,15 +56,15 @@ pub enum Control {
     /// 对应 block/loop 指令
     Block {
         block_type: BlockType,
-        end_addr: usize,
+        end_address: usize,
     },
 
     /// 进入一个新的栈帧，并当原栈顶的数值等于 0 时，跳转到指定的地址
     /// 对应 if 指令
     BlockJumpEqZero {
         block_type: BlockType,
-        alternate_addr: usize,
-        end_addr: usize,
+        alternate_address: usize,
+        end_address: usize,
     },
 
     /// 跳转到指定的地址
@@ -104,7 +104,7 @@ pub enum Control {
 
         /// 被调用函数的指令开始位置
         /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
-        addr: usize,
+        address: usize,
     },
 
     /// 调用模块外的函数
@@ -125,7 +125,7 @@ pub enum Control {
         internal_function_index: usize,
 
         /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
-        addr: usize,
+        address: usize,
     },
 
     /// 调用本地函数（native function）模块的本地函数

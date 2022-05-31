@@ -5,8 +5,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use anvm_ast::{
-    instruction,
-    types::{Value, ValueType},
+    instruction::{self, BlockType},
+    types::{check_value_types, Value, ValueType, ValueTypeCheckError},
 };
 
 use crate::{
@@ -62,8 +62,8 @@ pub struct Status {
 
     /// 当前指令所在的模块，指令执行完毕之后，则是下一个待执行指令所在的模块
     ///
-    /// vm_module_index、function_index 以及 program_counter 3 个数值
-    /// 共同组成了传统体系结构当中的 pc 值，用于指示下一条指令的位置（地址）。
+    /// vm_module_index、function_index 以及 address 3 个数值
+    /// 共同组成了传统体系结构当中的 program counter (pc) 值，用于指示下一条指令的位置（地址）。
     ///
     /// 注意：
     /// 如果一个本地函数被调用，vm 的 pc 并不会进入本地模块的本地函数，也不会创建调用帧，而是
@@ -89,10 +89,10 @@ pub struct Status {
     ///
     /// 一般函数的（签名）类型可以通过 function_index 间接找到，不过由于当前 VM 使用了跟执行 `一般函数`
     /// 的方式执行结构块，所以当前栈帧还有可能是结构块，所以需要额外一个字段用于记录当前栈帧的 "函数" 类型。
-    pub type_index: usize,
+    pub frame_type: BlockType,
 
     /// 当前指令在指令序列里所处的位置，指令执行完毕之后，则是下一个待执行指令的位置
-    pub program_counter: usize,
+    pub address: usize,
 }
 
 impl Status {
@@ -103,8 +103,8 @@ impl Status {
             base_pointer: 0,
             vm_module_index: 0,
             function_index: 0,
-            type_index: 0,
-            program_counter: 0,
+            frame_type: BlockType::ResultEmpty,
+            address: 0,
         }
     }
 
@@ -162,7 +162,8 @@ impl VM {
         function_index: usize,
         arguments: &[Value],
     ) -> Result<Vec<Value>, EngineError> {
-        self.call_function_by_index(vm_module_index, function_index, arguments)?;
+        let result_count =
+            self.call_function_by_index(vm_module_index, function_index, arguments)?;
 
         loop {
             let is_program_end = self.next()?;
@@ -171,19 +172,19 @@ impl VM {
             }
         }
 
-        // 栈留下的所有操作数应该都是函数返回的值
-        let result_count = self.stack.get_size();
         Ok(self.pop_results(result_count))
     }
 
     /// 将指定实参压入栈，并将 pc 的值指向函数的
     /// 第一个指令，但并不会开始执行指令。
+    ///
+    /// 返回函数返回值的数量
     pub fn call_function_by_index(
         &mut self,
         vm_module_index: usize,
         function_index: usize,
         arguments: &[Value],
-    ) -> Result<(), EngineError> {
+    ) -> Result<usize, EngineError> {
         let function_item = {
             let vm_module = &self.resource.vm_modules[vm_module_index];
             let function_item = &vm_module.function_items[function_index];
@@ -199,69 +200,95 @@ impl VM {
                 todo!()
             }
             FunctionItem::External {
-                vm_module_index,
-                type_index,
-                function_index,
-                internal_function_index,
+                vm_module_index: target_vm_module_index,
+                type_index: target_type_index,
+                function_index: target_function_index,
+                internal_function_index: target_internal_function_index,
                 start_index,
                 end_index,
-            } => {
-                todo!()
-            }
+            } => self.call_module_function(
+                target_vm_module_index,
+                target_type_index,
+                target_function_index,
+                target_internal_function_index,
+                start_index,
+                arguments,
+            ),
             FunctionItem::Internal {
                 type_index,
                 internal_function_index,
                 start_index,
                 end_index,
-            } => {
-                let (argument_count, /* result_count, */ local_variable_types) = {
-                    let vm_module = &self.resource.vm_modules[vm_module_index];
-                    let function_type = &vm_module.function_types[type_index];
-                    let local_variable_types = &vm_module
-                        .internal_function_local_variable_types_list[internal_function_index];
-                    (
-                        function_type.params.len(),
-                        // function_type.results.len(),
-                        local_variable_types.to_owned(),
-                    )
-                };
+            } => self.call_module_function(
+                vm_module_index,
+                type_index,
+                function_index,
+                internal_function_index,
+                start_index,
+                arguments,
+            ),
+        }
+    }
 
-                // todo::
-                // 核对实参的数据类型和数量
+    fn call_module_function(
+        &mut self,
+        vm_module_index: usize,
+        type_index: usize,
+        function_index: usize,
+        internal_function_index: usize,
+        address: usize,
+        arguments: &[Value],
+    ) -> Result<usize, EngineError> {
+        let (parameter_types, local_variable_types, result_count) = {
+            let vm_module = &self.resource.vm_modules[vm_module_index];
+            let function_type = &vm_module.function_types[type_index];
+            let local_variable_types =
+                &vm_module.internal_function_local_variable_types_list[internal_function_index];
+            (
+                function_type.params.to_owned(),
+                local_variable_types.to_owned(),
+                function_type.results.len(),
+            )
+        };
 
-                // 压入实参
-                self.push_arguments(arguments);
+        let parameter_count = parameter_types.len();
 
-                // 压入调用栈
-                // 第一个调用栈的 previous_frame_pointer 等信息的值都为 0。
-                // let (frame_pointer, local_pointer, base_pointer) =
-                self.push_call_frame(
-                    argument_count,
-                    // result_count,
-                    &local_variable_types,
-                    // 0, // previous_frame_pointer,
-                    // 0, // previous_local_pointer,
-                    // 0, // previous_base_pointer,
-                    // 0, // return_vm_module_index,
-                    // 0, // return_function_index,
-                    0, // return_address,
-                );
-
-                // 更新状态，
-                let status = &mut self.status;
-
-                // status.frame_pointer = frame_pointer;
-                // status.local_pointer = local_pointer;
-                // status.base_pointer = base_pointer;
-
-                status.vm_module_index = vm_module_index;
-                status.function_index = function_index;
-                status.type_index = type_index;
-                status.program_counter = start_index;
+        // 核对实参的数据类型和数量
+        match check_value_types(arguments, &parameter_types) {
+            Err(ValueTypeCheckError::LengthMismatch) => {
+                return Err(EngineError::InvalidOperation(format!(
+                    "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
+                    function_index, vm_module_index, parameter_count, arguments.len())));
+            }
+            Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+                return Err(EngineError::InvalidOperation(format!(
+                    "failed to call function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                    function_index, vm_module_index, index + 1,
+                    parameter_types[index],
+                    arguments[index].get_type())));
+            }
+            _ => {
+                // pass
             }
         }
 
-        Ok(())
+        // 压入实参
+        self.push_arguments(arguments);
+
+        // 压入调用栈
+        // 第一个调用栈的 previous_frame_pointer 等信息的值都为 0。
+        self.push_call_frame(parameter_count, &local_variable_types, 0);
+
+        // 更新状态，
+        let status = &mut self.status;
+
+        status.vm_module_index = vm_module_index;
+        status.function_index = function_index;
+        status.frame_type = BlockType::TypeIndex(type_index as u32);
+        status.address = address;
+
+        // 返回函数返回值的数量
+        Ok(result_count)
     }
 
     /// 执行当前的指令（单独一个指令）
@@ -270,7 +297,7 @@ impl VM {
     /// 之后，函数返回 true，否则返回 false。
     pub fn next(&mut self) -> Result<bool, EngineError> {
         let vm_module_index = self.status.vm_module_index;
-        let addr = self.status.program_counter;
+        let addr = self.status.address;
 
         let instruction = self.resource.vm_modules[vm_module_index].instructions[addr].to_owned();
         let is_program_end = interpreter::exec_instruction(self, &instruction)?;
@@ -284,17 +311,14 @@ impl VM {
 
     /// 从 vm 外部（即宿主）调用 "模块内部定义的" 函数
     ///
-    /// 从 vm 外部调用模块内部函数时，将实参压入操作数栈，
-    /// 参数列表左边（小索引端）的实参先压入，
-    ///
     /// 示例：
     ///
     /// |  START            END       |
     /// |  |                ^         |
     /// |  V                |         |
     /// | (a,b,c)          (x,y)      |
-    /// |  | | |            ^ ^       |
-    /// |  V V V            | |       |
+    /// |  | | | push       ^ ^       |
+    /// |  V V V            | | pop   |
     /// |
     /// |--- 栈顶。---|   |--- 栈顶。---|
     /// | - c        |   |            |
@@ -305,6 +329,10 @@ impl VM {
     /// |                             |
     /// |    internal function        |
     /// |-----------------------------|
+    ///
+    /// 注：
+    /// 从 vm 外部调用模块内部函数时，将实参压入操作数栈，
+    /// 参数列表左边（小索引端）的实参先压入，
     fn push_arguments(&mut self, arguments: &[Value]) {
         self.stack.push_values(arguments);
     }
@@ -315,18 +343,11 @@ impl VM {
         self.stack.pop_values(result_count)
     }
 
+    /// 压入函数调用帧
     pub fn push_call_frame(
         &mut self,
-        argument_count: usize,
-        // result_count: usize,
+        parameter_count: usize,
         local_variable_types: &[ValueType],
-        //
-        // previous_frame_pointer: usize,
-        // previous_local_pointer: usize,
-        // previous_base_pointer: usize,
-        //
-        // return_vm_module_index: usize,
-        // return_function_index: usize,
         return_address: usize,
     ) {
         let status = &mut self.status;
@@ -337,7 +358,7 @@ impl VM {
         let previous_base_pointer = status.base_pointer;
         let return_vm_module_index = status.vm_module_index;
         let return_function_index = status.function_index;
-        let return_function_type = status.type_index;
+        let previous_frame_type = status.frame_type.clone();
 
         let stack = &mut self.stack;
         let previous_stack_pointer = stack.get_size();
@@ -345,7 +366,7 @@ impl VM {
         // 栈帧的起始位置为：
         //
         // 原栈顶（sp）- 参数数量
-        let frame_pointer = previous_stack_pointer - argument_count;
+        let frame_pointer = previous_stack_pointer - parameter_count;
 
         // 对于 call frame，local pointer 的值跟 frame pointer 一致
         let local_pointer = frame_pointer;
@@ -374,7 +395,35 @@ impl VM {
         stack.push(previous_base_pointer.into());
         stack.push(return_vm_module_index.into());
         stack.push(return_function_index.into());
-        stack.push(return_function_type.into());
+
+        // 使用两个 Value::I64 来记录 frame_type
+        match previous_frame_type {
+            BlockType::ResultEmpty => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(0));
+            }
+            BlockType::ResultI32 => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(1));
+            }
+            BlockType::ResultI64 => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(2));
+            }
+            BlockType::ResultF32 => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(3));
+            }
+            BlockType::ResultF64 => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(4));
+            }
+            BlockType::TypeIndex(value) => {
+                stack.push(Value::I64(0)); // class 0
+                stack.push(Value::I64(value as i64));
+            }
+        }
+
         stack.push(return_address.into());
         // stack.push(result_count.into());
 
@@ -384,17 +433,8 @@ impl VM {
         status.base_pointer = base_pointer;
     }
 
-    pub fn push_control_frame(
-        &mut self,
-        argument_count: usize,
-        // result_count: usize,
-        //
-        // previous_frame_pointer: usize,
-        // previous_local_pointer: usize,
-        // previous_base_pointer: usize,
-        //
-        return_address: usize,
-    ) {
+    /// 压入控制块帧
+    pub fn push_control_frame(&mut self, parameter_count: usize, return_address: usize) {
         let status = &mut self.status;
 
         // 读取旧的 status
@@ -403,7 +443,7 @@ impl VM {
         let previous_base_pointer = status.base_pointer;
         let return_vm_module_index = status.vm_module_index;
         let return_function_index = status.function_index;
-        let return_function_type = status.type_index;
+        let previous_frame_type = status.frame_type.clone();
 
         let stack = &mut self.stack;
         let previous_stack_pointer = stack.get_size();
@@ -411,7 +451,7 @@ impl VM {
         // 栈帧的起始位置为：
         //
         // 当前栈顶（sp）- 参数数量
-        let frame_pointer = previous_stack_pointer - argument_count;
+        let frame_pointer = previous_stack_pointer - parameter_count;
 
         // 对于 control frame，local pointer 的值跟上一次的 local pointer 一致
         let local_pointer = previous_local_pointer;
@@ -430,7 +470,35 @@ impl VM {
         stack.push(previous_base_pointer.into());
         stack.push(return_vm_module_index.into());
         stack.push(return_function_index.into());
-        stack.push(return_function_type.into());
+
+        // 使用两个 Value::I64 来记录 frame_type
+        match previous_frame_type {
+            BlockType::ResultEmpty => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(0));
+            }
+            BlockType::ResultI32 => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(1));
+            }
+            BlockType::ResultI64 => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(2));
+            }
+            BlockType::ResultF32 => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(3));
+            }
+            BlockType::ResultF64 => {
+                stack.push(Value::I64(1)); // class 1
+                stack.push(Value::I64(4));
+            }
+            BlockType::TypeIndex(value) => {
+                stack.push(Value::I64(0)); // class 0
+                stack.push(Value::I64(value as i64));
+            }
+        }
+
         stack.push(return_address.into());
         // stack.push(result_count.into());
 
@@ -442,16 +510,28 @@ impl VM {
 
     /// 弹出栈帧
     ///
-    /// 如果当前栈帧是最后一个栈帧，即意味着首个函数调用（即程序的开始）
-    /// 已经结束，也就意味着所有程序已经执行完毕。该函数返回一个 bool 值
-    /// 用于表示弹出的是否最后一个栈帧。
-    pub fn pop_frame(&mut self, result_count: usize) -> bool {
+    /// 此函数不会改变 VM 的 program counter，而是将
+    /// 待更新的 pc 值返回。
+    pub fn pop_frame(
+        &mut self,
+        result_count: usize,
+    ) -> (
+        /* is_call_frame */ bool,
+        /* is_program_end */ bool,
+        /* return_vm_module_index */ usize,
+        /* return_function_index */ usize,
+        /* frame_type */ BlockType,
+        /* return_address */ usize,
+    ) {
         let status = &mut self.status;
 
         // 读取当前的 status
         let frame_pointer = status.frame_pointer;
-        // let local_pointer = status.local_pointer;
+        let local_pointer = status.local_pointer;
         let base_pointer = status.base_pointer;
+
+        // 如果 fp 和 lp 的值相同，则说明当前是调用帧，否则则是流程控制的结构块帧
+        let is_call_frame = frame_pointer == local_pointer;
 
         let stack = &mut self.stack;
 
@@ -461,9 +541,12 @@ impl VM {
         let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
         let return_vm_module_index: usize = stack.get_value(base_pointer + 3).into();
         let return_function_index: usize = stack.get_value(base_pointer + 4).into();
-        let return_function_type = stack.get_value(base_pointer + 5).into();
-        let return_address: usize = stack.get_value(base_pointer + 6).into();
-        // let result_count: usize = stack.get_value(base_pointer + 6).into();
+
+        // 使用两个 Value::I64 来还原 frame_type
+        let frame_type_class: usize = stack.get_value(base_pointer + 5).into();
+        let frame_type_value: usize = stack.get_value(base_pointer + 6).into();
+
+        let return_address: usize = stack.get_value(base_pointer + 7).into();
 
         // 先保存一份返回值
         let results = stack.pop_values(result_count);
@@ -479,16 +562,40 @@ impl VM {
         status.local_pointer = previous_local_pointer;
         status.base_pointer = previous_base_pointer;
 
-        status.vm_module_index = return_vm_module_index;
-        status.function_index = return_function_index;
-        status.type_index = return_function_type;
-        status.program_counter = return_address;
+        // status.vm_module_index = return_vm_module_index;
+        // status.function_index = return_function_index;
+
+        let frame_type = {
+            match frame_type_class {
+                // class 0
+                0 => match frame_type_value {
+                    0 => BlockType::ResultEmpty,
+                    1 => BlockType::ResultI32,
+                    2 => BlockType::ResultI64,
+                    3 => BlockType::ResultF32,
+                    4 => BlockType::ResultF64,
+                    _ => unreachable!(),
+                },
+                // class 1
+                1 => BlockType::TypeIndex(frame_type_value as u32),
+                _ => unreachable!(),
+            }
+        };
+
+        // status.program_counter = return_address;
 
         // 如果 previous_frame_pointer 的值等于 0，说明当前栈帧是
-        // 首个函数调用的栈帧，也就是说，当这个帧弹出之后，意味着所有程序
-        // 已经执行完毕。
+        // 首个函数调用的栈帧，也就是说，当这个帧弹出之后，所有栈帧都已经弹出，
+        // 意味着所有函数调用已经执行完毕，即程序已经结束。
         let is_program_end = previous_frame_pointer == 0;
-        is_program_end
+        (
+            is_call_frame,
+            is_program_end,
+            return_vm_module_index,
+            return_function_index,
+            frame_type,
+            return_address,
+        )
     }
 
     //     /// 创建一个 `裸 VM`，即除了一个栈之外，什么都没有

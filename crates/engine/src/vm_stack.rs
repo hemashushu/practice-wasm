@@ -107,9 +107,27 @@
 //! |                      |
 //! | ------- 栈底。 ------ | <-- 旧 fp, 新旧 lp 均在此
 //!
+//! ## 信息段的数据
+//!
+//! 信息段里存放着上一个栈帧及程序的状态信息，具体有：
+//!
+//! 0. previous_frame_pointer
+//! 1. previous_local_pointer
+//! 2. previous_base_pointer
+//! 3. return_vm_module_index
+//! 4. return_function_index
+//! 5. frame_type_class
+//! 6. frame_type_value
+//! 7. return_address
+//!
+//! 其中第 5 和第 6 项合并起来表示上一帧的函数或者结构块的类型（即参数和返回值的情况）
+
 use anvm_ast::types::Value;
 
 use crate::error::EngineError;
+
+/// 信息段的项目（数值）的数量
+pub const INFO_SEGMENT_ITEM_COUNT: usize = 8;
 
 /// # VMStack 同时肩负作为运算栈（操作数栈）和记录栈帧信息的任务
 ///

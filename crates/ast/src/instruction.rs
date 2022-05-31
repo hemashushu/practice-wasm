@@ -256,7 +256,12 @@ pub enum Instruction {
 /// - () -> ()
 #[derive(Debug, PartialEq, Clone)]
 pub enum BlockType {
-    Builtin(Option<ValueType>),
+    // Builtin(Option<ValueType>),
+    ResultI32,
+    ResultI64,
+    ResultF32,
+    ResultF64,
+    ResultEmpty,
     TypeIndex(u32),
 }
 

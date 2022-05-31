@@ -18,6 +18,17 @@ pub enum ValueType {
     F64,
 }
 
+impl Display for ValueType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueType::I32 => write!(f, "i32"),
+            ValueType::I64 => write!(f, "i64"),
+            ValueType::F32 => write!(f, "f32"),
+            ValueType::F64 => write!(f, "f64"),
+        }
+    }
+}
+
 /// # 数值
 ///
 /// 部分指令会明确表明需要将整数解析为无符号整数（unsigned integer）进行运算，
@@ -59,7 +70,35 @@ impl Into<Value> for usize {
     }
 }
 
+/// 检查一组值的数据类型
+///
+/// 返回 LengthMismatch: 参数和类型的数量长度不一致
+/// 返回 DataTypeMismatch(usize): 其中一个参数的类型不一致
+pub fn check_value_types(values: &[Value], types: &[ValueType]) -> Result<(), ValueTypeCheckError> {
+    let length = values.len();
+    if length != types.len() {
+        Err(ValueTypeCheckError::LengthMismatch) // 参数和类型的数量长度不一致
+    } else if length == 0 {
+        Ok(())
+    } else {
+        for i in 0..length {
+            if values[i].get_type() != types[i] {
+                // 其中一个参数的类型不一致
+                return Err(ValueTypeCheckError::DataTypeMismatch(i));
+            }
+        }
+        Ok(())
+    }
+}
+
+pub enum ValueTypeCheckError {
+    LengthMismatch,
+    DataTypeMismatch(/* index */ usize),
+}
+
 // WebAssembly 的索引值，比如类型索引、函数索引、内存块索引、表索引、标签索引等，使用 u32 类型。
 // https://webassembly.github.io/spec/core/syntax/modules.html#indices
 //
 // 为了简单起见，XiaoXuan VM 里不单独定义它们
+
+use std::fmt::Display;

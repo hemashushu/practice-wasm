@@ -27,6 +27,6 @@ mod ins_numeric_binary;
 mod ins_numeric_convert;
 mod ins_variable;
 mod ins_memory;
-// mod ins_control;
+mod ins_control;
 
 pub mod instance;

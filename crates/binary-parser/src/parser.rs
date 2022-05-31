@@ -17,7 +17,7 @@ use anvm_ast::{
     types::ValueType,
 };
 
-use crate::{leb128decoder, error::ParseError};
+use crate::{error::ParseError, leb128decoder};
 
 /// 二进制模块以一个 4 个字节的幻数 `0x00 0x61 0x73 0x6d` 开始。
 /// 转成 ascii 则是 `0x00` 和 `asm`
@@ -174,7 +174,8 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
                 module.import_items = parse_import_section(section_data)?;
             }
             SECTION_FUNCTION_ID => {
-                module.internal_function_to_type_index_list = parse_function_list_section(section_data)?;
+                module.internal_function_to_type_index_list =
+                    parse_function_list_section(section_data)?;
             }
             SECTION_TABLE_ID => {
                 module.tables = parse_table_section(section_data)?;
@@ -605,7 +606,8 @@ fn continue_parse_table_type(source: &[u8]) -> Result<(TableType, &[u8]), ParseE
     let (tag, post_tag) = read_byte(source)?;
     if tag != TABLE_TYPE_TAG_FUNC_REF {
         Err(ParseError::Unsupported(
-            "only the \"function reference\" type table is supported in the \"import\" section".to_string(),
+            "only the \"function reference\" type table is supported in the \"import\" section"
+                .to_string(),
         ))
     } else {
         let (limit, post_limit) = continue_parse_limit(post_tag)?;
@@ -1294,11 +1296,11 @@ fn continue_parse_extension_instructions(sub_opcode: u8) -> Result<Instruction, 
 /// block_type = (signed) i32
 fn get_block_type(value: i32) -> Result<BlockType, ParseError> {
     match value {
-        BLOCK_TYPE_I32 => Ok(BlockType::Builtin(Some(ValueType::I32))),
-        BLOCK_TYPE_I64 => Ok(BlockType::Builtin(Some(ValueType::I64))),
-        BLOCK_TYPE_F32 => Ok(BlockType::Builtin(Some(ValueType::F32))),
-        BLOCK_TYPE_F64 => Ok(BlockType::Builtin(Some(ValueType::F64))),
-        BLOCK_TYPE_EMPTY => Ok(BlockType::Builtin(None)),
+        BLOCK_TYPE_I32 => Ok(BlockType::ResultI32),
+        BLOCK_TYPE_I64 => Ok(BlockType::ResultI64),
+        BLOCK_TYPE_F32 => Ok(BlockType::ResultF32),
+        BLOCK_TYPE_F64 => Ok(BlockType::ResultF64),
+        BLOCK_TYPE_EMPTY => Ok(BlockType::ResultEmpty),
         _ if value >= 0 => Ok(BlockType::TypeIndex(value as u32)),
         _ => Err(ParseError::Unsupported(format!(
             "unsupported block type: {}",
@@ -1747,7 +1749,10 @@ mod tests {
         }
         let fullname_buf = path_buf.join("resources").join(filename);
         let fullname = fullname_buf.to_str().unwrap();
-        fs::read(fullname).expect(&format!("failed to read the specified binary file: {}", fullname))
+        fs::read(fullname).expect(&format!(
+            "failed to read the specified binary file: {}",
+            fullname
+        ))
     }
 
     /// 移除暂时不支持的 custom section item
@@ -2028,12 +2033,12 @@ mod tests {
             export_items: vec![
                 ExportItem {
                     name: "i_f2".to_string(),
-                    export_descriptor: ExportDescriptor::FunctionIndex(2)
+                    export_descriptor: ExportDescriptor::FunctionIndex(2),
                 },
                 ExportItem {
                     name: "re_putc".to_string(),
-                    export_descriptor: ExportDescriptor::FunctionIndex(0)
-                }
+                    export_descriptor: ExportDescriptor::FunctionIndex(0),
+                },
             ],
             start_function_index: Some(3),
             element_items: vec![
@@ -2217,21 +2222,21 @@ mod tests {
                         variable_count: 1,
                     }],
                     instruction_items: vec![
-                        Instruction::Block(BlockType::Builtin(None), 0),
-                        Instruction::Block(BlockType::Builtin(None), 1),
-                        Instruction::Block(BlockType::Builtin(None), 2),
+                        Instruction::Block(BlockType::ResultEmpty, 0),
+                        Instruction::Block(BlockType::ResultEmpty, 1),
+                        Instruction::Block(BlockType::ResultEmpty, 2),
                         Instruction::I32Const(2),
                         Instruction::Br(1),
                         Instruction::End,
                         Instruction::End,
-                        Instruction::If(BlockType::Builtin(None), 3),
+                        Instruction::If(BlockType::ResultEmpty, 3),
                         Instruction::I32Const(3),
                         Instruction::Else,
                         Instruction::I32Const(4),
                         Instruction::End,
                         Instruction::End,
-                        Instruction::Block(BlockType::Builtin(None), 4),
-                        Instruction::Block(BlockType::Builtin(None), 5),
+                        Instruction::Block(BlockType::ResultEmpty, 4),
+                        Instruction::Block(BlockType::ResultEmpty, 5),
                         Instruction::Br(1),
                         Instruction::End,
                         Instruction::End,
@@ -2398,11 +2403,11 @@ mod tests {
             CodeItem {
                 local_groups: vec![],
                 instruction_items: vec![
-                    Instruction::Block(BlockType::Builtin(Some(ValueType::I32)), 0),
+                    Instruction::Block(BlockType::ResultI32, 0),
                     Instruction::I32Const(1),
-                    Instruction::Loop(BlockType::Builtin(Some(ValueType::I32)), 1),
+                    Instruction::Loop(BlockType::ResultI32, 1),
                     Instruction::I32Const(2),
-                    Instruction::If(BlockType::Builtin(Some(ValueType::I32)), 2),
+                    Instruction::If(BlockType::ResultI32, 2),
                     Instruction::I32Const(3),
                     Instruction::Else,
                     Instruction::I32Const(4),
@@ -2477,19 +2482,19 @@ mod tests {
                 CodeItem {
                     local_groups: vec![],
                     instruction_items: vec![
-                        Instruction::Block(BlockType::Builtin(None), 0),
+                        Instruction::Block(BlockType::ResultEmpty, 0),
                         Instruction::I32Const(100),
                         Instruction::Br(0),
                         Instruction::I32Const(101),
                         Instruction::End,
-                        Instruction::Loop(BlockType::Builtin(None), 1),
+                        Instruction::Loop(BlockType::ResultEmpty, 1),
                         Instruction::I32Const(200),
                         Instruction::Br(0),
                         Instruction::I32Const(201),
                         Instruction::End,
                         Instruction::I32Const(300),
                         Instruction::I32Eqz,
-                        Instruction::If(BlockType::Builtin(None), 2),
+                        Instruction::If(BlockType::ResultEmpty, 2),
                         Instruction::I32Const(400),
                         Instruction::Br(0),
                         Instruction::I32Const(401),
@@ -2504,9 +2509,9 @@ mod tests {
                 CodeItem {
                     local_groups: vec![],
                     instruction_items: vec![
-                        Instruction::Block(BlockType::Builtin(None), 0),
-                        Instruction::Block(BlockType::Builtin(None), 1),
-                        Instruction::Block(BlockType::Builtin(None), 2),
+                        Instruction::Block(BlockType::ResultEmpty, 0),
+                        Instruction::Block(BlockType::ResultEmpty, 1),
+                        Instruction::Block(BlockType::ResultEmpty, 2),
                         Instruction::Br(1),
                         Instruction::I32Const(100),
                         Instruction::BrIf(2),
@@ -2521,7 +2526,7 @@ mod tests {
                 CodeItem {
                     local_groups: vec![],
                     instruction_items: vec![
-                        Instruction::Block(BlockType::Builtin(Some(ValueType::I32)), 0),
+                        Instruction::Block(BlockType::ResultI32, 0),
                         Instruction::I32Const(10),
                         Instruction::End,
                         Instruction::Block(BlockType::TypeIndex(1), 1),

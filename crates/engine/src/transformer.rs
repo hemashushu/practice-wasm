@@ -103,7 +103,7 @@ pub fn transform(
 
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
-                            end_addr: function_addr_offset + end_index,
+                            end_address: function_addr_offset + end_index,
                         })
                     }
                     instruction::Instruction::Loop(block_type, block_index) => {
@@ -115,7 +115,7 @@ pub fn transform(
 
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
-                            end_addr: function_addr_offset + end_index,
+                            end_address: function_addr_offset + end_index,
                         })
                     }
                     instruction::Instruction::If(block_type, block_index) => {
@@ -135,8 +135,8 @@ pub fn transform(
 
                         Instruction::Control(Control::BlockJumpEqZero {
                             block_type: block_type.to_owned(),
-                            alternate_addr: function_addr_offset + alternate_addr,
-                            end_addr: function_addr_offset + end_index,
+                            alternate_address: function_addr_offset + alternate_addr,
+                            end_address: function_addr_offset + end_index,
                         })
                     }
                     instruction::Instruction::Else => {
@@ -251,7 +251,7 @@ pub fn transform(
                                 type_index: *type_index,
                                 function_index: *function_index as usize,
                                 internal_function_index: *internal_function_index,
-                                addr: *start_index,
+                                address: *start_index,
                             }),
                             FunctionItem::External {
                                 vm_module_index,
@@ -265,7 +265,7 @@ pub fn transform(
                                 type_index: *type_index,
                                 function_index: *function_index,
                                 internal_function_index: *internal_function_index,
-                                addr: *start_index,
+                                address: *start_index,
                             }),
                             FunctionItem::Native {
                                 native_module_index,
@@ -686,16 +686,16 @@ mod tests {
                         // |  0--block-end
                         instruction::Instruction::I32Const(0), // #02
                         instruction::Instruction::I32Const(1), // #03
-                        instruction::Instruction::Block(BlockType::Builtin(None), 0), // #04 - block 0
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 0), // #04 - block 0
                         instruction::Instruction::Br(0),                              // #05
                         instruction::Instruction::Br(1),                              // #06
                         instruction::Instruction::Return,                             // #07
-                        instruction::Instruction::Loop(BlockType::Builtin(None), 1), // #08 - block 1 loop
+                        instruction::Instruction::Loop(BlockType::ResultEmpty, 1), // #08 - block 1 loop
                         instruction::Instruction::Br(0),                             // #09
                         instruction::Instruction::Br(1),                             // #10
                         instruction::Instruction::Br(2),                             // #11
                         instruction::Instruction::Return,                            // #12
-                        instruction::Instruction::Block(BlockType::Builtin(None), 2), // #13 - block 2
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 2), // #13 - block 2
                         instruction::Instruction::Br(0),                              // #14
                         instruction::Instruction::Br(1),                              // #15
                         instruction::Instruction::Br(2),                              // #16
@@ -744,22 +744,22 @@ mod tests {
                         // |  0--block-end
                         instruction::Instruction::I32Const(0), // #36
                         instruction::Instruction::I32Const(1), // #37
-                        instruction::Instruction::Block(BlockType::Builtin(None), 0), // #38 - block 0
-                        instruction::Instruction::Loop(BlockType::Builtin(None), 1), // #39 - block 1 loop
-                        instruction::Instruction::Block(BlockType::Builtin(None), 2), // #40 - block 2
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 0), // #38 - block 0
+                        instruction::Instruction::Loop(BlockType::ResultEmpty, 1), // #39 - block 1 loop
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 2), // #40 - block 2
                         instruction::Instruction::End, // #41 - block 2 end
                         instruction::Instruction::End, // #42 - block 1 end
                         //
-                        instruction::Instruction::Block(BlockType::Builtin(None), 3), // #43 - block 3
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 3), // #43 - block 3
                         instruction::Instruction::Br(0),                              // #44
                         instruction::Instruction::Br(1),                              // #45
                         instruction::Instruction::Return,                             // #46
-                        instruction::Instruction::If(BlockType::Builtin(None), 4), // #47 - block 4 if
+                        instruction::Instruction::If(BlockType::ResultEmpty, 4), // #47 - block 4 if
                         instruction::Instruction::BrIf(0),                         // #48
                         instruction::Instruction::BrIf(1),                         // #49
                         instruction::Instruction::BrIf(2),                         // #50
                         instruction::Instruction::Return,                          // #51
-                        instruction::Instruction::Block(BlockType::Builtin(None), 5), // #52 - block 5
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 5), // #52 - block 5
                         instruction::Instruction::Br(0),                              // #53
                         instruction::Instruction::Br(1),                              // #54
                         instruction::Instruction::Br(2),                              // #55
@@ -772,7 +772,7 @@ mod tests {
                         instruction::Instruction::BrIf(1), // #62
                         instruction::Instruction::BrIf(2), // #63
                         instruction::Instruction::Return, // #64
-                        instruction::Instruction::Block(BlockType::Builtin(None), 6), // #65 - block 6
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 6), // #65 - block 6
                         instruction::Instruction::Br(0),                              // #66
                         instruction::Instruction::Br(1),                              // #67
                         instruction::Instruction::Br(2),                              // #68
@@ -808,11 +808,11 @@ mod tests {
                         // |  0--if-end
                         instruction::Instruction::I32Const(0), // #86
                         instruction::Instruction::I32Const(1), // #87
-                        instruction::Instruction::If(BlockType::Builtin(None), 0), // #88 - block 0
+                        instruction::Instruction::If(BlockType::ResultEmpty, 0), // #88 - block 0
                         instruction::Instruction::Br(0),       // #89
                         instruction::Instruction::Br(1),       // #90
                         instruction::Instruction::Return,      // #91
-                        instruction::Instruction::Block(BlockType::Builtin(None), 1), // #92 - block 1
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 1), // #92 - block 1
                         instruction::Instruction::Br(0),                              // #93
                         instruction::Instruction::Br(1),                              // #94
                         instruction::Instruction::Br(2),                              // #95
@@ -839,23 +839,23 @@ mod tests {
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #02
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #03
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 28,
+                block_type: BlockType::ResultEmpty,
+                end_address: 28,
             }), // #04 - block 0
             Instruction::Control(Control::Jump(0, 28)),                   // #05
             Instruction::Control(Control::Jump(1, 35)),                   // #06
             Instruction::Control(Control::Jump(1, 35)),                   // #07
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 24,
+                block_type: BlockType::ResultEmpty,
+                end_address: 24,
             }), // #08 - block 1 - loop
             Instruction::Control(Control::Recur(0, 8)),                    // #09
             Instruction::Control(Control::Jump(1, 28)),                   // #10
             Instruction::Control(Control::Jump(2, 35)),                   // #11
             Instruction::Control(Control::Jump(2, 35)),                   // #12
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 19,
+                block_type: BlockType::ResultEmpty,
+                end_address: 19,
             }), // #13 - block 2
             Instruction::Control(Control::Jump(0, 19)),                   // #14
             Instruction::Control(Control::Recur(1, 8)),                    // #15
@@ -883,38 +883,38 @@ mod tests {
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #36
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #37
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 80,
+                block_type: BlockType::ResultEmpty,
+                end_address: 80,
             }), // #38 - block 0
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 42,
+                block_type: BlockType::ResultEmpty,
+                end_address: 42,
             }), // #39 - block 1 loop
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 41,
+                block_type: BlockType::ResultEmpty,
+                end_address: 41,
             }), // #40 - block 2
             Instruction::Control(Control::Return),                        // #41 - block 2 end
             Instruction::Control(Control::Return),                        // #42 - block 1 end
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 77,
+                block_type: BlockType::ResultEmpty,
+                end_address: 77,
             }), // #43 - block 3
             Instruction::Control(Control::Jump(0, 77)),                   // #44
             Instruction::Control(Control::Jump(1, 80)),                   // #45
             Instruction::Control(Control::Jump(2, 85)),                   // #46
             Instruction::Control(Control::BlockJumpEqZero {
-                block_type: BlockType::Builtin(None),
-                alternate_addr: 60,
-                end_addr: 73,
+                block_type: BlockType::ResultEmpty,
+                alternate_address: 60,
+                end_address: 73,
             }), // #47 - block 4 if
             Instruction::Control(Control::JumpNotEqZero(0, 73)),          // #48
             Instruction::Control(Control::JumpNotEqZero(1, 77)),          // #49
             Instruction::Control(Control::JumpNotEqZero(2, 80)),          // #50
             Instruction::Control(Control::Jump(3, 85)),                   // #51
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 59,
+                block_type: BlockType::ResultEmpty,
+                end_address: 59,
             }), // #52 - block 5
             Instruction::Control(Control::Jump(0, 59)),                   // #53
             Instruction::Control(Control::Jump(1, 73)),                   // #54
@@ -929,8 +929,8 @@ mod tests {
             Instruction::Control(Control::JumpNotEqZero(2, 80)), // #63
             Instruction::Control(Control::Jump(3, 85)), // #64
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 72,
+                block_type: BlockType::ResultEmpty,
+                end_address: 72,
             }), // #65 - block 6
             Instruction::Control(Control::Jump(0, 72)), // #66
             Instruction::Control(Control::Jump(1, 73)), // #67
@@ -956,16 +956,16 @@ mod tests {
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #86
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #87
             Instruction::Control(Control::BlockJumpEqZero {
-                block_type: BlockType::Builtin(None),
-                alternate_addr: 101,
-                end_addr: 101,
+                block_type: BlockType::ResultEmpty,
+                alternate_address: 101,
+                end_address: 101,
             }), // #88 - block 0
             Instruction::Control(Control::Jump(0, 101)),                  // #89
             Instruction::Control(Control::Jump(1, 104)),                  // #90
             Instruction::Control(Control::Jump(1, 104)),                  // #91
             Instruction::Control(Control::Block {
-                block_type: BlockType::Builtin(None),
-                end_addr: 97,
+                block_type: BlockType::ResultEmpty,
+                end_address: 97,
             }), // #92 - block 1
             Instruction::Control(Control::Jump(0, 97)),                   // #93
             Instruction::Control(Control::Jump(1, 101)),                  // #94
@@ -1036,14 +1036,14 @@ mod tests {
                 type_index: 0,
                 function_index: 1,
                 internal_function_index: 1,
-                addr: 7,
+                address: 7,
             }), // #02
             Instruction::Sequence(instruction::Instruction::I32Const(10)), // #03
             Instruction::Control(Control::CallInternal {
                 type_index: 0,
                 function_index: 2,
                 internal_function_index: 2,
-                addr: 10,
+                address: 10,
             }), // #04
             Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
             Instruction::Control(Control::Return),                        // #06
@@ -1058,7 +1058,7 @@ mod tests {
                 type_index: 0,
                 function_index: 1,
                 internal_function_index: 1,
-                addr: 7,
+                address: 7,
             }), // #12
             Instruction::Control(Control::Return),                        // #13
         ]];
@@ -1175,7 +1175,7 @@ mod tests {
                     type_index: 0,
                     function_index: 0,
                     internal_function_index: 0,
-                    addr: 0,
+                    address: 0,
                 }), // #05
                 Instruction::Control(Control::Return),                        // #06
             ],
@@ -1188,7 +1188,7 @@ mod tests {
                     type_index: 0,
                     function_index: 0,
                     internal_function_index: 0,
-                    addr: 0,
+                    address: 0,
                 }), // #02
                 Instruction::Sequence(instruction::Instruction::I32Const(10)), // #03
                 Instruction::Control(Control::CallExternal {
@@ -1196,14 +1196,14 @@ mod tests {
                     type_index: 0,
                     function_index: 1,
                     internal_function_index: 1,
-                    addr: 3,
+                    address: 3,
                 }), // #04
                 Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
                 Instruction::Control(Control::CallInternal {
                     type_index: 0,
                     function_index: 3,
                     internal_function_index: 1,
-                    addr: 9,
+                    address: 9,
                 }), // #06
                 Instruction::Sequence(instruction::Instruction::I32Const(12)), // #07
                 Instruction::Control(Control::Return),                        // #08
@@ -1215,7 +1215,7 @@ mod tests {
                     type_index: 0,
                     function_index: 0,
                     internal_function_index: 0,
-                    addr: 0,
+                    address: 0,
                 }), // #11
                 Instruction::Sequence(instruction::Instruction::I32Const(20)), // #12
                 Instruction::Control(Control::CallExternal {
@@ -1223,7 +1223,7 @@ mod tests {
                     type_index: 0,
                     function_index: 1,
                     internal_function_index: 1,
-                    addr: 3,
+                    address: 3,
                 }), // #13
                 Instruction::Sequence(instruction::Instruction::I32Const(21)), // #14
                 Instruction::Control(Control::Return),                        // #15
@@ -1310,7 +1310,7 @@ mod tests {
                 type_index: 0,
                 function_index: 3,
                 internal_function_index: 1,
-                addr: 9,
+                address: 9,
             }), // #06
             Instruction::Sequence(instruction::Instruction::I32Const(12)), // #07
             Instruction::Control(Control::Return),                        // #08
@@ -1541,7 +1541,7 @@ mod tests {
                     type_index: 0,
                     function_index: 1,
                     internal_function_index: 1,
-                    addr: 2,
+                    address: 2,
                 }), // #03
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #04
                 Instruction::Control(Control::CallExternal {
@@ -1549,14 +1549,14 @@ mod tests {
                     type_index: 2,
                     function_index: 3,
                     internal_function_index: 1,
-                    addr: 3,
+                    address: 3,
                 }), // #05
                 Instruction::Control(Control::Return),                        // #06
                 Instruction::Control(Control::CallInternal {
                     type_index: 3,
                     function_index: 3,
                     internal_function_index: 0,
-                    addr: 0,
+                    address: 0,
                 }), // #07
                 Instruction::Control(Control::Return),                        // #08
             ],

@@ -931,6 +931,46 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn test_function_call() {
+        let module_name = "test-function-call.wasm";
+
+        assert_eq!(
+            eval(module_name, 0, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
+            vec![Value::I32(66)]
+        );
+        assert_eq!(
+            eval(module_name, 0, &vec![Value::I32(66), Value::I32(55)]).unwrap(),
+            vec![Value::I32(66)]
+        );
+
+        assert_eq!(
+            eval(module_name, 1, &vec![Value::I32(123)]).unwrap(),
+            vec![Value::I32(123)]
+        );
+        assert_eq!(
+            eval(module_name, 1, &vec![Value::I32(-123)]).unwrap(),
+            vec![Value::I32(123)]
+        );
+
+        assert_eq!(
+            eval(module_name, 2, &vec![Value::I32(-55), Value::I32(66)]).unwrap(),
+            vec![Value::I32(66)]
+        );
+        assert_eq!(
+            eval(module_name, 2, &vec![Value::I32(55), Value::I32(-66)]).unwrap(),
+            vec![Value::I32(-66)]
+        );
+        assert_eq!(
+            eval(module_name, 2, &vec![Value::I32(55), Value::I32(-44)]).unwrap(),
+            vec![Value::I32(55)]
+        );
+        assert_eq!(
+            eval(module_name, 2, &vec![Value::I32(-55), Value::I32(44)]).unwrap(),
+            vec![Value::I32(-55)]
+        );
+    }
 }
 
 /*
@@ -939,23 +979,7 @@ mod tests {
 
 
 
-    #[test]
-    fn test_function_call() {
-        let module = get_test_vm_module("test-function-call.wasm");
 
-        assert_eq!(
-            eval(module_name, 0, &vec![]).unwrap(),
-            vec![Value::I32(3)]
-        );
-        assert_eq!(
-            eval(module_name, 1, &vec![]).unwrap(),
-            vec![Value::I32(1)]
-        );
-        assert_eq!(
-            eval(module_name, 2, &vec![]).unwrap(),
-            vec![Value::I32(-5)]
-        );
-    }
 
     #[test]
     fn test_function_indirect_call() {

@@ -8,8 +8,10 @@ use anvm_ast::instruction::Instruction;
 
 use crate::{
     error::EngineError,
-    ins_const, ins_memory, ins_numeric_binary, ins_numeric_comparsion, ins_numeric_convert,
-    ins_numeric_eqz, ins_numeric_unary, ins_parametric, ins_variable,
+    ins_const,
+    ins_control::{self, ControlResult},
+    ins_memory, ins_numeric_binary, ins_numeric_comparsion, ins_numeric_convert, ins_numeric_eqz,
+    ins_numeric_unary, ins_parametric, ins_variable,
     object::{self, Control},
     vm::VM,
 };
@@ -49,7 +51,7 @@ pub fn exec_instruction(
         //
         //
         object::Instruction::Sequence(instruction) => {
-            let result = match instruction {
+            let sequence_result = match instruction {
                 // 控制指令
                 Instruction::Unreachable => Err(EngineError::InvalidOperation(
                     "unreachable instruction is executed".to_string(),
@@ -278,39 +280,101 @@ pub fn exec_instruction(
                 }
             };
 
-            match result {
+            match sequence_result {
                 Ok(_) => {
-                    vm.status.program_counter += 1;
+                    vm.status.address += 1;
                     Ok(false)
                 }
                 Err(e) => Err(e),
             }
         }
         object::Instruction::Control(control) => {
-            let is_program_end = match control {
-                Control::Return => {
-                    // todo:: 这里先判断当前是否结构帧的内置返回类型
-                    let result_count = {
-                        let type_index = vm.status.type_index;
-                        let signed_type_index = type_index as isize;
-
-                        if signed_type_index < 0 {
-                            todo!()
-                        } else {
-                            let vm_module_index = vm.status.vm_module_index;
-                            let vm_module = &vm.resource.vm_modules[vm_module_index];
-                            let function_type = &vm_module.function_types[type_index];
-                            function_type.results.len()
-                        }
-                    };
-                    vm.pop_frame(result_count)
+            let control_result = match control {
+                Control::Return => ins_control::do_return(vm),
+                Control::CallInternal {
+                    type_index,
+                    function_index,
+                    internal_function_index,
+                    address,
+                } => {
+                    let vm_module_index = vm.status.vm_module_index;
+                    ins_control::do_call_module_function(
+                        vm,
+                        vm_module_index,
+                        *type_index,
+                        *function_index,
+                        *internal_function_index,
+                        *address,
+                    )
+                }
+                Control::CallExternal {
+                    vm_module_index,
+                    type_index,
+                    function_index,
+                    internal_function_index,
+                    address,
+                } => ins_control::do_call_module_function(
+                    vm,
+                    *vm_module_index,
+                    *type_index,
+                    *function_index,
+                    *internal_function_index,
+                    *address,
+                ),
+                Control::CallNative {
+                    native_module_index,
+                    type_index,
+                    function_index,
+                } => {
+                    todo!()
                 }
                 _ => {
-                    panic!();
+                    todo!()
                 }
             };
 
-            Ok(is_program_end)
+            match control_result {
+                Ok(ControlResult::ProgramEnd) => Ok(true),
+                Ok(ControlResult::Sequence) => {
+                    vm.status.address += 1;
+                    Ok(false)
+                }
+                Ok(ControlResult::FunctionIn {
+                    is_function_call,
+                    vm_module_index,
+                    function_index,
+                    frame_type,
+                    address,
+                }) => {
+                    // 更新虚拟机的 pc 值
+                    let status = &mut vm.status;
+
+                    status.vm_module_index = vm_module_index;
+                    status.function_index = function_index;
+                    status.frame_type = frame_type;
+                    status.address = address;
+
+                    Ok(false)
+                }
+                Ok(ControlResult::FunctionOut {
+                    is_function_call,
+                    vm_module_index,
+                    function_index,
+                    frame_type,
+                    address,
+                }) => {
+                    // 更新虚拟机的 pc 值
+                    let status = &mut vm.status;
+
+                    status.vm_module_index = vm_module_index;
+                    status.function_index = function_index;
+                    status.frame_type = frame_type;
+                    status.address = address;
+
+                    Ok(false)
+                }
+                Err(e) => Err(e),
+            }
         }
     }
 }

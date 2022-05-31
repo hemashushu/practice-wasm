@@ -41,14 +41,12 @@ impl InstructionConvert for BlockType {
         f: &mut String,
     ) -> std::fmt::Result {
         match self {
-            Self::Builtin(option_value_type) => match option_value_type {
-                // 内置的数据类型
-                Some(ValueType::I32) => write!(f, "(result i32)"),
-                Some(ValueType::I64) => write!(f, "(result i64)"),
-                Some(ValueType::F32) => write!(f, "(result f32)"),
-                Some(ValueType::F64) => write!(f, "(result f64)"),
-                None => write!(f, ""),
-            },
+            // 内置的数据类型
+            Self::ResultI32 => write!(f, "(result i32)"),
+            Self::ResultI64 => write!(f, "(result i64)"),
+            Self::ResultF32 => write!(f, "(result f32)"),
+            Self::ResultF64 => write!(f, "(result f64)"),
+            Self::ResultEmpty => write!(f, ""),
             Self::TypeIndex(type_index) => {
                 // 结构块的类型来自类型表
                 // 先尝试获取类型的名称
@@ -593,15 +591,15 @@ mod tests {
         // 这里只测试部分带有直接操作数的指令
         let instructions: Vec<Instruction> = vec![
             Instruction::Unreachable,
-            Instruction::Block(BlockType::Builtin(Some(ValueType::I32)), 0),
-            Instruction::Block(BlockType::Builtin(None), 0),
+            Instruction::Block(BlockType::ResultI32, 0),
+            Instruction::Block(BlockType::ResultEmpty, 0),
             Instruction::Block(BlockType::TypeIndex(0), 0),
-            Instruction::Loop(BlockType::Builtin(Some(ValueType::I64)), 1),
-            Instruction::Loop(BlockType::Builtin(None), 1),
+            Instruction::Loop(BlockType::ResultI64, 1),
+            Instruction::Loop(BlockType::ResultEmpty, 1),
             Instruction::Loop(BlockType::TypeIndex(1), 1), // type 1 有名称 $t1
-            Instruction::If(BlockType::Builtin(Some(ValueType::F32)), 2), // function 2 的 block 2 有名称 $b2
-            Instruction::If(BlockType::Builtin(None), 2), // function 2 的 block 2 有名称 $b2
-            Instruction::If(BlockType::TypeIndex(2), 2),  // function 2 的 block 2 有名称 $b2
+            Instruction::If(BlockType::ResultF32, 2),      // function 2 的 block 2 有名称 $b2
+            Instruction::If(BlockType::ResultEmpty, 2),    // function 2 的 block 2 有名称 $b2
+            Instruction::If(BlockType::TypeIndex(2), 2),   // function 2 的 block 2 有名称 $b2
             Instruction::Br(0),
             Instruction::Br(1),
             Instruction::BrIf(0),

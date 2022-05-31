@@ -8,10 +8,12 @@
 //!
 //! 1. 调用函数之前的栈内容如下：
 //!
+//! ```diagram
 //!         | ------- 栈顶。------- |
 //! 当前。   |                      |
 //! 函数的   | 当前函数用于运算的槽位。 |
 //! 栈帧。-- | ------- 栈底。 ------ |
+//! ```
 //!
 //! 注意数据增加的方向是 "从栈底到栈顶"，即 "栈顶" 是最新的数据。
 //!
@@ -20,6 +22,7 @@
 //!    的所有局部变量。
 //! 3. `调用者` 把实参准备好，存放在栈顶，第一个参数位于靠近栈底，后面的参数靠近栈顶。
 //!
+//! ```diagram
 //!                        局部变量表。 -- | ---- index N ----- |
 //!                                      | 第 N 个局部变量空槽。 |
 //!                                      | 第 0 个局部变量空槽。 |
@@ -30,12 +33,14 @@
 //!         |                      |
 //!         | 当前函数用于运算的槽位。 |
 //!         | ------- 栈底。 ------ |
+//! ```
 //!
 //! 4. VM 从栈顶弹出 N 个参数，并存入局部变量表。
 //! 5. VM 在局部变量表开辟 N 个局部变量空槽，初始值均为 0（WebAssembly 规范似乎没有要求初始化局部变量）。
 //! 6. VM 在栈顶创建一个新的栈帧。
 //! 7. `被调用者` 在新的栈帧上执行当前函数的运算指令。
 //!
+//! ```diagram
 //!                        局部变量表。 -- | ---- index N ----- |
 //!                                      | 第 N 个局部变量空槽。 |
 //!                                      | 第 0 个局部变量空槽。 |
@@ -46,12 +51,13 @@
 //!         |                      |
 //! 调用者-- | 上一个函数运算的槽位。。 |
 //! 栈帧。   | ------- 栈底。 ------ |
+//! ```
 //!
 //! 8. `被调用者` 执行完毕之后，VM 把返回值暂存起来。
 //! 9. VM 移除刚创建的栈帧。
 //! 10. VM 将返回值压入操作数栈，第一个返回值先压入，后面的返回值后压入。
 //!
-//!
+//! ```diagram
 //!         | ------- 栈顶。 ------ |
 //!         | `被调用者` 退出后留下   | <-- 在调用函数之前，这个区域存储的是
 //!         | 的遗产，即返回值。      |     传递给 `被调用者` 的实参数据，
@@ -61,6 +67,7 @@
 //!         |                      |
 //!         | 当前函数用于运算的槽位。 |
 //!         | ------- 栈底。 ------ |
+//! ```
 //!
 //! 注意：
 //! - 以上是函数调用的逻辑，具体的实现可能有所不同；
@@ -153,14 +160,123 @@
 //!
 //! 转换关系是：
 //!
-//!
-use anvm_ast::types::Value;
-
-use crate::{
-    error::{make_invalid_operand_data_types_engine_error, make_invalid_operand_data_types_2_engine_error, EngineError},
-    vm::VM,
+//! block -> Block
+//! loop -> Block
+//! if -> BlockJumpEqZero
+//! br/else/return -> Jump
+//! br_if -> JumpNotEqZero
+//! br -> Recur
+//! call -> CallInternal/CallExternal/CallNative
+//! end -> Return
+use anvm_ast::{
+    instruction::BlockType,
+    types::{check_value_types, Value, ValueType, ValueTypeCheckError},
 };
 
+use crate::{
+    error::{
+        make_invalid_operand_data_types_2_engine_error,
+        make_invalid_operand_data_types_engine_error, EngineError,
+    },
+    vm::VM,
+    vm_stack::INFO_SEGMENT_ITEM_COUNT,
+};
+
+pub enum ControlResult {
+    Sequence,
+
+    /// 进入一个函数或者一个结构块
+    ///
+    /// 参数用于更新虚拟机的 pc 值
+    FunctionIn {
+        is_function_call: bool,
+        vm_module_index: usize,
+        function_index: usize,
+        frame_type: BlockType,
+        address: usize,
+    },
+
+    /// 从一个函数或者一个结构块跳出
+    ///
+    /// 参数用于更新虚拟机的 pc 值
+    FunctionOut {
+        is_function_call: bool,
+        vm_module_index: usize,
+        function_index: usize,
+        frame_type: BlockType,
+        address: usize,
+    },
+
+    ProgramEnd,
+}
+
+pub fn do_return(vm: &mut VM) -> Result<ControlResult, EngineError> {
+    let frame_type = &vm.status.frame_type;
+    let vm_module_index = vm.status.vm_module_index;
+    let function_index = vm.status.function_index;
+
+    // 获取当前帧的返回值类型
+    let result_types = {
+        match frame_type {
+            BlockType::ResultEmpty => vec![],
+            BlockType::ResultI32 => vec![ValueType::I32],
+            BlockType::ResultI64 => vec![ValueType::I64],
+            BlockType::ResultF32 => vec![ValueType::F32],
+            BlockType::ResultF64 => vec![ValueType::F64],
+            BlockType::TypeIndex(type_index) => {
+                let vm_module = &vm.resource.vm_modules[vm_module_index];
+                let function_type = &vm_module.function_types[*type_index as usize];
+                function_type.results.clone()
+            }
+        }
+    };
+
+    // 判断操作数是否足够当前函数或结构块用于返回
+    let result_count = result_types.len();
+    let stack_size = vm.stack.get_size();
+    let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
+    if operands_count < result_count {
+        return Err(EngineError::InvalidOperation(format!(
+            "failed to return result from function {} (module {}), not enough operands, expected: {}, actual: {}",
+            function_index, vm_module_index, result_count, operands_count)));
+    }
+
+    // 判断返回值的数据类型
+    let results = vm.stack.peek_values(stack_size - result_count, stack_size);
+    match check_value_types(results, &result_types) {
+        Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
+        Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+            return Err(EngineError::InvalidOperation(format!(
+                "failed to return result from function {} (module {}), The data type of result {} does not match, expected: {}, actual: {}",
+                function_index,
+                vm_module_index,
+                index +1,
+                result_types[index],
+                results[index].get_type())));
+        }
+        _ => {
+            // pass
+        }
+    }
+
+    let (is_call_frame, is_program_end, vm_module_index, function_index, frame_type, address) =
+        vm.pop_frame(result_count);
+
+    // let is_program_end = vm.pop_frame(result_count);
+    if is_program_end {
+        Ok(ControlResult::ProgramEnd)
+    } else {
+        Ok(ControlResult::FunctionOut {
+            is_function_call: is_call_frame,
+            vm_module_index,
+            function_index,
+            frame_type,
+            address,
+        })
+    }
+}
+
+/*
 /// 处理 call 指令
 ///
 /// 该函数将会创建了一个调用帧，并且更改 pc 值
@@ -238,32 +354,90 @@ pub fn call_internal_function(
         .operand_stack
         .push_values(&placehold_values)
 }
+*/
 
-/// 从模块内部函数调用外部函数的过程。
+pub fn do_call_module_function(
+    vm: &mut VM,
+    vm_module_index: usize,
+    type_index: usize,
+    function_index: usize,
+    internal_function_index: usize,
+    address: usize,
+) -> Result<ControlResult, EngineError> {
+    let (parameter_types, local_variable_types) = {
+        let vm_module = &vm.resource.vm_modules[vm_module_index];
+        let function_type = &vm_module.function_types[type_index];
+        let local_variable_types =
+            &vm_module.internal_function_local_variable_types_list[internal_function_index];
+        (
+            function_type.params.to_owned(),
+            local_variable_types.to_owned(),
+        )
+    };
+
+    // 判断操作数是否足够当前函数或结构块用于返回
+    let parameter_count = parameter_types.len();
+    let stack_size = vm.stack.get_size();
+    let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
+    if operands_count < parameter_count {
+        return Err(EngineError::InvalidOperation(format!(
+            "failed to call function {} (module {}), not enough operands, expected: {}, actual: {}",
+            function_index, vm_module_index, parameter_count, operands_count
+        )));
+    }
+
+    let arguments = vm
+        .stack
+        .peek_values(stack_size - parameter_count, stack_size);
+
+    // 核对实参的数据类型和数量
+    match check_value_types(arguments, &parameter_types) {
+        Err(ValueTypeCheckError::LengthMismatch) => {
+            return Err(EngineError::InvalidOperation(format!(
+                "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
+                function_index, vm_module_index, parameter_count, arguments.len())));
+        }
+        Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+            return Err(EngineError::InvalidOperation(format!(
+                "failed to call function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                function_index, vm_module_index, index + 1,
+                parameter_types[index],
+                arguments[index].get_type())));
+        }
+        _ => {
+            // pass
+        }
+    }
+
+    // 压入调用栈
+    // 返回地址应该是 `call 指令` 的下一个指令
+    let return_address = vm.status.address + 1;
+    vm.push_call_frame(parameter_count, &local_variable_types, return_address);
+
+    // 返回新的状态信息，让调用者更新虚拟机状态
+    let control_result = ControlResult::FunctionIn {
+        is_function_call: true,
+        vm_module_index,
+        function_index,
+        frame_type: BlockType::TypeIndex(type_index as u32),
+        address,
+    };
+
+    Ok(control_result)
+}
+
+pub fn do_call_native_function(
+    vm: &mut VM,
+    native_module_index: usize,
+    type_index: usize,
+    function_index: usize,
+) -> Result<ControlResult, EngineError> {
+    todo!()
+}
+
 ///
-/// 先弹出的参数放在参数列表的右边（大索引端），
-/// 对于返回值，左边（小索引端）的数值先压入。
-///
-/// 示例：
-///
-/// |-----------------------------|
-/// |     external function       |
-/// |                             |
-/// | (a,b,c)     -->  (x,y)      |
-/// |  ^ ^ ^            | |       |
-/// |  | | |            V V       |
-/// |                             |
-/// |--- 栈顶。---|   |--- 栈顶。---|
-/// | - c        |   |            |
-/// | - b        |   | - y        |
-/// | - a        |   | - x        |
-/// | - ...      |   | - ...      |
-/// |--- 栈底。---|   |--- 栈顶。---|
-/// |  ^                |         |
-/// |  |                V         |
-/// |  START            END       |
-///
-fn call_external_func(
+/*
+pub fn call_external(
     vm: &mut VM,
     function_type: &Rc<FunctionType>,
     function: Rc<dyn Function>,
@@ -280,24 +454,41 @@ fn call_external_func(
     push_results(Rc::clone(&vm_module), &results);
     Ok(())
 }
+ */
 
-fn pop_arguments(vm: &mut VM, function_type: &Rc<FunctionType>) -> Vec<Value> {
-    let parameter_count = function_type.params.len();
-    vm_module
-        .as_ref()
-        .borrow_mut()
-        .operand_stack
-        .pop_values(parameter_count)
+/// 从模块内部函数调用本地函数的过程。
+///
+/// 示例：
+///
+/// |-----------------------------|
+/// |       native function       |
+/// |                             |
+/// | (a,b,c)     -->  (x,y)      |
+/// |  ^ ^ ^            | | push  |
+/// |  | | | pop        V V       |
+/// |                             |
+/// |--- 栈顶。---|   |--- 栈顶。---|
+/// | - c        |   |            |
+/// | - b        |   | - y        |
+/// | - a        |   | - x        |
+/// | - ...      |   | - ...      |
+/// |--- 栈底。---|   |--- 栈顶。---|
+/// |  ^                |         |
+/// |  |                V         |
+/// |  START            END       |
+///
+/// 注：
+/// 先弹出的参数放在参数列表的右边（大索引端），
+/// 对于返回值，左边（小索引端）的数值先压入。
+fn pop_arguments(vm: &mut VM, argument_count: usize) -> Vec<Value> {
+    vm.stack.pop_values(argument_count)
 }
 
 fn push_results(vm: &mut VM, results: &[Value]) {
-    vm_module
-        .as_ref()
-        .borrow_mut()
-        .operand_stack
-        .push_values(results)
+    vm.stack.push_values(results)
 }
 
+/*
 pub fn call_indirect(
     vm: &mut VM,
     function_type_index: u32,
@@ -370,3 +561,4 @@ pub fn call_indirect(
         }
     }
 }
+*/
