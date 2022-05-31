@@ -40,17 +40,19 @@
 //! - block_jump_eq_zero (block_type, alternate_addr, end_addr)
 //! - jump (relative_depth, addr)
 //! - jump_not_eq_zero (relative_depth, addr)
-//! - recur (addr)
+//! - recur (relative_depth, addr)
+//! - branch ([branch_target::jump(relative_depth, addr), branch_target::recur(relative_depth, addr)])
 //! - call_internal (type_index, function_index, addr)
 //! - call_external (module_index, type_index, function_index, addr)
 //! - call_native (module_index, type_index, function_index)
+//! - dynamic_call (type_index, table_index)
 //! - return
 
 use anvm_ast::{ast::CodeItem, instruction};
 
 use crate::{
     error::EngineError,
-    object::{Control, FunctionItem, Instruction, NamedAstModule},
+    object::{BranchTarget, Control, FunctionItem, Instruction, NamedAstModule},
 };
 
 /// 将 AST 模块当中的函数指令序列编译为虚拟机能直接解析运行的指令
@@ -146,85 +148,63 @@ pub fn transform(
                         Instruction::Control(Control::Jump(0, function_addr_offset + end_index))
                     }
                     instruction::Instruction::Br(relative_depth) => {
-                        // target_level 为目标层的层级，函数本层的层级为 0，第一层 block 的层级为 1，比如
-                        //
-                        // function
-                        //  |         <--- level 0
-                        //  |-- block
-                        //  |   |     <--- level 1
-                        //  |-- end
-                        //
-                        let target_level = block_index_stack.len() - *relative_depth as usize;
+                        let result = get_branch_target(
+                            original_instructions,
+                            function_addr_offset,
+                            &block_locations,
+                            &block_index_stack,
+                            *relative_depth as usize,
+                        )?;
 
-                        if (target_level as isize) < 0 {
-                            // 目标层级超出了范围
-                            return Err(EngineError::OutOfIndex(
-                                "target depth out of index for instruction \"br\"".to_string(),
-                            ));
-                        }
-
-                        if target_level == 0 {
-                            // 跳到函数本层了
-                            // 目标位置应该是函数的最后一个指令，即 `end 指令` 所在的位置
-                            let target_addr = original_instructions.len() - 1;
-
-                            Instruction::Control(Control::Jump(
-                                *relative_depth as usize,
-                                function_addr_offset + target_addr,
-                            ))
-                        } else {
-                            let target_block_index = block_index_stack[target_level - 1];
-
-                            // 获取目标层的位置信息
-                            let block_location = &block_locations[target_block_index];
-
-                            if block_location.block_structure_type == BlockStructureType::Loop {
-                                let target_addr = block_location.start_index;
-
-                                Instruction::Control(Control::Recur(
-                                    *relative_depth as usize,
-                                    function_addr_offset + target_addr,
-                                ))
-                            } else {
-                                let target_addr = block_location.end_index;
-
-                                Instruction::Control(Control::Jump(
-                                    *relative_depth as usize,
-                                    function_addr_offset + target_addr,
-                                ))
+                        match result {
+                            BranchTarget::Jump(relative_depth, address) => {
+                                Instruction::Control(Control::Jump(relative_depth, address))
+                            }
+                            BranchTarget::Recur(relative_depth, address) => {
+                                Instruction::Control(Control::Recur(relative_depth, address))
                             }
                         }
                     }
                     instruction::Instruction::BrIf(relative_depth) => {
-                        let target_depth = block_index_stack.len() - *relative_depth as usize;
+                        let result = get_branch_target(
+                            original_instructions,
+                            function_addr_offset,
+                            &block_locations,
+                            &block_index_stack,
+                            *relative_depth as usize,
+                        )?;
 
-                        if (target_depth as isize) < 0 {
-                            // 目标层级超出了范围
-                            return Err(EngineError::OutOfIndex(
-                                "target depth out of index for instruction \"br\"".to_string(),
-                            ));
+                        match result {
+                            BranchTarget::Jump(relative_depth, address) => Instruction::Control(
+                                Control::JumpNotEqZero(relative_depth, address),
+                            ),
+                            BranchTarget::Recur(relative_depth, address) => Instruction::Control(
+                                Control::RecurNotEqZero(relative_depth, address),
+                            ),
+                        }
+                    }
+                    instruction::Instruction::BrTable(relative_depths, default_relative_depth) => {
+                        let mut depths = relative_depths.to_owned();
+                        depths.push(*default_relative_depth);
+
+                        let mut targets: Vec<BranchTarget> = vec![];
+                        for depth in depths {
+                            let target = get_branch_target(
+                                original_instructions,
+                                function_addr_offset,
+                                &block_locations,
+                                &block_index_stack,
+                                depth as usize,
+                            )?;
+                            targets.push(target)
                         }
 
-                        let target_addr = if target_depth == 0 {
-                            // 跳到函数本层了
-                            // 目标位置应该是函数的最后一个指令，即 `end 指令` 所在的位置
-                            original_instructions.len() - 1
-                        } else {
-                            let target_block_index = block_index_stack[target_depth - 1];
+                        let default_branch_target = targets.last().unwrap();
+                        let branch_targets = &targets[0..targets.len() - 1];
 
-                            // 获取目标层的位置信息
-                            let block_location = &block_locations[target_block_index];
-
-                            if block_location.block_structure_type == BlockStructureType::Loop {
-                                block_location.start_index
-                            } else {
-                                block_location.end_index
-                            }
-                        };
-
-                        Instruction::Control(Control::JumpNotEqZero(
-                            *relative_depth as usize,
-                            function_addr_offset + target_addr,
+                        Instruction::Control(Control::Branch(
+                            branch_targets.to_owned(),
+                            default_branch_target.to_owned(),
                         ))
                     }
                     instruction::Instruction::Return => {
@@ -278,6 +258,12 @@ pub fn transform(
                             }),
                         }
                     }
+                    instruction::Instruction::CallIndirect(type_index, table_index) => {
+                        Instruction::Control(Control::DynamicCall {
+                            type_index: *type_index as usize,
+                            table_index: *table_index as usize,
+                        })
+                    }
                     instruction::Instruction::End => {
                         // 函数的指令序列最后一个指令，即 `end 指令` 不属于结构块，所以需要排除
                         // 结构块栈已经弹空的情况
@@ -301,6 +287,63 @@ pub fn transform(
     }
 
     Ok(instructions_list)
+}
+
+fn get_branch_target(
+    original_instructions: &[instruction::Instruction],
+    function_addr_offset: usize,
+    block_locations: &[BlockLocation],
+    block_index_stack: &[usize],
+    relative_depth: usize,
+) -> Result<BranchTarget, EngineError> {
+    // target_level 为目标层的层级，函数本层的层级为 0，第一层 block 的层级为 1，比如
+    //
+    // function
+    //  |         <--- level 0
+    //  |-- block
+    //  |   |     <--- level 1
+    //  |-- end
+    //
+    let target_level = block_index_stack.len() - relative_depth;
+
+    if (target_level as isize) < 0 {
+        // 目标层级超出了范围
+        return Err(EngineError::OutOfIndex(
+            "target depth out of index for instruction \"br\"".to_string(),
+        ));
+    }
+
+    if target_level == 0 {
+        // 跳到函数本层了
+        // 目标位置应该是函数的最后一个指令，即 `end 指令` 所在的位置
+        let target_addr = original_instructions.len() - 1;
+
+        Ok(BranchTarget::Jump(
+            relative_depth,
+            function_addr_offset + target_addr,
+        ))
+    } else {
+        let target_block_index = block_index_stack[target_level - 1];
+
+        // 获取目标层的位置信息
+        let block_location = &block_locations[target_block_index];
+
+        if block_location.block_structure_type == BlockStructureType::Loop {
+            let target_addr = block_location.start_index;
+
+            Ok(BranchTarget::Recur(
+                relative_depth,
+                function_addr_offset + target_addr,
+            ))
+        } else {
+            let target_addr = block_location.end_index;
+
+            Ok(BranchTarget::Jump(
+                relative_depth,
+                function_addr_offset + target_addr,
+            ))
+        }
+    }
 }
 
 /// 转换常量表达式里的指令
@@ -478,7 +521,7 @@ mod tests {
         error::{EngineError, NativeError},
         linker,
         native_module::NativeModule,
-        object::{Control, FunctionItem, Instruction},
+        object::{BranchTarget, Control, FunctionItem, Instruction},
     };
     use anvm_ast::{
         ast::{self, CodeItem, ExportItem, FunctionType, ImportItem, TypeItem},
@@ -569,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn test_instruction_combine() {
+    fn test_instruction_link() {
         let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![
             create_simple_test_ast_module(
@@ -687,20 +730,20 @@ mod tests {
                         instruction::Instruction::I32Const(0), // #02
                         instruction::Instruction::I32Const(1), // #03
                         instruction::Instruction::Block(BlockType::ResultEmpty, 0), // #04 - block 0
-                        instruction::Instruction::Br(0),                              // #05
-                        instruction::Instruction::Br(1),                              // #06
-                        instruction::Instruction::Return,                             // #07
+                        instruction::Instruction::Br(0),       // #05
+                        instruction::Instruction::Br(1),       // #06
+                        instruction::Instruction::Return,      // #07
                         instruction::Instruction::Loop(BlockType::ResultEmpty, 1), // #08 - block 1 loop
-                        instruction::Instruction::Br(0),                             // #09
-                        instruction::Instruction::Br(1),                             // #10
-                        instruction::Instruction::Br(2),                             // #11
-                        instruction::Instruction::Return,                            // #12
+                        instruction::Instruction::Br(0),                           // #09
+                        instruction::Instruction::Br(1),                           // #10
+                        instruction::Instruction::Br(2),                           // #11
+                        instruction::Instruction::Return,                          // #12
                         instruction::Instruction::Block(BlockType::ResultEmpty, 2), // #13 - block 2
-                        instruction::Instruction::Br(0),                              // #14
-                        instruction::Instruction::Br(1),                              // #15
-                        instruction::Instruction::Br(2),                              // #16
-                        instruction::Instruction::Br(3),                              // #17
-                        instruction::Instruction::Return,                             // #18
+                        instruction::Instruction::Br(0),                           // #14
+                        instruction::Instruction::Br(1),                           // #15
+                        instruction::Instruction::Br(2),                           // #16
+                        instruction::Instruction::Br(3),                           // #17
+                        instruction::Instruction::Return,                          // #18
                         instruction::Instruction::End, // #19 - block 2 end
                         instruction::Instruction::Br(0), // #20
                         instruction::Instruction::Br(1), // #21
@@ -750,33 +793,33 @@ mod tests {
                         instruction::Instruction::End, // #41 - block 2 end
                         instruction::Instruction::End, // #42 - block 1 end
                         //
-                        instruction::Instruction::Block(BlockType::ResultEmpty, 3), // #43 - block 3
-                        instruction::Instruction::Br(0),                              // #44
-                        instruction::Instruction::Br(1),                              // #45
-                        instruction::Instruction::Return,                             // #46
+                        instruction::Instruction::Block(BlockType::ResultEmpty, 3), // #43 - block 3 loop
+                        instruction::Instruction::Br(0),                            // #44
+                        instruction::Instruction::Br(1),                            // #45
+                        instruction::Instruction::Return,                           // #46
                         instruction::Instruction::If(BlockType::ResultEmpty, 4), // #47 - block 4 if
-                        instruction::Instruction::BrIf(0),                         // #48
-                        instruction::Instruction::BrIf(1),                         // #49
-                        instruction::Instruction::BrIf(2),                         // #50
-                        instruction::Instruction::Return,                          // #51
+                        instruction::Instruction::Br(0),                         // #48
+                        instruction::Instruction::Br(1),                         // #49
+                        instruction::Instruction::Br(2),                         // #50
+                        instruction::Instruction::Return,                        // #51
                         instruction::Instruction::Block(BlockType::ResultEmpty, 5), // #52 - block 5
-                        instruction::Instruction::Br(0),                              // #53
-                        instruction::Instruction::Br(1),                              // #54
-                        instruction::Instruction::Br(2),                              // #55
-                        instruction::Instruction::Br(3),                              // #56
+                        instruction::Instruction::Br(0),                         // #53
+                        instruction::Instruction::Br(1),                         // #54
+                        instruction::Instruction::Br(2),                         // #55
+                        instruction::Instruction::Br(3),                         // #56
                         instruction::Instruction::Br(4), // #57 - jump to function end
                         instruction::Instruction::Return, // #58
                         instruction::Instruction::End,   // #59 - block 5 end
                         instruction::Instruction::Else,  // #60 - else
-                        instruction::Instruction::BrIf(0), // #61
-                        instruction::Instruction::BrIf(1), // #62
-                        instruction::Instruction::BrIf(2), // #63
+                        instruction::Instruction::Br(0), // #61
+                        instruction::Instruction::Br(1), // #62
+                        instruction::Instruction::Br(2), // #63
                         instruction::Instruction::Return, // #64
                         instruction::Instruction::Block(BlockType::ResultEmpty, 6), // #65 - block 6
-                        instruction::Instruction::Br(0),                              // #66
-                        instruction::Instruction::Br(1),                              // #67
-                        instruction::Instruction::Br(2),                              // #68
-                        instruction::Instruction::Br(3),                              // #69
+                        instruction::Instruction::Br(0), // #66
+                        instruction::Instruction::Br(1), // #67
+                        instruction::Instruction::Br(2), // #68
+                        instruction::Instruction::Br(3), // #69
                         instruction::Instruction::Br(4), // #70 - jump to function end
                         instruction::Instruction::Return, // #71
                         instruction::Instruction::End,   // #72 - block 6 end
@@ -813,18 +856,18 @@ mod tests {
                         instruction::Instruction::Br(1),       // #90
                         instruction::Instruction::Return,      // #91
                         instruction::Instruction::Block(BlockType::ResultEmpty, 1), // #92 - block 1
-                        instruction::Instruction::Br(0),                              // #93
-                        instruction::Instruction::Br(1),                              // #94
-                        instruction::Instruction::Br(2),                              // #95
-                        instruction::Instruction::Return,                             // #96
-                        instruction::Instruction::End, // #97 - block 1 end
-                        instruction::Instruction::Br(0), // #98
-                        instruction::Instruction::Br(1), // #99
-                        instruction::Instruction::Return, // #100
-                        instruction::Instruction::End, // #101 - block 0 end
+                        instruction::Instruction::Br(0),       // #93
+                        instruction::Instruction::Br(1),       // #94
+                        instruction::Instruction::Br(2),       // #95
+                        instruction::Instruction::Return,      // #96
+                        instruction::Instruction::End,         // #97 - block 1 end
+                        instruction::Instruction::Br(0),       // #98
+                        instruction::Instruction::Br(1),       // #99
+                        instruction::Instruction::Return,      // #100
+                        instruction::Instruction::End,         // #101 - block 0 end
                         instruction::Instruction::I32Const(2), // #102
                         instruction::Instruction::I32Const(3), // #103
-                        instruction::Instruction::End, // #104
+                        instruction::Instruction::End,         // #104
                     ],
                 },
             ],
@@ -849,7 +892,7 @@ mod tests {
                 block_type: BlockType::ResultEmpty,
                 end_address: 24,
             }), // #08 - block 1 - loop
-            Instruction::Control(Control::Recur(0, 8)),                    // #09
+            Instruction::Control(Control::Recur(0, 8)),                   // #09
             Instruction::Control(Control::Jump(1, 28)),                   // #10
             Instruction::Control(Control::Jump(2, 35)),                   // #11
             Instruction::Control(Control::Jump(2, 35)),                   // #12
@@ -858,12 +901,12 @@ mod tests {
                 end_address: 19,
             }), // #13 - block 2
             Instruction::Control(Control::Jump(0, 19)),                   // #14
-            Instruction::Control(Control::Recur(1, 8)),                    // #15
+            Instruction::Control(Control::Recur(1, 8)),                   // #15
             Instruction::Control(Control::Jump(2, 28)),                   // #16
             Instruction::Control(Control::Jump(3, 35)),                   // #17
             Instruction::Control(Control::Jump(3, 35)),                   // #18
             Instruction::Control(Control::Return),                        // #19 - block 2 end
-            Instruction::Control(Control::Recur(0, 8)),                    // #20
+            Instruction::Control(Control::Recur(0, 8)),                   // #20
             Instruction::Control(Control::Jump(1, 28)),                   // #21
             Instruction::Control(Control::Jump(2, 35)),                   // #22
             Instruction::Control(Control::Jump(2, 35)),                   // #23
@@ -908,9 +951,9 @@ mod tests {
                 alternate_address: 60,
                 end_address: 73,
             }), // #47 - block 4 if
-            Instruction::Control(Control::JumpNotEqZero(0, 73)),          // #48
-            Instruction::Control(Control::JumpNotEqZero(1, 77)),          // #49
-            Instruction::Control(Control::JumpNotEqZero(2, 80)),          // #50
+            Instruction::Control(Control::Jump(0, 73)),                   // #48
+            Instruction::Control(Control::Jump(1, 77)),                   // #49
+            Instruction::Control(Control::Jump(2, 80)),                   // #50
             Instruction::Control(Control::Jump(3, 85)),                   // #51
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
@@ -924,9 +967,9 @@ mod tests {
             Instruction::Control(Control::Jump(4, 85)), // #58
             Instruction::Control(Control::Return),      // #59 - block 5 end
             Instruction::Control(Control::Jump(0, 73)), // #60 - else
-            Instruction::Control(Control::JumpNotEqZero(0, 73)), // #61
-            Instruction::Control(Control::JumpNotEqZero(1, 77)), // #62
-            Instruction::Control(Control::JumpNotEqZero(2, 80)), // #63
+            Instruction::Control(Control::Jump(0, 73)), // #61
+            Instruction::Control(Control::Jump(1, 77)), // #62
+            Instruction::Control(Control::Jump(2, 80)), // #63
             Instruction::Control(Control::Jump(3, 85)), // #64
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
@@ -985,6 +1028,155 @@ mod tests {
     }
 
     #[test]
+    fn test_block_branch_if() {
+        let native_modules: Vec<NativeModule> = vec![];
+        let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
+            "m0",
+            vec![TypeItem::FunctionType(FunctionType {
+                params: vec![ValueType::I32],
+                results: vec![ValueType::I32],
+            })],
+            vec![0],
+            vec![CodeItem {
+                local_groups: vec![],
+                instruction_items: vec![
+                    // 创建如下的结构块
+                    // 测试 `block 结构块` 和 `loop 结构块`
+                    //
+                    // |  0--block-start
+                    // |  |  1--loop-start
+                    // |  |  |  2--block-start
+                    // |  |  |  2--block-end
+                    // |  |  1--loop-end
+                    // |  0--block-end
+                    instruction::Instruction::I32Const(0), // #00
+                    instruction::Instruction::Block(BlockType::ResultEmpty, 0), // #01 - block 0
+                    instruction::Instruction::I32Const(1), // #02
+                    instruction::Instruction::Loop(BlockType::ResultEmpty, 1), // #03 - block 1 loop
+                    instruction::Instruction::I32Const(2), // #04
+                    instruction::Instruction::Block(BlockType::ResultEmpty, 2), // #05 - block 2
+                    instruction::Instruction::I32Const(3), // #06
+                    instruction::Instruction::BrIf(0),     // #07 jump to `block 2 end`
+                    instruction::Instruction::BrIf(1),     // #08 jump to `block 1 loop`
+                    instruction::Instruction::BrIf(2),     // #09 jump to `block 0 end`
+                    instruction::Instruction::BrIf(3),     // #10 jump to `function end`
+                    instruction::Instruction::End,         // #11 - block 2 end
+                    instruction::Instruction::End,         // #12 - block 1 end
+                    instruction::Instruction::End,         // #13 - block 0 end
+                    instruction::Instruction::End,         // #14
+                ],
+            }],
+        )];
+
+        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let expected: Vec<Vec<Instruction>> = vec![vec![
+            // function 0
+            Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
+            Instruction::Control(Control::Block {
+                block_type: BlockType::ResultEmpty,
+                end_address: 13,
+            }), // #01 - block 0
+            Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
+            Instruction::Control(Control::Block {
+                block_type: BlockType::ResultEmpty,
+                end_address: 12,
+            }), // #03 - block 1 - loop
+            Instruction::Sequence(instruction::Instruction::I32Const(2)), // #04
+            Instruction::Control(Control::Block {
+                block_type: BlockType::ResultEmpty,
+                end_address: 11,
+            }), // #05 - block 2
+            Instruction::Sequence(instruction::Instruction::I32Const(3)), // #06
+            Instruction::Control(Control::JumpNotEqZero(0, 11)), // #07 jump to `block 2 end`
+            Instruction::Control(Control::RecurNotEqZero(1, 3)), // #08 jump to `block 1 loop`
+            Instruction::Control(Control::JumpNotEqZero(2, 13)), // #09 jump to `block 0 end`
+            Instruction::Control(Control::JumpNotEqZero(3, 14)), // #10 jump to `function end`
+            Instruction::Control(Control::Return),               // #11 - block 2 end
+            Instruction::Control(Control::Return),               // #12 - block 1 end
+            Instruction::Control(Control::Return),               // #13 - block 0 end
+            Instruction::Control(Control::Return),               // #14
+        ]];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_block_branch() {
+        let native_modules: Vec<NativeModule> = vec![];
+        let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
+            "m0",
+            vec![TypeItem::FunctionType(FunctionType {
+                params: vec![ValueType::I32],
+                results: vec![ValueType::I32],
+            })],
+            vec![0],
+            vec![CodeItem {
+                local_groups: vec![],
+                instruction_items: vec![
+                    // 创建如下的结构块
+                    // 测试 `block 结构块` 和 `loop 结构块`
+                    //
+                    // |  0--block-start
+                    // |  |  1--loop-start
+                    // |  |  |  2--block-start
+                    // |  |  |  2--block-end
+                    // |  |  1--loop-end
+                    // |  0--block-end
+                    instruction::Instruction::I32Const(0), // #00
+                    instruction::Instruction::Block(BlockType::ResultEmpty, 0), // #01 - block 0
+                    instruction::Instruction::I32Const(1), // #02
+                    instruction::Instruction::Loop(BlockType::ResultEmpty, 1), // #03 - block 1 loop
+                    instruction::Instruction::I32Const(2), // #04
+                    instruction::Instruction::Block(BlockType::ResultEmpty, 2), // #05 - block 2
+                    instruction::Instruction::I32Const(3), // #06
+                    // jump to [`block 0 end`, `block 2 end`, `loop 1 start`], `function end`
+                    instruction::Instruction::BrTable(vec![2, 0, 1], 3), // # 07
+                    instruction::Instruction::End,                       // #08 - block 2 end
+                    instruction::Instruction::End,                       // #09 - block 1 end
+                    instruction::Instruction::End,                       // #10 - block 0 end
+                    instruction::Instruction::End,                       // #11
+                ],
+            }],
+        )];
+
+        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let expected: Vec<Vec<Instruction>> = vec![vec![
+            // function 0
+            Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
+            Instruction::Control(Control::Block {
+                block_type: BlockType::ResultEmpty,
+                end_address: 10,
+            }), // #01 - block 0
+            Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
+            Instruction::Control(Control::Block {
+                block_type: BlockType::ResultEmpty,
+                end_address: 9,
+            }), // #03 - block 1 - loop
+            Instruction::Sequence(instruction::Instruction::I32Const(2)), // #04
+            Instruction::Control(Control::Block {
+                block_type: BlockType::ResultEmpty,
+                end_address: 8,
+            }), // #05 - block 2
+            Instruction::Sequence(instruction::Instruction::I32Const(3)), // #06
+            // jump to [`block 0 end`, `block 2 end`, `loop 1 start`], `function end`
+            Instruction::Control(Control::Branch(
+                vec![
+                    BranchTarget::Jump(2, 10),
+                    BranchTarget::Jump(0, 8),
+                    BranchTarget::Recur(1, 3),
+                ],
+                BranchTarget::Jump(3, 11),
+            )), // #07
+            Instruction::Control(Control::Return), // #08 - block 2 end
+            Instruction::Control(Control::Return), // #09 - block 1 end
+            Instruction::Control(Control::Return), // #10 - block 0 end
+            Instruction::Control(Control::Return), // #11
+        ]];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn test_function_call_module_internal() {
         let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
@@ -993,7 +1185,7 @@ mod tests {
                 params: vec![ValueType::I32],
                 results: vec![ValueType::I32],
             })],
-            vec![0, 0, 0],
+            vec![0, 0, 0, 0],
             vec![
                 CodeItem {
                     local_groups: vec![],
@@ -1020,8 +1212,15 @@ mod tests {
                     instruction_items: vec![
                         instruction::Instruction::I32Const(4), // #10
                         instruction::Instruction::I32Const(5), // #11
-                        instruction::Instruction::Call(1),     // #12
-                        instruction::Instruction::End,         // #13
+                        instruction::Instruction::End,         // #12
+                    ],
+                },
+                CodeItem {
+                    local_groups: vec![],
+                    instruction_items: vec![
+                        instruction::Instruction::I32Const(2),        // #13
+                        instruction::Instruction::CallIndirect(1, 0), // #14
+                        instruction::Instruction::End,                // #15
                     ],
                 },
             ],
@@ -1054,13 +1253,14 @@ mod tests {
             // function 2
             Instruction::Sequence(instruction::Instruction::I32Const(4)), // #10
             Instruction::Sequence(instruction::Instruction::I32Const(5)), // #11
-            Instruction::Control(Control::CallInternal {
-                type_index: 0,
-                function_index: 1,
-                internal_function_index: 1,
-                address: 7,
-            }), // #12
-            Instruction::Control(Control::Return),                        // #13
+            Instruction::Control(Control::Return),                        // #12
+            // function 3
+            Instruction::Sequence(instruction::Instruction::I32Const(2)), // #13
+            Instruction::Control(Control::DynamicCall {
+                type_index: 1,
+                table_index: 0,
+            }), // #14
+            Instruction::Control(Control::Return),                        // #15
         ]];
 
         assert_eq!(actual, expected);

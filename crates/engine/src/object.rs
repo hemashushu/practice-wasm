@@ -49,6 +49,12 @@ pub enum FunctionItem {
     },
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum BranchTarget {
+    Jump(/* relative_depth */ usize, /* addr */ usize),
+    Recur(/* relative_depth */ usize, /* addr */ usize),
+}
+
 /// 控制指令
 #[derive(Debug, PartialEq, Clone)]
 pub enum Control {
@@ -86,6 +92,11 @@ pub enum Control {
     /// - 如果 relative_depth 大于 0，则需要弹出目标 loop 结构块所需要的参数，
     ///   然后弹出跟 relative_depth 的值一样数量的栈帧，再压入实参，然而还是不需要创建新的栈帧
     Recur(/* relative_depth */ usize, /* addr */ usize),
+
+    RecurNotEqZero(/* relative_depth */ usize, /* addr */ usize),
+
+    /// 原 `br_table 指令`
+    Branch(Vec<BranchTarget>, BranchTarget),
 
     /// 调用模块内的函数
     CallInternal {
@@ -141,7 +152,13 @@ pub enum Control {
         function_index: usize,
     },
 
-    /// 原 end 指令，表示函数或者结构块结束
+    /// 原 `call_indirect 指令`
+    DynamicCall {
+        type_index: usize,
+        table_index: usize,
+    },
+
+    /// 原 `end 指令`，表示函数或者结构块结束
     Return,
 }
 
