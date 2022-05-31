@@ -21,35 +21,6 @@ pub fn exec_instruction(
     instruction: &object::Instruction,
 ) -> Result<bool, EngineError> {
     match instruction {
-        //         // 分支指令
-        //         Instruction::Block { block_type, body } => {
-        //             ins_branch::exec_block(vm, block_type, body)
-        //         }
-        //         Instruction::Loop { block_type, body } => {
-        //             ins_branch::exec_loop(vm, block_type, body)
-        //         }
-        //         Instruction::If {
-        //             block_type,
-        //             consequet_body,
-        //             alternate_body,
-        //         } => ins_branch::exec_if(vm, block_type, consequet_body, alternate_body),
-        //         Instruction::Br(relative_depth) => ins_branch::br(vm, *relative_depth),
-        //         Instruction::BrIf(relative_depth) => ins_branch::br_if(vm, *relative_depth),
-        //         Instruction::BrTable {
-        //             relative_depths,
-        //             default_relative_depth,
-        //         } => ins_branch::br_table(vm, relative_depths, default_relative_depth),
-        //         Instruction::Return => ins_branch::exec_return(vm),
-        //
-        //         // 函数指令
-        //         Instruction::Call(function_index) => ins_function::call(vm, *function_index),
-        //         Instruction::CallIndirect(function_type_index, table_index) => {
-        //             ins_function::call_indirect(vm, *function_type_index, *table_index)
-        //         }
-        //
-        //
-        //
-        //
         object::Instruction::Sequence(instruction) => {
             let sequence_result = match instruction {
                 // 控制指令
@@ -325,9 +296,12 @@ pub fn exec_instruction(
                     native_module_index,
                     type_index,
                     function_index,
-                } => {
-                    todo!()
-                }
+                } => ins_control::do_call_native_function(
+                    vm,
+                    *native_module_index,
+                    *type_index,
+                    *function_index,
+                ),
                 _ => {
                     todo!()
                 }
@@ -378,14 +352,3 @@ pub fn exec_instruction(
         }
     }
 }
-/*
-pub fn exec_instructions(
-    vm_module: Rc<RefCell<VMModule>>,
-    instructions: &[Instruction],
-) -> Result<(), EngineError> {
-    for instruction in instructions {
-        exec_instruction(Rc::clone(&vm_module), instruction)?
-    }
-    Ok(())
-}
-*/

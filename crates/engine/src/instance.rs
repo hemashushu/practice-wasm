@@ -32,11 +32,10 @@ pub fn create_instance(
     let mut instructions_list = transform(named_ast_modules, &function_items_list)?;
 
     // 获取 "表" 实例列表，以及 "AST 模块 - 表" 映射表
-    let (mut tables, mut module_to_table_index_list) = link_tables(named_ast_modules)?;
+    let (tables, mut module_to_table_index_list) = link_tables(named_ast_modules)?;
 
     // 获取内存块实例列表，以及 "AST 模块 - 内存块" 映射表
-    let (mut memory_blocks, mut module_to_memory_block_index_list) =
-        link_memorys(named_ast_modules)?;
+    let (memory_blocks, mut module_to_memory_block_index_list) = link_memorys(named_ast_modules)?;
 
     // 获取全局变量实例列表，以及 "AST 模块 - 全局变量列表" 映射表
     let (global_variables, mut module_to_global_variables_list) =
@@ -44,9 +43,6 @@ pub fn create_instance(
 
     let ast_module_count = named_ast_modules.len();
     let mut vm_modules: Vec<VMModule> = vec![];
-
-    // // 创建一个 `裸 VM`，用于 data 项以及 element 项的偏移值常量表达式的求值
-    // let mut bare_vm = VM::new_bare_vm();
 
     for reverse_index in 0..ast_module_count {
         let function_items = function_items_list.pop().unwrap();
@@ -105,7 +101,6 @@ pub fn create_instance(
     let stack = VMStack::new();
 
     let resource = Resource::new(
-        // stack,
         memory_blocks,
         tables,
         global_variables,
@@ -187,116 +182,23 @@ pub fn create_instance(
     Ok(vm)
 }
 
-// pub struct Instance {
-//     // pub module_map: HashMap<String, Rc<RefCell<dyn Module>>>,
-//     // pub vm_modules: Vec<VMModule>,
-//     // pub modules: Vec<Module>,
-//
-//     pub status: Status,
-//     pub context: Context,
-// }
-
-// impl Instance {
-// pub fn new() -> Self {
-// let module_map = HashMap::<String, Rc<RefCell<dyn Module>>>::new();
-// Self { module_map }
-// let vm_modules = Vec::<VMModule>::new();
-// Self { vm_modules }
-// }
-
-//     pub fn add_ast_module(
-//         &mut self,
-//         name: &str,
-//         ast_module: ast::Module,
-//     ) -> Result<(), EngineError> {
-//         let vm_module = VMModule::new(name, ast_module, &self.module_map, None)?;
-//         self.add_module(vm_module)
-//     }
-//
-//     pub fn add_module(&mut self, vm_module: VMModule) -> Result<(), EngineError> {
-//         let name = vm_module.get_name().to_string();
-//         // self.module_map.insert(name, module);
-//         self.vm_modules.push(vm_module);
-//         Ok(())
-//     }
-
-// pub fn get_module(&self, name: &str) -> Option<&Rc<RefCell<dyn Module>>> {
-//     self.module_map.get(name)
-// }
-// }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::Instance;
-//     use anvm_ast::{ast, types::Value};
-//     use anvm_binary_parser::parser;
-//     use std::{env, fs};
-//
-//     fn get_test_binary_resource(filename: &str) -> Vec<u8> {
-//         let mut path_buf = env::current_dir().unwrap();
-//
-//         // 使用 `cargo test` 测试时，
-//         // `env::current_dir()` 函数获得的当前目录为
-//         // `./xiaoxuan-vm/crates/engine`；
-//         //
-//         // 但如果使用 vscode 的源码编辑框里面的 `debug` 按钮开始调试，
-//         // `env::current_dir()` 函数获得的当前目录为
-//         // `./xiaoxuan-vm`。
-//         //
-//         // 下面语句用于处理这种情况。
-//
-//         if !path_buf.ends_with("engine") {
-//             path_buf.push("crates");
-//             path_buf.push("engine");
-//         }
-//         let fullname_buf = path_buf.join("resources").join(filename);
-//         let fullname = fullname_buf.to_str().unwrap();
-//         fs::read(fullname).expect(&format!("failed to read the specified binary file: {}", fullname))
-//     }
-//
-//     fn get_test_ast_module(filename: &str) -> ast::Module {
-//         let bytes = get_test_binary_resource(filename);
-//         parser::parse(&bytes).unwrap()
-//     }
-//
-//     #[test]
-//     fn test_module_link() {
-//         let mut instance = Instance::new();
-//         instance
-//             .add_ast_module("lib", get_test_ast_module("test-module-link-lib.wasm"))
-//             .unwrap();
-//         instance
-//             .add_ast_module("app", get_test_ast_module("test-module-link-app.wasm"))
-//             .unwrap();
-//
-//         let rc_app_vm_module = instance.get_module("app").unwrap();
-//
-//         let f0 = rc_app_vm_module
-//             .as_ref()
-//             .borrow()
-//             .get_export_function("test_add")
-//             .unwrap();
-//         assert_eq!(f0.as_ref().eval(&vec![]).unwrap(), vec![Value::I32(77)]);
-//
-//         let f1 = rc_app_vm_module
-//             .as_ref()
-//             .borrow()
-//             .get_export_function("test_sub")
-//             .unwrap();
-//         assert_eq!(f1.as_ref().eval(&vec![]).unwrap(), vec![Value::I32(33)]);
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use std::{env, fs};
 
-    use anvm_ast::{ast, types::Value};
+    use anvm_ast::{
+        ast,
+        types::{Value, ValueType},
+    };
     use anvm_binary_parser::parser;
 
     use pretty_assertions::assert_eq;
 
-    use crate::{error::EngineError, object::NamedAstModule};
+    use crate::{
+        error::{EngineError, NativeError},
+        native_module::NativeModule,
+        object::NamedAstModule,
+    };
 
     use super::create_instance;
 
@@ -331,35 +233,57 @@ mod tests {
         parser::parse(&bytes).unwrap()
     }
 
-    //     fn get_test_vm_module(filename: &str) -> Rc<RefCell<VMModule>> {
-    //         let ast_module = get_test_ast_module(filename);
-    //         let module_map = HashMap::<String, Rc<RefCell<dyn Module>>>::new();
-    //         let vm_module = VMModule::new("test", ast_module, &module_map, None).unwrap();
-    //         vm_module
-    //     }
-    //
-    //     fn get_test_vm_module_with_init_memory_data(
-    //         filename: &str,
-    //         init_memory_data: Vec<u8>,
-    //     ) -> Rc<RefCell<VMModule>> {
-    //         let ast_module = get_test_ast_module(filename);
-    //         let module_map = HashMap::<String, Rc<RefCell<dyn Module>>>::new();
-    //         let vm_module =
-    //             VMModule::new("test", ast_module, &module_map, Some(init_memory_data)).unwrap();
-    //         vm_moduleeval_function_by_index
-    //     }
+    fn native_function_add_i32(params: &[Value]) -> Result<Vec<Value>, NativeError> {
+        match (params[0], params[1]) {
+            (Value::I32(left), Value::I32(right)) => Ok(vec![Value::I32(left + right)]),
+            _ => panic!("incorrect data type of the native function arguments"),
+        }
+    }
 
-    pub fn eval(filename: &str, index: usize, args: &[Value]) -> Result<Vec<Value>, EngineError> {
+    fn native_function_sub_i32(params: &[Value]) -> Result<Vec<Value>, NativeError> {
+        match (params[0], params[1]) {
+            (Value::I32(left), Value::I32(right)) => Ok(vec![Value::I32(left - right)]),
+            _ => panic!("incorrect data type of the native function arguments"),
+        }
+    }
+
+    fn get_test_native_module() -> NativeModule {
+        let mut native_module = NativeModule::new("math");
+
+        native_module.add_native_function(
+            "add",
+            vec![ValueType::I32, ValueType::I32],
+            vec!["left", "right"],
+            vec![ValueType::I32],
+            native_function_add_i32,
+        );
+
+        native_module.add_native_function(
+            "sub",
+            vec![ValueType::I32, ValueType::I32],
+            vec!["left", "right"],
+            vec![ValueType::I32],
+            native_function_sub_i32,
+        );
+
+        native_module
+    }
+
+    fn eval(
+        filename: &str,
+        function_index: usize,
+        args: &[Value],
+    ) -> Result<Vec<Value>, EngineError> {
         let ast_module = get_test_ast_module(filename);
         let named_ast_module = NamedAstModule::new("test", ast_module);
         let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
-        vm.eval_function_by_index(0, index, args)
+        vm.eval_function_by_index(0, function_index, args)
     }
 
-    pub fn eval_with_initial_memory_data(
+    fn eval_with_initial_memory_data(
         filename: &str,
-        index: usize,
+        function_index: usize,
         args: &[Value],
         initial_memory_data: &[u8],
     ) -> Result<Vec<Value>, EngineError> {
@@ -368,12 +292,12 @@ mod tests {
         let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
         vm.resource.memory_blocks[0].write_bytes(0, initial_memory_data);
-        vm.eval_function_by_index(0, index, args)
+        vm.eval_function_by_index(0, function_index, args)
     }
 
-    pub fn eval_and_dump_memory_data(
+    fn eval_and_dump_memory_data(
         filename: &str,
-        index: usize,
+        function_index: usize,
         args: &[Value],
         address: usize,
         length: usize,
@@ -382,11 +306,44 @@ mod tests {
         let named_ast_module = NamedAstModule::new("test", ast_module);
         let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
-        let result = vm.eval_function_by_index(0, index, args)?;
+        let result = vm.eval_function_by_index(0, function_index, args)?;
         let data = vm.resource.memory_blocks[0]
             .read_bytes(address, length)
             .to_vec();
         Ok((result, data))
+    }
+
+    fn eval_with_multiple_modules(
+        function_index: usize,
+        args: &[Value],
+    ) -> Result<Vec<Value>, EngineError> {
+        let native_module = get_test_native_module();
+
+        let named_ast_module_callee = NamedAstModule::new(
+            "callee",
+            get_test_ast_module("test-function-call-callee.wasm"),
+        );
+
+        let named_ast_module_callee_intermediate = NamedAstModule::new(
+            "intermediate",
+            get_test_ast_module("test-function-call-callee-intermediate.wasm"),
+        );
+
+        let named_ast_module_caller = NamedAstModule::new(
+            "caller",
+            get_test_ast_module("test-function-call-caller.wasm"),
+        );
+
+        let mut vm = create_instance(
+            vec![native_module],
+            &vec![
+                named_ast_module_callee,
+                named_ast_module_callee_intermediate,
+                named_ast_module_caller,
+            ],
+        )?;
+
+        vm.eval_function_by_index(2, function_index, args)
     }
 
     #[test]
@@ -969,6 +926,75 @@ mod tests {
         assert_eq!(
             eval(module_name, 2, &vec![Value::I32(-55), Value::I32(44)]).unwrap(),
             vec![Value::I32(-55)]
+        );
+    }
+
+    #[test]
+    fn test_function_call_native() {
+        // 测试 $na_add
+        assert_eq!(
+            eval_with_multiple_modules(0, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
+            vec![Value::I32(121)]
+        );
+        assert_eq!(
+            eval_with_multiple_modules(0, &vec![Value::I32(-44), Value::I32(-33)]).unwrap(),
+            vec![Value::I32(-77)]
+        );
+    }
+
+    #[test]
+    fn test_function_call_external() {
+        // 测试 $ex_mul
+        assert_eq!(
+            eval_with_multiple_modules(1, &vec![Value::I32(2), Value::I32(3)]).unwrap(),
+            vec![Value::I32(6)]
+        );
+        assert_eq!(
+            eval_with_multiple_modules(1, &vec![Value::I32(4), Value::I32(-5)]).unwrap(),
+            vec![Value::I32(-20)]
+        );
+
+        // 测试 $ex_div
+        assert_eq!(
+            eval_with_multiple_modules(2, &vec![Value::I32(8), Value::I32(2)]).unwrap(),
+            vec![Value::I32(4)]
+        );
+        assert_eq!(
+            eval_with_multiple_modules(2, &vec![Value::I32(-55), Value::I32(5)]).unwrap(),
+            vec![Value::I32(-11)]
+        );
+    }
+
+    #[test]
+    fn test_function_call_re_export() {
+        // 测试 $re_sub
+        assert_eq!(
+            eval_with_multiple_modules(3, &vec![Value::I32(8), Value::I32(6)]).unwrap(),
+            vec![Value::I32(2)]
+        );
+        assert_eq!(
+            eval_with_multiple_modules(3, &vec![Value::I32(6), Value::I32(-5)]).unwrap(),
+            vec![Value::I32(11)]
+        );
+
+        // 测试 $re_mul
+        assert_eq!(
+            eval_with_multiple_modules(4, &vec![Value::I32(2), Value::I32(3)]).unwrap(),
+            vec![Value::I32(6)]
+        );
+        assert_eq!(
+            eval_with_multiple_modules(4, &vec![Value::I32(4), Value::I32(-5)]).unwrap(),
+            vec![Value::I32(-20)]
+        );
+
+        // 测试 $re_div
+        assert_eq!(
+            eval_with_multiple_modules(5, &vec![Value::I32(8), Value::I32(2)]).unwrap(),
+            vec![Value::I32(4)]
+        );
+        assert_eq!(
+            eval_with_multiple_modules(5, &vec![Value::I32(-55), Value::I32(5)]).unwrap(),
+            vec![Value::I32(-11)]
         );
     }
 }

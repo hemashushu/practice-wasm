@@ -50,27 +50,6 @@ impl NativeModule {
         }
     }
 
-    /// 创建并添加新的 FunctionType 到函数类型总列表，或者
-    /// 返回已存在的 FunctionType 项目的索引值。
-    fn add_function_type(&mut self, params: Vec<ValueType>, results: Vec<ValueType>) -> usize {
-        let function_type = FunctionType { params, results };
-
-        let option_function_type_index = self
-            .function_types
-            .iter()
-            .enumerate()
-            .find(|item| item.1 == &function_type)
-            .map(|item| item.0);
-
-        if let Some(function_type_index) = option_function_type_index {
-            function_type_index
-        } else {
-            let count = self.function_types.len();
-            self.function_types.push(function_type);
-            count
-        }
-    }
-
     pub fn add_native_function(
         &mut self,
         name: &str,
@@ -106,5 +85,26 @@ impl NativeModule {
             .enumerate()
             .find(|item| item.1 == name)
             .map(|item| item.0)
+    }
+
+    /// 创建并添加新的 FunctionType 到函数类型总列表，或者
+    /// 返回已存在的 FunctionType 项目的索引值。
+    fn add_function_type(&mut self, params: Vec<ValueType>, results: Vec<ValueType>) -> usize {
+        let function_type = FunctionType { params, results };
+
+        let option_function_type_index = self
+            .function_types
+            .iter()
+            .enumerate()
+            .find(|item| item.1 == &function_type)
+            .map(|item| item.0);
+
+        if let Some(function_type_index) = option_function_type_index {
+            function_type_index
+        } else {
+            let count = self.function_types.len();
+            self.function_types.push(function_type);
+            count
+        }
     }
 }

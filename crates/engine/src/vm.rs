@@ -107,15 +107,6 @@ impl Status {
             address: 0,
         }
     }
-
-    // pub fn reset(&mut self) {
-    //     self.frame_pointer = 0;
-    //     self.local_pointer = 0;
-    //     self.base_pointer = 0;
-    //     self.vm_module_index = 0;
-    //     self.function_index = 0;
-    //     self.program_counter = 0;
-    // }
 }
 
 pub struct Resource {
@@ -153,6 +144,19 @@ pub struct VM {
     pub resource: Resource,
 }
 
+pub enum CallFunctionResult {
+    /// 调用的是普通函数，虚拟机进入待命状态
+    ///
+    /// 需要执行 recur/recur_without_break/step/step_without_into/step_out 等
+    /// 方法执行函数的指令
+    ///
+    /// 参数是最终结果的数据的数量
+    Standby(usize),
+
+    /// 调用的是本地函数，直接得出结果
+    Immediate(Vec<Value>),
+}
+
 impl VM {
     /// 从 vm 外部（即宿主）调用函数，并进行求值
     /// 直到函数所有指令执行完毕。
@@ -162,17 +166,15 @@ impl VM {
         function_index: usize,
         arguments: &[Value],
     ) -> Result<Vec<Value>, EngineError> {
-        let result_count =
-            self.call_function_by_index(vm_module_index, function_index, arguments)?;
+        let result = self.call_function_by_index(vm_module_index, function_index, arguments)?;
 
-        loop {
-            let is_program_end = self.next()?;
-            if is_program_end {
-                break;
+        match result {
+            CallFunctionResult::Immediate(values) => Ok(values),
+            CallFunctionResult::Standby(result_count) => {
+                self.recur_without_break();
+                Ok(self.pop_results(result_count))
             }
         }
-
-        Ok(self.pop_results(result_count))
     }
 
     /// 将指定实参压入栈，并将 pc 的值指向函数的
@@ -184,7 +186,7 @@ impl VM {
         vm_module_index: usize,
         function_index: usize,
         arguments: &[Value],
-    ) -> Result<usize, EngineError> {
+    ) -> Result<CallFunctionResult, EngineError> {
         let function_item = {
             let vm_module = &self.resource.vm_modules[vm_module_index];
             let function_item = &vm_module.function_items[function_index];
@@ -197,7 +199,13 @@ impl VM {
                 type_index,
                 function_index,
             } => {
-                todo!()
+                let result = self.call_native_function(
+                    native_module_index,
+                    type_index,
+                    function_index,
+                    arguments,
+                )?;
+                Ok(CallFunctionResult::Immediate(result))
             }
             FunctionItem::External {
                 vm_module_index: target_vm_module_index,
@@ -206,27 +214,33 @@ impl VM {
                 internal_function_index: target_internal_function_index,
                 start_index,
                 end_index,
-            } => self.call_module_function(
-                target_vm_module_index,
-                target_type_index,
-                target_function_index,
-                target_internal_function_index,
-                start_index,
-                arguments,
-            ),
+            } => {
+                let result = self.call_module_function(
+                    target_vm_module_index,
+                    target_type_index,
+                    target_function_index,
+                    target_internal_function_index,
+                    start_index,
+                    arguments,
+                )?;
+                Ok(CallFunctionResult::Standby(result))
+            }
             FunctionItem::Internal {
                 type_index,
                 internal_function_index,
                 start_index,
                 end_index,
-            } => self.call_module_function(
-                vm_module_index,
-                type_index,
-                function_index,
-                internal_function_index,
-                start_index,
-                arguments,
-            ),
+            } => {
+                let result = self.call_module_function(
+                    vm_module_index,
+                    type_index,
+                    function_index,
+                    internal_function_index,
+                    start_index,
+                    arguments,
+                )?;
+                Ok(CallFunctionResult::Standby(result))
+            }
         }
     }
 
@@ -291,11 +305,77 @@ impl VM {
         Ok(result_count)
     }
 
-    /// 执行当前的指令（单独一个指令）
+    fn call_native_function(
+        &mut self,
+        native_module_index: usize,
+        type_index: usize,
+        function_index: usize,
+        arguments: &[Value],
+    ) -> Result<Vec<Value>, EngineError> {
+        let (parameter_types, result_types, native_function) = {
+            let native_module = &self.resource.native_modules[native_module_index];
+            let function_type = &native_module.function_types[type_index];
+            let native_function = native_module.native_functions[function_index];
+
+            (
+                function_type.params.to_owned(),
+                function_type.results.to_owned(),
+                native_function,
+            )
+        };
+
+        let parameter_count = parameter_types.len();
+
+        // 核对实参的数据类型和数量
+        match check_value_types(&arguments, &parameter_types) {
+            Err(ValueTypeCheckError::LengthMismatch) => {
+                return Err(EngineError::InvalidOperation(format!(
+                    "failed to call function {} (native module {}). The number of parameters does not match, expected: {}, actual: {}",
+                    function_index, native_module_index, parameter_count, arguments.len())));
+            }
+            Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+                return Err(EngineError::InvalidOperation(format!(
+                    "failed to call function {} (native module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                    function_index, native_module_index, index + 1,
+                    parameter_types[index],
+                    arguments[index].get_type())));
+            }
+            _ => {
+                // pass
+            }
+        }
+
+        let result = native_function(&arguments);
+
+        match result {
+            Ok(result_values) => Ok(result_values),
+            Err(e) => Err(EngineError::NativeError(e)),
+        }
+    }
+
+    /// 执行剩余的指令，遇到断点时中断
+    pub fn recur(&mut self) -> Result<bool, EngineError> {
+        todo!()
+    }
+
+    /// 执行剩余的指令，无视断点
+    pub fn recur_without_break(&mut self) -> Result<(), EngineError> {
+        loop {
+            let is_program_end = self.step()?;
+            if is_program_end {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// 执行当前一条指令
+    ///
+    /// 如果遇到普通函数调用，则跟踪进入函数内部。
     ///
     /// 当程序（或者说第一个被调用的函数）的最后一条指令（即 `end 指令`）执行
     /// 之后，函数返回 true，否则返回 false。
-    pub fn next(&mut self) -> Result<bool, EngineError> {
+    pub fn step(&mut self) -> Result<bool, EngineError> {
         let vm_module_index = self.status.vm_module_index;
         let addr = self.status.address;
 
@@ -307,6 +387,24 @@ impl VM {
         // }
 
         Ok(is_program_end)
+    }
+
+    /// 执行当前一条指令
+    ///
+    /// 如果遇到普通函数调用，则自动执行该函数的所有指令，直到返回结果位置，并停留在下一条指令。
+    /// 也就是说，遇到普通函数调用时，不跟踪进入函数的内部。
+    ///
+    /// 如果遇到断点，仍然会优先中断
+    pub fn step_without_into(&mut self) -> Result<bool, EngineError> {
+        todo!()
+    }
+
+    /// 执行一系列指令，直到当前函数的所有指令结束为止，
+    /// 即把函数的最后一条指令，`end 指令` 执行完毕，并停留在调用该函数的指令的下一条指令。
+    ///
+    /// 如果遇到断点，仍然会优先中断
+    pub fn jump_out(&mut self) -> Result<bool, EngineError> {
+        todo!()
     }
 
     /// 从 vm 外部（即宿主）调用 "模块内部定义的" 函数
@@ -598,28 +696,18 @@ impl VM {
         )
     }
 
-    //     /// 创建一个 `裸 VM`，即除了一个栈之外，什么都没有
-    //     /// 的虚拟机（没有内存、表、全局变量、模块）。
-    //     ///
-    //     /// `裸 VM` 用于执行常量表达式
-    //     pub fn new_bare_vm() -> Self {
-    //         let status = Status::new();
-    //         let stack = VMStack::new();
-    //         let context = Context::new(stack, vec![], vec![], vec![], vec![], vec![]);
-    //
-    //         Self { status, context }
-    //     }
-
     /// 对一个常量表达式求值
     /// 目前只支持一个 `t.const 指令` 和一个 `end 指令` 这种常量表达式
     pub fn eval_constant_expression(
         &mut self,
         instructions: &[Instruction],
     ) -> Result<Value, EngineError> {
-        VM::get_constant_value(instructions)
+        VM::get_constant_instruction_value(instructions)
     }
 
-    pub fn get_constant_value(instructions: &[Instruction]) -> Result<Value, EngineError> {
+    pub fn get_constant_instruction_value(
+        instructions: &[Instruction],
+    ) -> Result<Value, EngineError> {
         if let Some(first_instruction) = instructions.first() {
             let value = match first_instruction {
                 Instruction::Sequence(instruction::Instruction::I32Const(v)) => Value::I32(*v),

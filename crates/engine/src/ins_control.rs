@@ -432,7 +432,58 @@ pub fn do_call_native_function(
     type_index: usize,
     function_index: usize,
 ) -> Result<ControlResult, EngineError> {
-    todo!()
+    let (parameter_types, native_function) = {
+        let native_module = &vm.resource.native_modules[native_module_index];
+        let function_type = &native_module.function_types[type_index];
+        let native_function = native_module.native_functions[function_index];
+
+        (function_type.params.to_owned(), native_function)
+    };
+
+    // 判断操作数是否足够当前函数或结构块用于返回
+    let parameter_count = parameter_types.len();
+    let stack_size = vm.stack.get_size();
+    let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
+    if operands_count < parameter_count {
+        return Err(EngineError::InvalidOperation(format!(
+            "failed to call function {} (native module {}), not enough operands, expected: {}, actual: {}",
+            function_index, native_module_index, parameter_count, operands_count
+        )));
+    }
+
+    let arguments = pop_arguments(vm, parameter_count);
+
+    // 核对实参的数据类型和数量
+    match check_value_types(&arguments, &parameter_types) {
+        Err(ValueTypeCheckError::LengthMismatch) => {
+            return Err(EngineError::InvalidOperation(format!(
+                "failed to call function {} (native module {}). The number of parameters does not match, expected: {}, actual: {}",
+                function_index, native_module_index, parameter_count, arguments.len())));
+        }
+        Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+            return Err(EngineError::InvalidOperation(format!(
+                "failed to call function {} (native module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                function_index, native_module_index, index + 1,
+                parameter_types[index],
+                arguments[index].get_type())));
+        }
+        _ => {
+            // pass
+        }
+    }
+
+    let result = native_function(&arguments);
+
+    match result {
+        Ok(result_values) => {
+            push_results(vm, &result_values);
+
+            // 本地函数的调用并不会进入到函数体，所以调用完毕之后只需继续
+            // 执行下一个指令即可。
+            Ok(ControlResult::Sequence)
+        }
+        Err(e) => Err(EngineError::NativeError(e)),
+    }
 }
 
 ///

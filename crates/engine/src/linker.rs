@@ -5,7 +5,9 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    error::{make_invalid_table_index_engine_error, EngineError, make_invalid_memory_index_engine_error},
+    error::{
+        make_invalid_memory_index_engine_error, make_invalid_table_index_engine_error, EngineError,
+    },
     native_module::NativeModule,
     object::{FunctionItem, NamedAstModule},
     transformer::transform_constant_expression,
@@ -14,10 +16,7 @@ use crate::{
     vm_memory::VMMemory,
     vm_table::VMTable,
 };
-use anvm_ast::{
-    ast::{self, ExportDescriptor, GlobalType, ImportDescriptor, TypeItem},
-    types::Value,
-};
+use anvm_ast::ast::{self, ExportDescriptor, GlobalType, ImportDescriptor, TypeItem};
 
 /// AST 模块的函数的指令序列位置信息
 #[derive(Debug, PartialEq, Clone)]
@@ -670,7 +669,7 @@ pub fn link_global_variables(
             // 求值 global_item 的初始化常量表达式
             let constant_expression =
                 transform_constant_expression(&global_item.initialize_instruction_items)?;
-            let value = VM::get_constant_value(&constant_expression)?;
+            let value = VM::get_constant_instruction_value(&constant_expression)?;
 
             // 检查数据类型是否匹配
             if value.get_type() != global_type.value_type {
