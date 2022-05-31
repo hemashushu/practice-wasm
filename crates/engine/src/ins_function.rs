@@ -106,6 +106,21 @@
 //!
 //! 其中 table_idx 的值目前只能是 0
 //!
+//! 指令 call_indirect 的操作步骤：
+//! 1. 从操作数栈弹出一个 u32 数，该数是表内项目的索引
+//! 2. 从表里获取指定的项目，也就是目标函数的索引值
+//! 3. 通过函数索引值获取目标函数
+//! 4. 调用目标函数
+//!
+//! ```diagram
+//! | 操作数栈。。  |       | 表。。       |     | 函数列表。。 |
+//! | ----------- |       | ----------- |     | ---------- |
+//! | -- 栈顶。 -- |       | #0 func#2   |  /--> #3 sub     |
+//! | 1u32 -------- pop --> #1 func#3 ----/   | #4 mul     |
+//! | ...         |       | #2 func#5   |     | #5 div     |
+//! | -- 栈底。 -- |       | ...         |     | ...        |
+//! ```
+//!
 //! ## br 指令
 //!
 //! br 指令后面接着 `跳转目标` 的相对深度。
@@ -164,20 +179,26 @@
 //! loop -> Block
 //! if -> BlockJumpEqZero
 //! br/else/return -> Jump
-//! br_if -> JumpNotEqZero
 //! br -> Recur
+//! br_if -> JumpNotEqZero
+//! br_if -> RecurNotEqZero
+//! br_table -> Branch ([BranchTarget::Jump(relative_depth, addr)], BranchTarget::Recur(relative_depth, addr))
 //! call -> CallInternal/CallExternal/CallNative
+//! call_indirect -> DynamicCall
 //! end -> Return
 use anvm_ast::{
     instruction::BlockType,
-    types::{check_value_types, Value, ValueType, ValueTypeCheckError},
+    types::{check_types, check_value_types, Value, ValueType, ValueTypeCheckError},
 };
 
 use crate::{
     error::{
+        make_invalid_operand_data_type_engine_error,
         make_invalid_operand_data_types_2_engine_error,
-        make_invalid_operand_data_types_engine_error, EngineError,
+        make_invalid_operand_data_types_engine_error, make_invalid_table_index_engine_error,
+        make_mismatch_function_type_engine_error, EngineError,
     },
+    object::FunctionItem,
     vm::VM,
     vm_stack::INFO_SEGMENT_ITEM_COUNT,
 };
@@ -275,86 +296,6 @@ pub fn do_return(vm: &mut VM) -> Result<ControlResult, EngineError> {
         })
     }
 }
-
-/*
-/// 处理 call 指令
-///
-/// 该函数将会创建了一个调用帧，并且更改 pc 值
-pub fn call(vm: &mut VM, function_index: u32) -> Result<(), EngineError> {
-    let (argument_count, result_count, local_variable_types) = {
-        let vm_module = vm.context.vm_modules[vm_module_index];
-        let function_type = &vm_module.function_types[type_index];
-        let local_variable_types = &vm_module
-            .internal_function_local_variable_types_list[internal_function_index];
-        (
-            function_type.params.len(),
-            function_type.results.len(),
-            local_variable_types.to_owned(),
-        )
-    };
-
-    let vm_function = rc_function
-        .as_ref()
-        .as_any()
-        .downcast_ref::<VMFunction>()
-        .expect("should be a VMFunction object");
-
-    let function_index = vm_function.function_index;
-    let rc_function_type = Rc::clone(&vm_function.function_type);
-
-    match &vm_function.function_kind {
-        VMFunctionKind::External(external_function) => {
-            call_external_func(vm_module, &rc_function_type, Rc::clone(external_function))
-        }
-        VMFunctionKind::Internal {
-            local_groups,
-            expression,
-            vm_module: _,
-        } => {
-            call_internal_function(
-                vm_module,
-                &rc_function_type,
-                function_index,
-                local_groups,
-                expression,
-            );
-            Ok(())
-        }
-    }
-}
-
-pub fn call_internal_function(
-    vm: &mut VM,
-    function_type: &Rc<FunctionType>,
-    function_index: usize,
-    local_groups: &Vec<LocalGroup>,
-    instructions: &Rc<Vec<Instruction>>,
-) {
-    let local_variable_count = local_groups
-        .iter()
-        .fold(0, |acc, local_group| acc + local_group.variable_count)
-        as usize;
-
-    // 创建被进入新的调用帧
-    enter_control_block(
-        Rc::clone(&vm_module),
-        FrameType::Call,
-        function_type,
-        Some(function_index),
-        instructions,
-        local_variable_count,
-    );
-
-    // 分配局部变量空槽
-    // 局部变量的空槽初始值为 0:i32
-    let placehold_values = vec![Value::I32(0); local_variable_count];
-    vm_module
-        .as_ref()
-        .borrow_mut()
-        .operand_stack
-        .push_values(&placehold_values)
-}
-*/
 
 pub fn do_call_module_function(
     vm: &mut VM,
@@ -486,27 +427,6 @@ pub fn do_call_native_function(
     }
 }
 
-///
-/*
-pub fn call_external(
-    vm: &mut VM,
-    function_type: &Rc<FunctionType>,
-    function: Rc<dyn Function>,
-) -> Result<(), EngineError> {
-    let arguments = pop_arguments(Rc::clone(&vm_module), function_type);
-    let results = function.eval(&arguments)?;
-
-    if arguments.len() != function_type.params.len() {
-        return Err(EngineError::InvalidOperation(
-            "the number of arguments and parameters do not match".to_string(),
-        ));
-    }
-
-    push_results(Rc::clone(&vm_module), &results);
-    Ok(())
-}
- */
-
 /// 从模块内部函数调用本地函数的过程。
 ///
 /// 示例：
@@ -537,6 +457,145 @@ fn pop_arguments(vm: &mut VM, argument_count: usize) -> Vec<Value> {
 
 fn push_results(vm: &mut VM, results: &[Value]) {
     vm.stack.push_values(results)
+}
+
+pub fn do_dynamic_call(
+    vm: &mut VM,
+    type_index: usize,
+    table_index: usize,
+) -> Result<ControlResult, EngineError> {
+    if table_index != 0 {
+        return Err(make_invalid_table_index_engine_error());
+    }
+
+    let element_index = {
+        let element_index_value = vm.stack.pop();
+        match element_index_value {
+            Value::I32(index) => index as usize,
+            _ => {
+                return Err(make_invalid_operand_data_type_engine_error(
+                    "call_indirect",
+                    "i32",
+                ));
+            }
+        }
+    };
+
+    let (vm_module_index, function_index, function_item, expected_function_type) = {
+        let vm_module_index = vm.status.vm_module_index;
+        let vm_module = &vm.resource.vm_modules[vm_module_index];
+        let table = &vm.resource.tables[vm_module.table_index];
+
+        let element_item = table.get_element(element_index)?;
+        let function_index = match element_item {
+            Some(index) => index as usize,
+            _ => {
+                return Err(EngineError::ObjectNotFound(format!(
+                    "can not found table element {} (module {})",
+                    element_index, vm_module_index
+                )))
+            }
+        };
+
+        let function_item = &vm_module.function_items[function_index];
+        let expected_function_type = &vm_module.function_types[type_index];
+
+        (
+            vm_module_index,
+            function_index,
+            function_item.to_owned(),
+            expected_function_type.to_owned(),
+        )
+    };
+
+    // 核对函数的签名
+    let actual_function_type = match function_item {
+        FunctionItem::Internal {
+            internal_function_index,
+            type_index,
+            start_index,
+            end_index,
+        } => {
+            let vm_module = &vm.resource.vm_modules[vm_module_index];
+            let function_type = &vm_module.function_types[type_index];
+            function_type.to_owned()
+        }
+        FunctionItem::External {
+            vm_module_index,
+            type_index,
+            function_index,
+            internal_function_index,
+            start_index,
+            end_index,
+        } => {
+            let vm_module = &vm.resource.vm_modules[vm_module_index];
+            let function_type = &vm_module.function_types[type_index];
+            function_type.to_owned()
+        }
+        FunctionItem::Native {
+            native_module_index,
+            type_index,
+            function_index,
+        } => {
+            let native_module = &vm.resource.native_modules[native_module_index];
+            let function_type = &native_module.function_types[type_index];
+            function_type.to_owned()
+        }
+    };
+
+    if let Err(_) = check_types(&expected_function_type.params, &actual_function_type.params) {
+        return Err(make_mismatch_function_type_engine_error(
+            function_index,
+            vm_module_index,
+        ));
+    }
+
+    if let Err(_) = check_types(
+        &expected_function_type.results,
+        &actual_function_type.results,
+    ) {
+        return Err(make_mismatch_function_type_engine_error(
+            function_index,
+            vm_module_index,
+        ));
+    }
+
+    // 调用处理函数
+    match function_item {
+        FunctionItem::Internal {
+            internal_function_index,
+            type_index,
+            start_index,
+            end_index,
+        } => do_call_module_function(
+            vm,
+            vm_module_index,
+            type_index,
+            function_index,
+            internal_function_index,
+            start_index,
+        ),
+        FunctionItem::External {
+            vm_module_index,
+            type_index,
+            function_index,
+            internal_function_index,
+            start_index,
+            end_index,
+        } => do_call_module_function(
+            vm,
+            vm_module_index,
+            type_index,
+            function_index,
+            internal_function_index,
+            start_index,
+        ),
+        FunctionItem::Native {
+            native_module_index,
+            type_index,
+            function_index,
+        } => do_call_native_function(vm, native_module_index, type_index, function_index),
+    }
 }
 
 /*

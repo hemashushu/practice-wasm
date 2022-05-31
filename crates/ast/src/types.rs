@@ -77,12 +77,38 @@ impl Into<Value> for usize {
 pub fn check_value_types(values: &[Value], types: &[ValueType]) -> Result<(), ValueTypeCheckError> {
     let length = values.len();
     if length != types.len() {
-        Err(ValueTypeCheckError::LengthMismatch) // 参数和类型的数量长度不一致
+        // 参数和类型的数量长度不一致
+        Err(ValueTypeCheckError::LengthMismatch)
     } else if length == 0 {
         Ok(())
     } else {
         for i in 0..length {
             if values[i].get_type() != types[i] {
+                // 其中一个参数的类型不一致
+                return Err(ValueTypeCheckError::DataTypeMismatch(i));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 检查两组类型是否匹配
+///
+/// 返回 LengthMismatch: 参数和类型的数量长度不一致
+/// 返回 DataTypeMismatch(usize): 其中一个参数的类型不一致
+pub fn check_types(
+    expected: &[ValueType],
+    actual: &[ValueType],
+) -> Result<(), ValueTypeCheckError> {
+    let length = expected.len();
+    if length != actual.len() {
+        // 参数和类型的数量长度不一致
+        Err(ValueTypeCheckError::LengthMismatch)
+    } else if length == 0 {
+        Ok(())
+    } else {
+        for i in 0..length {
+            if expected[i] != actual[i] {
                 // 其中一个参数的类型不一致
                 return Err(ValueTypeCheckError::DataTypeMismatch(i));
             }

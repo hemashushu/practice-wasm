@@ -346,6 +346,13 @@ mod tests {
         vm.eval_function_by_index(2, function_index, args)
     }
 
+    fn convert_i32_list(values: &[i32]) -> Vec<Value> {
+        values
+            .iter()
+            .map(|v| Value::I32(*v))
+            .collect::<Vec<Value>>()
+    }
+
     #[test]
     fn test_instruction_const() {
         let module_name = "test-const.wasm";
@@ -997,38 +1004,54 @@ mod tests {
             vec![Value::I32(-11)]
         );
     }
-}
-
-/*
-
-
-
-
-
-
 
     #[test]
-    fn test_function_indirect_call() {
-        let module = get_test_vm_module("test-function-indirect-call.wasm");
+    fn test_function_call_indirect() {
+        let module_name = "test-function-call-indirect.wasm";
 
+        // 测试 add
         assert_eq!(
-            eval(module_name, 0, &vec![]).unwrap(),
-            vec![Value::I32(12)]
+            eval(module_name, 0, &convert_i32_list(&vec![0, 40, 5])).unwrap(),
+            vec![Value::I32(45)]
         );
         assert_eq!(
-            eval(module_name, 1, &vec![]).unwrap(),
+            eval(module_name, 0, &convert_i32_list(&vec![0, 5, 40])).unwrap(),
+            vec![Value::I32(45)]
+        );
+
+        // 测试 sub
+        assert_eq!(
+            eval(module_name, 0, &convert_i32_list(&vec![1, 40, 5])).unwrap(),
+            vec![Value::I32(35)]
+        );
+        assert_eq!(
+            eval(module_name, 0, &convert_i32_list(&vec![1, 5, 40])).unwrap(),
+            vec![Value::I32(-35)]
+        );
+
+        // 测试 mul
+        assert_eq!(
+            eval(module_name, 0, &convert_i32_list(&vec![2, 40, 5])).unwrap(),
+            vec![Value::I32(200)]
+        );
+        assert_eq!(
+            eval(module_name, 0, &convert_i32_list(&vec![2, 5, 40])).unwrap(),
+            vec![Value::I32(200)]
+        );
+
+        // 测试 div
+        assert_eq!(
+            eval(module_name, 0, &convert_i32_list(&vec![3, 40, 5])).unwrap(),
             vec![Value::I32(8)]
         );
         assert_eq!(
-            eval(module_name, 2, &vec![]).unwrap(),
-            vec![Value::I32(20)]
-        );
-        assert_eq!(
-            eval(module_name, 3, &vec![]).unwrap(),
-            vec![Value::I32(5)]
+            eval(module_name, 0, &convert_i32_list(&vec![3, 5, 40])).unwrap(),
+            vec![Value::I32(0)]
         );
     }
+}
 
+/*
     #[test]
     fn test_branch() {
         let module = get_test_vm_module("test-branch.wasm");

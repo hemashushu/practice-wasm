@@ -9,7 +9,7 @@ use anvm_ast::instruction::Instruction;
 use crate::{
     error::EngineError,
     ins_const,
-    ins_control::{self, ControlResult},
+    ins_function::{self, ControlResult},
     ins_memory, ins_numeric_binary, ins_numeric_comparsion, ins_numeric_convert, ins_numeric_eqz,
     ins_numeric_unary, ins_parametric, ins_variable,
     object::{self, Control},
@@ -261,7 +261,7 @@ pub fn exec_instruction(
         }
         object::Instruction::Control(control) => {
             let control_result = match control {
-                Control::Return => ins_control::do_return(vm),
+                Control::Return => ins_function::do_return(vm),
                 Control::CallInternal {
                     type_index,
                     function_index,
@@ -269,7 +269,7 @@ pub fn exec_instruction(
                     address,
                 } => {
                     let vm_module_index = vm.status.vm_module_index;
-                    ins_control::do_call_module_function(
+                    ins_function::do_call_module_function(
                         vm,
                         vm_module_index,
                         *type_index,
@@ -284,7 +284,7 @@ pub fn exec_instruction(
                     function_index,
                     internal_function_index,
                     address,
-                } => ins_control::do_call_module_function(
+                } => ins_function::do_call_module_function(
                     vm,
                     *vm_module_index,
                     *type_index,
@@ -296,12 +296,16 @@ pub fn exec_instruction(
                     native_module_index,
                     type_index,
                     function_index,
-                } => ins_control::do_call_native_function(
+                } => ins_function::do_call_native_function(
                     vm,
                     *native_module_index,
                     *type_index,
                     *function_index,
                 ),
+                Control::DynamicCall {
+                    type_index,
+                    table_index,
+                } => ins_function::do_dynamic_call(vm, *type_index, *table_index),
                 _ => {
                     todo!()
                 }
