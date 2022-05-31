@@ -9,7 +9,8 @@ use anvm_ast::instruction::Instruction;
 use crate::{
     error::EngineError,
     ins_const,
-    ins_function::{self, ControlResult},
+    ins_control::{self, ControlResult},
+    ins_function::{self},
     ins_memory, ins_numeric_binary, ins_numeric_comparsion, ins_numeric_convert, ins_numeric_eqz,
     ins_numeric_unary, ins_parametric, ins_variable,
     object::{self, Control},
@@ -261,7 +262,7 @@ pub fn exec_instruction(
         }
         object::Instruction::Control(control) => {
             let control_result = match control {
-                Control::Return => ins_function::do_return(vm),
+                Control::Return => ins_control::do_return(vm),
                 Control::CallInternal {
                     type_index,
                     function_index,
