@@ -51,8 +51,8 @@ pub enum FunctionItem {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum BranchTarget {
-    Jump(/* relative_depth */ usize, /* addr */ usize),
-    Recur(/* relative_depth */ usize, /* addr */ usize),
+    Jump(/* relative_depth */ usize, /* address */ usize),
+    Recur(/* relative_depth */ usize, /* address */ usize),
 }
 
 /// 控制指令
@@ -62,13 +62,16 @@ pub enum Control {
     /// 对应 block/loop 指令
     Block {
         block_type: BlockType,
+        block_index: usize,
         end_address: usize,
     },
 
-    /// 进入一个新的栈帧，并当原栈顶的数值等于 0 时，跳转到指定的地址
+    /// 进入一个新的栈帧，并当原栈顶的数值等于 0 时，跳转到指定的地址 alternate_address,
     /// 对应 if 指令
+    /// 有时 if 指令结构缺少 else 结构，这时 alternate_address 的值跟 end_address 的值相同。
     BlockJumpEqZero {
         block_type: BlockType,
+        block_index: usize,
         alternate_address: usize,
         end_address: usize,
     },
@@ -78,12 +81,12 @@ pub enum Control {
     /// 跳转到当前栈帧层的其他地址，当数量 >0 时，表示需要弹出相应的栈帧数量。
     /// 对应 else/br/return 指令
     /// 显然对于 else 指令，relative_depth 的值为 0.
-    Jump(/* relative_depth */ usize, /* addr */ usize),
+    Jump(/* relative_depth */ usize, /* address */ usize),
 
     /// 跳转到指定的地址
     /// 跟 Jump 指令类似，但仅当原栈顶的数值不等于 0 时才跳转，否则什么事都不做
     /// 对应 br_if 指令
-    JumpNotEqZero(/* relative_depth */ usize, /* addr */ usize),
+    JumpNotEqZero(/* relative_depth */ usize, /* address */ usize),
 
     /// 重复执行当前结构块
     /// 对应 br 跳转到 loop 结构块的情况
@@ -91,9 +94,9 @@ pub enum Control {
     ///   不需要弹出/压入参数，也不需要弹出/压入栈帧
     /// - 如果 relative_depth 大于 0，则需要弹出目标 loop 结构块所需要的参数，
     ///   然后弹出跟 relative_depth 的值一样数量的栈帧，再压入实参，然而还是不需要创建新的栈帧
-    Recur(/* relative_depth */ usize, /* addr */ usize),
+    Recur(/* relative_depth */ usize, /* address */ usize),
 
-    RecurNotEqZero(/* relative_depth */ usize, /* addr */ usize),
+    RecurNotEqZero(/* relative_depth */ usize, /* address */ usize),
 
     /// 原 `br_table 指令`
     Branch(Vec<BranchTarget>, BranchTarget),

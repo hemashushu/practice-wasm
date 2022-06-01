@@ -180,13 +180,13 @@ impl VMStack {
     }
 
     /// 对于弹出 bool 值的约定：
-    /// 使用 0 （i32 或者 i64）表示 false，
-    /// 使用非零（i32 或者 i64）表示 true。
+    /// 如果数值为 i32 0，则表示 false，
+    /// 如果数值为 i32 非零，则表示 true。
     pub fn pop_bool(&mut self) -> Result<bool, EngineError> {
         match self.pop() {
-            Value::I32(0) | Value::I64(0) => Ok(false),
-            Value::F32(_) | Value::F64(_) => Err(EngineError::InvalidOperation(
-                "expected i32 or i64 for bool value".to_string(),
+            Value::I32(0) => Ok(false),
+            Value::I64(_) | Value::F32(_) | Value::F64(_) => Err(EngineError::InvalidOperation(
+                "expected i32 for bool value".to_string(),
             )),
             _ => Ok(true),
         }

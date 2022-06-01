@@ -38,13 +38,13 @@
 //!
 //! - block (block_type, end_addr)
 //! - block_jump_eq_zero (block_type, alternate_addr, end_addr)
-//! - jump (relative_depth, addr)
-//! - jump_not_eq_zero (relative_depth, addr)
-//! - recur (relative_depth, addr)
-//! - recur_not_eq_zero (relative_depth, addr)
-//! - branch ([branch_target::jump(relative_depth, addr)], branch_target::recur(relative_depth, addr))
-//! - call_internal (type_index, function_index, addr)
-//! - call_external (module_index, type_index, function_index, addr)
+//! - jump (relative_depth, address)
+//! - jump_not_eq_zero (relative_depth, address)
+//! - recur (relative_depth, address)
+//! - recur_not_eq_zero (relative_depth, address)
+//! - branch ([branch_target::jump(relative_depth, address)], branch_target::recur(relative_depth, address))
+//! - call_internal (type_index, function_index, address)
+//! - call_external (module_index, type_index, function_index, address)
 //! - call_native (module_index, type_index, function_index)
 //! - dynamic_call (type_index, table_index)
 //! - return
@@ -98,34 +98,39 @@ pub fn transform(
             for original_instruction in original_instructions {
                 let instruction = match original_instruction {
                     instruction::Instruction::Block(block_type, block_index) => {
-                        block_index_stack.push(*block_index as usize);
+                        let block_index_usize = *block_index as usize;
+                        block_index_stack.push(block_index_usize);
 
                         // 获取 block 结构块当中的 `end 指令` 所在的位置
-                        let block_location = &block_locations[*block_index as usize];
+                        let block_location = &block_locations[block_index_usize];
                         let end_index = block_location.end_index;
 
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
+                            block_index: block_index_usize,
                             end_address: function_addr_offset + end_index,
                         })
                     }
                     instruction::Instruction::Loop(block_type, block_index) => {
-                        block_index_stack.push(*block_index as usize);
+                        let block_index_usize = *block_index as usize;
+                        block_index_stack.push(block_index_usize);
 
                         // 获取 loop 结构块当中的 `end 指令` 所在的位置
-                        let block_location = &block_locations[*block_index as usize];
+                        let block_location = &block_locations[block_index_usize];
                         let end_index = block_location.end_index;
 
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
+                            block_index: block_index_usize,
                             end_address: function_addr_offset + end_index,
                         })
                     }
                     instruction::Instruction::If(block_type, block_index) => {
-                        block_index_stack.push(*block_index as usize);
+                        let block_index_usize = *block_index as usize;
+                        block_index_stack.push(block_index_usize);
 
                         // 获取 if 结构块当中的 `else 指令` 所在的位置
-                        let block_location = &block_locations[*block_index as usize];
+                        let block_location = &block_locations[block_index_usize];
                         let else_index = block_location.middle_index;
                         let end_index = block_location.end_index;
 
@@ -138,6 +143,7 @@ pub fn transform(
 
                         Instruction::Control(Control::BlockJumpEqZero {
                             block_type: block_type.to_owned(),
+                            block_index: block_index_usize,
                             alternate_address: function_addr_offset + alternate_addr,
                             end_address: function_addr_offset + end_index,
                         })
@@ -457,33 +463,33 @@ fn get_function_block_locations(code_item: &CodeItem) -> Vec<BlockLocation> {
     let mut indexed_block_locations: Vec<IndexedBlockLocation> = vec![]; // 未排序的
     let mut block_stack: Vec<IndexedBlockLocation> = vec![];
 
-    for (addr, instruction) in code_item.instruction_items.iter().enumerate() {
+    for (address, instruction) in code_item.instruction_items.iter().enumerate() {
         match instruction {
             instruction::Instruction::Block(_, block_index) => {
                 block_stack.push(IndexedBlockLocation::new(
                     BlockStructureType::Block,
                     *block_index as usize,
-                    addr,
+                    address,
                 ));
             }
             instruction::Instruction::Loop(_, block_index) => {
                 block_stack.push(IndexedBlockLocation::new(
                     BlockStructureType::Loop,
                     *block_index as usize,
-                    addr,
+                    address,
                 ));
             }
             instruction::Instruction::If(_, block_index) => {
                 block_stack.push(IndexedBlockLocation::new(
                     BlockStructureType::If,
                     *block_index as usize,
-                    addr,
+                    address,
                 ));
             }
             instruction::Instruction::Else => {
                 let stack_last_index = block_stack.len() - 1;
                 let indexed_block_location = &mut block_stack[stack_last_index];
-                indexed_block_location.block_location.middle_index = addr;
+                indexed_block_location.block_location.middle_index = address;
             }
             instruction::Instruction::End => {
                 // 函数的指令序列最后一个指令，即 `end 指令` 不属于结构块，所以需要排除
@@ -491,7 +497,7 @@ fn get_function_block_locations(code_item: &CodeItem) -> Vec<BlockLocation> {
                 if block_stack.len() > 0 {
                     let stack_last_index = block_stack.len() - 1;
                     let indexex_block_location = &mut block_stack[stack_last_index];
-                    indexex_block_location.block_location.end_index = addr;
+                    indexex_block_location.block_location.end_index = address;
 
                     // 弹出一项并移入 indexed_block_locations
                     let last_indexed_block_location = block_stack.pop().unwrap();
@@ -884,6 +890,7 @@ mod tests {
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #03
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 0,
                 end_address: 28,
             }), // #04 - block 0
             Instruction::Control(Control::Jump(0, 28)),                   // #05
@@ -891,6 +898,7 @@ mod tests {
             Instruction::Control(Control::Jump(1, 35)),                   // #07
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 1,
                 end_address: 24,
             }), // #08 - block 1 - loop
             Instruction::Control(Control::Recur(0, 8)),                   // #09
@@ -899,6 +907,7 @@ mod tests {
             Instruction::Control(Control::Jump(2, 35)),                   // #12
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 2,
                 end_address: 19,
             }), // #13 - block 2
             Instruction::Control(Control::Jump(0, 19)),                   // #14
@@ -928,20 +937,24 @@ mod tests {
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #37
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 0,
                 end_address: 80,
             }), // #38 - block 0
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 1,
                 end_address: 42,
             }), // #39 - block 1 loop
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 2,
                 end_address: 41,
             }), // #40 - block 2
             Instruction::Control(Control::Return),                        // #41 - block 2 end
             Instruction::Control(Control::Return),                        // #42 - block 1 end
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 3,
                 end_address: 77,
             }), // #43 - block 3
             Instruction::Control(Control::Jump(0, 77)),                   // #44
@@ -949,6 +962,7 @@ mod tests {
             Instruction::Control(Control::Jump(2, 85)),                   // #46
             Instruction::Control(Control::BlockJumpEqZero {
                 block_type: BlockType::ResultEmpty,
+                block_index: 4,
                 alternate_address: 60,
                 end_address: 73,
             }), // #47 - block 4 if
@@ -958,6 +972,7 @@ mod tests {
             Instruction::Control(Control::Jump(3, 85)),                   // #51
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 5,
                 end_address: 59,
             }), // #52 - block 5
             Instruction::Control(Control::Jump(0, 59)),                   // #53
@@ -974,6 +989,7 @@ mod tests {
             Instruction::Control(Control::Jump(3, 85)), // #64
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 6,
                 end_address: 72,
             }), // #65 - block 6
             Instruction::Control(Control::Jump(0, 72)), // #66
@@ -1001,6 +1017,7 @@ mod tests {
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #87
             Instruction::Control(Control::BlockJumpEqZero {
                 block_type: BlockType::ResultEmpty,
+                block_index: 0,
                 alternate_address: 101,
                 end_address: 101,
             }), // #88 - block 0
@@ -1009,6 +1026,7 @@ mod tests {
             Instruction::Control(Control::Jump(1, 104)),                  // #91
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 1,
                 end_address: 97,
             }), // #92 - block 1
             Instruction::Control(Control::Jump(0, 97)),                   // #93
@@ -1075,16 +1093,19 @@ mod tests {
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 0,
                 end_address: 13,
             }), // #01 - block 0
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 1,
                 end_address: 12,
             }), // #03 - block 1 - loop
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #04
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 2,
                 end_address: 11,
             }), // #05 - block 2
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #06
@@ -1146,16 +1167,19 @@ mod tests {
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 0,
                 end_address: 10,
             }), // #01 - block 0
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 1,
                 end_address: 9,
             }), // #03 - block 1 - loop
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #04
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
+                block_index: 2,
                 end_address: 8,
             }), // #05 - block 2
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #06

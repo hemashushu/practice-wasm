@@ -1,20 +1,33 @@
 (module
+    ;; call return_8, for testing stack call frame
+    (func $0 (result i32)
+        (i32.const 1)
+        (call $return_8)
+        (i32.const 2)
+    )
+
     ;; call max
-    (func $0 (param i32 i32) (result i32)
+    (func $1 (param i32 i32) (result i32)
         (local.get 0)
         (local.get 1)
         (call $max)
     )
 
-    (func $1 (param i32) (result i32)
+    ;; call abs
+    (func $2 (param i32) (result i32)
         (local.get 0)
         (call $abs)
     )
 
-    (func $2 (param i32 i32) (result i32)
+    ;; call abs_max
+    (func $3 (param i32 i32) (result i32)
         (local.get 0)
         (local.get 1)
         (call $abs_max)
+    )
+
+    (func $return_8 (result i32)
+        (i32.const 8)
     )
 
     (func $abs (param i32) (result i32)

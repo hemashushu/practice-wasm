@@ -21,12 +21,15 @@ use crate::{
     vm_table::VMTable,
 };
 
-/// VM 的状态信息
+/// VM 的当前状态信息
 ///
 /// VM 的状态信息主要有两个：
 ///
 /// - 当前栈帧的位置信息（fp, lp, bp）
 /// - 当前指令的位置信息（即 pc，这里由 vm_module_index，function_index，program_counter 3 个变量组成）
+///
+/// 当创建一个新的栈帧时，VM 的状态会保存到栈帧的信息段里。
+/// 当弹出一个栈帧时，栈帧的信息段里的数据会恢复到 VM 的状态。
 pub struct Status {
     /// 当前栈帧的开始地址
     ///
@@ -51,7 +54,7 @@ pub struct Status {
     ///
     /// 当前栈帧开始的一段是函数调用的实参以及局部变量，然后
     /// 是一段固定大小的关于上一帧的信息，诸如上一个栈帧的
-    /// fp, lp, bp, ra(包括 vm index, func index, addr) 等信息，
+    /// fp, lp, bp, ra (包括 vm module index, function index, address) 等信息，
     /// 最后才是一段运算操作数。
     ///
     /// base_pointer 记录局部变量列表的结束位置，从而可以让
@@ -95,15 +98,18 @@ pub struct Status {
     pub address: usize,
 }
 
+// 设定一个特殊的初始值，表示 vm 尚未开始任何函数调用
+pub const INITIAL_FRAME_POINTER: usize = (0 - 1) as usize;
+
 impl Status {
     pub fn new() -> Self {
         Self {
-            frame_pointer: 0,
-            local_pointer: 0,
-            base_pointer: 0,
+            frame_pointer: INITIAL_FRAME_POINTER, // 设定一个特殊的初始值，表示 vm 尚未开始任何函数调用
+            local_pointer: INITIAL_FRAME_POINTER,
+            base_pointer: INITIAL_FRAME_POINTER,
             vm_module_index: 0,
             function_index: 0,
-            frame_type: BlockType::ResultEmpty,
+            frame_type: BlockType::TypeIndex(0),
             address: 0,
         }
     }
@@ -171,7 +177,7 @@ impl VM {
         match result {
             CallFunctionResult::Immediate(values) => Ok(values),
             CallFunctionResult::Standby(result_count) => {
-                self.recur_without_break();
+                self.recur_without_break()?;
                 Ok(self.pop_results(result_count))
             }
         }
@@ -377,14 +383,11 @@ impl VM {
     /// 之后，函数返回 true，否则返回 false。
     pub fn step(&mut self) -> Result<bool, EngineError> {
         let vm_module_index = self.status.vm_module_index;
-        let addr = self.status.address;
+        let address = self.status.address;
 
-        let instruction = self.resource.vm_modules[vm_module_index].instructions[addr].to_owned();
+        let instruction =
+            self.resource.vm_modules[vm_module_index].instructions[address].to_owned();
         let is_program_end = interpreter::exec_instruction(self, &instruction)?;
-
-        // if !is_program_end {
-        //     self.status.program_counter += 1;
-        // }
 
         Ok(is_program_end)
     }
@@ -487,43 +490,17 @@ impl VM {
             }
         }
 
+        let (frame_type_class, frame_type_value) = convert_from_frame_type(&previous_frame_type);
+
         // 写信息段
         stack.push(previous_frame_pointer.into());
         stack.push(previous_local_pointer.into());
         stack.push(previous_base_pointer.into());
         stack.push(return_vm_module_index.into());
         stack.push(return_function_index.into());
-
-        // 使用两个 Value::I64 来记录 frame_type
-        match previous_frame_type {
-            BlockType::ResultEmpty => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(0));
-            }
-            BlockType::ResultI32 => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(1));
-            }
-            BlockType::ResultI64 => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(2));
-            }
-            BlockType::ResultF32 => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(3));
-            }
-            BlockType::ResultF64 => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(4));
-            }
-            BlockType::TypeIndex(value) => {
-                stack.push(Value::I64(0)); // class 0
-                stack.push(Value::I64(value as i64));
-            }
-        }
-
+        stack.push(frame_type_class.into()); // 使用两个 Value::I64 来记录 frame_type
+        stack.push(frame_type_value.into());
         stack.push(return_address.into());
-        // stack.push(result_count.into());
 
         // 更新 status
         status.frame_pointer = frame_pointer;
@@ -562,43 +539,17 @@ impl VM {
         // 两个数值是一样的
         let base_pointer = previous_stack_pointer;
 
+        let (frame_type_class, frame_type_value) = convert_from_frame_type(&previous_frame_type);
+
         // 写信息段
         stack.push(previous_frame_pointer.into());
         stack.push(previous_local_pointer.into());
         stack.push(previous_base_pointer.into());
         stack.push(return_vm_module_index.into());
         stack.push(return_function_index.into());
-
-        // 使用两个 Value::I64 来记录 frame_type
-        match previous_frame_type {
-            BlockType::ResultEmpty => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(0));
-            }
-            BlockType::ResultI32 => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(1));
-            }
-            BlockType::ResultI64 => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(2));
-            }
-            BlockType::ResultF32 => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(3));
-            }
-            BlockType::ResultF64 => {
-                stack.push(Value::I64(1)); // class 1
-                stack.push(Value::I64(4));
-            }
-            BlockType::TypeIndex(value) => {
-                stack.push(Value::I64(0)); // class 0
-                stack.push(Value::I64(value as i64));
-            }
-        }
-
+        stack.push(frame_type_class.into()); // 使用两个 Value::I64 来记录 frame_type
+        stack.push(frame_type_value.into());
         stack.push(return_address.into());
-        // stack.push(result_count.into());
 
         // 更新 status
         status.frame_pointer = frame_pointer;
@@ -614,8 +565,6 @@ impl VM {
         &mut self,
         result_count: usize,
     ) -> (
-        /* is_call_frame */ bool,
-        /* is_program_end */ bool,
         /* return_vm_module_index */ usize,
         /* return_function_index */ usize,
         /* frame_type */ BlockType,
@@ -628,22 +577,19 @@ impl VM {
         let local_pointer = status.local_pointer;
         let base_pointer = status.base_pointer;
 
-        // 如果 fp 和 lp 的值相同，则说明当前是调用帧，否则则是流程控制的结构块帧
-        let is_call_frame = frame_pointer == local_pointer;
-
         let stack = &mut self.stack;
 
         // 读取信息段
         let previous_frame_pointer: usize = stack.get_value(base_pointer).into();
         let previous_local_pointer: usize = stack.get_value(base_pointer + 1).into();
         let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
+
         let return_vm_module_index: usize = stack.get_value(base_pointer + 3).into();
         let return_function_index: usize = stack.get_value(base_pointer + 4).into();
 
         // 使用两个 Value::I64 来还原 frame_type
         let frame_type_class: usize = stack.get_value(base_pointer + 5).into();
         let frame_type_value: usize = stack.get_value(base_pointer + 6).into();
-
         let return_address: usize = stack.get_value(base_pointer + 7).into();
 
         // 先保存一份返回值
@@ -660,35 +606,9 @@ impl VM {
         status.local_pointer = previous_local_pointer;
         status.base_pointer = previous_base_pointer;
 
-        // status.vm_module_index = return_vm_module_index;
-        // status.function_index = return_function_index;
+        let frame_type = convert_to_frame_type(frame_type_class, frame_type_value);
 
-        let frame_type = {
-            match frame_type_class {
-                // class 0
-                0 => match frame_type_value {
-                    0 => BlockType::ResultEmpty,
-                    1 => BlockType::ResultI32,
-                    2 => BlockType::ResultI64,
-                    3 => BlockType::ResultF32,
-                    4 => BlockType::ResultF64,
-                    _ => unreachable!(),
-                },
-                // class 1
-                1 => BlockType::TypeIndex(frame_type_value as u32),
-                _ => unreachable!(),
-            }
-        };
-
-        // status.program_counter = return_address;
-
-        // 如果 previous_frame_pointer 的值等于 0，说明当前栈帧是
-        // 首个函数调用的栈帧，也就是说，当这个帧弹出之后，所有栈帧都已经弹出，
-        // 意味着所有函数调用已经执行完毕，即程序已经结束。
-        let is_program_end = previous_frame_pointer == 0;
         (
-            is_call_frame,
-            is_program_end,
             return_vm_module_index,
             return_function_index,
             frame_type,
@@ -727,5 +647,50 @@ impl VM {
                 "the constant expression is empty".to_string(),
             ))
         }
+    }
+}
+
+fn convert_from_frame_type(
+    block_type: &BlockType,
+) -> (
+    /* frame_type_class */ usize,
+    /* frame_type_value */ usize,
+) {
+    match block_type {
+        BlockType::ResultEmpty => {
+            (1, 0) // class 1
+        }
+        BlockType::ResultI32 => {
+            (1, 1) // class 1
+        }
+        BlockType::ResultI64 => {
+            (1, 2) // class 1
+        }
+        BlockType::ResultF32 => {
+            (1, 3) // class 1
+        }
+        BlockType::ResultF64 => {
+            (1, 4) // class 1
+        }
+        BlockType::TypeIndex(value) => {
+            (0, *value as usize) // class 0
+        }
+    }
+}
+
+fn convert_to_frame_type(frame_type_class: usize, frame_type_value: usize) -> BlockType {
+    match frame_type_class {
+        // class 1
+        1 => match frame_type_value {
+            0 => BlockType::ResultEmpty,
+            1 => BlockType::ResultI32,
+            2 => BlockType::ResultI64,
+            3 => BlockType::ResultF32,
+            4 => BlockType::ResultF64,
+            _ => unreachable!(),
+        },
+        // class 0
+        0 => BlockType::TypeIndex(frame_type_value as u32),
+        _ => unreachable!(),
     }
 }

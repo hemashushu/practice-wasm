@@ -29,5 +29,6 @@ mod ins_variable;
 mod ins_memory;
 mod ins_control;
 mod ins_function;
+mod ins_block;
 
 pub mod instance;

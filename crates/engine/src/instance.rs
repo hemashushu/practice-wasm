@@ -900,38 +900,44 @@ mod tests {
     fn test_function_call() {
         let module_name = "test-function-call.wasm";
 
+        // test stack call frame
+        assert_eq!(eval(module_name, 0, &vec![]).unwrap(), vec![Value::I32(2)]);
+
+        // call max
         assert_eq!(
-            eval(module_name, 0, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
+            eval(module_name, 1, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
             vec![Value::I32(66)]
         );
         assert_eq!(
-            eval(module_name, 0, &vec![Value::I32(66), Value::I32(55)]).unwrap(),
+            eval(module_name, 1, &vec![Value::I32(66), Value::I32(55)]).unwrap(),
             vec![Value::I32(66)]
         );
 
+        // call abs
         assert_eq!(
-            eval(module_name, 1, &vec![Value::I32(123)]).unwrap(),
+            eval(module_name, 2, &vec![Value::I32(123)]).unwrap(),
             vec![Value::I32(123)]
         );
         assert_eq!(
-            eval(module_name, 1, &vec![Value::I32(-123)]).unwrap(),
+            eval(module_name, 2, &vec![Value::I32(-123)]).unwrap(),
             vec![Value::I32(123)]
         );
 
+        // call abs_max
         assert_eq!(
-            eval(module_name, 2, &vec![Value::I32(-55), Value::I32(66)]).unwrap(),
+            eval(module_name, 3, &vec![Value::I32(-55), Value::I32(66)]).unwrap(),
             vec![Value::I32(66)]
         );
         assert_eq!(
-            eval(module_name, 2, &vec![Value::I32(55), Value::I32(-66)]).unwrap(),
+            eval(module_name, 3, &vec![Value::I32(55), Value::I32(-66)]).unwrap(),
             vec![Value::I32(-66)]
         );
         assert_eq!(
-            eval(module_name, 2, &vec![Value::I32(55), Value::I32(-44)]).unwrap(),
+            eval(module_name, 3, &vec![Value::I32(55), Value::I32(-44)]).unwrap(),
             vec![Value::I32(55)]
         );
         assert_eq!(
-            eval(module_name, 2, &vec![Value::I32(-55), Value::I32(44)]).unwrap(),
+            eval(module_name, 3, &vec![Value::I32(-55), Value::I32(44)]).unwrap(),
             vec![Value::I32(-55)]
         );
     }

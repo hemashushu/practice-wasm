@@ -54,7 +54,7 @@
 //! - br -> Recur
 //! - br_if -> JumpNotEqZero
 //! - br_if -> RecurNotEqZero
-//! - br_table -> Branch ([BranchTarget::Jump(relative_depth, addr)], BranchTarget::Recur(relative_depth, addr))
+//! - br_table -> Branch ([BranchTarget::Jump(relative_depth, address)], BranchTarget::Recur(relative_depth, address))
 //! - call -> CallInternal/CallExternal/CallNative
 //! - call_indirect -> DynamicCall
 //! - end -> Return
@@ -156,7 +156,7 @@ use crate::{
     vm_stack::INFO_SEGMENT_ITEM_COUNT,
 };
 
-pub fn do_call_module_function(
+pub fn call_function(
     vm: &mut VM,
     vm_module_index: usize,
     type_index: usize,
@@ -226,7 +226,7 @@ pub fn do_call_module_function(
     Ok(control_result)
 }
 
-pub fn do_call_native_function(
+pub fn call_native(
     vm: &mut VM,
     native_module_index: usize,
     type_index: usize,
@@ -255,11 +255,6 @@ pub fn do_call_native_function(
 
     // 核对实参的数据类型和数量
     match check_value_types(&arguments, &parameter_types) {
-        Err(ValueTypeCheckError::LengthMismatch) => {
-            return Err(EngineError::InvalidOperation(format!(
-                "failed to call function {} (native module {}). The number of parameters does not match, expected: {}, actual: {}",
-                function_index, native_module_index, parameter_count, arguments.len())));
-        }
         Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
             return Err(EngineError::InvalidOperation(format!(
                 "failed to call function {} (native module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
@@ -310,15 +305,15 @@ pub fn do_call_native_function(
 /// 注：
 /// 先弹出的参数放在参数列表的右边（大索引端），
 /// 对于返回值，左边（小索引端）的数值先压入。
-fn pop_arguments(vm: &mut VM, argument_count: usize) -> Vec<Value> {
+pub fn pop_arguments(vm: &mut VM, argument_count: usize) -> Vec<Value> {
     vm.stack.pop_values(argument_count)
 }
 
-fn push_results(vm: &mut VM, results: &[Value]) {
+pub fn push_results(vm: &mut VM, results: &[Value]) {
     vm.stack.push_values(results)
 }
 
-pub fn do_dynamic_call(
+pub fn dynamic_call(
     vm: &mut VM,
     type_index: usize,
     table_index: usize,
@@ -426,7 +421,7 @@ pub fn do_dynamic_call(
             type_index,
             start_index,
             end_index,
-        } => do_call_module_function(
+        } => call_function(
             vm,
             vm_module_index,
             type_index,
@@ -441,7 +436,7 @@ pub fn do_dynamic_call(
             internal_function_index,
             start_index,
             end_index,
-        } => do_call_module_function(
+        } => call_function(
             vm,
             vm_module_index,
             type_index,
@@ -453,6 +448,6 @@ pub fn do_dynamic_call(
             native_module_index,
             type_index,
             function_index,
-        } => do_call_native_function(vm, native_module_index, type_index, function_index),
+        } => call_native(vm, native_module_index, type_index, function_index),
     }
 }

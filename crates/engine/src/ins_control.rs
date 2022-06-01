@@ -13,7 +13,7 @@
 //! - br -> Recur
 //! - br_if -> JumpNotEqZero
 //! - br_if -> RecurNotEqZero
-//! - br_table -> Branch ([BranchTarget::Jump(relative_depth, addr)], BranchTarget::Recur(relative_depth, addr))
+//! - br_table -> Branch ([BranchTarget::Jump(relative_depth, address)], BranchTarget::Recur(relative_depth, address))
 //! - call -> CallInternal/CallExternal/CallNative
 //! - call_indirect -> DynamicCall
 //! - end -> Return
@@ -23,7 +23,7 @@ use anvm_ast::{
     types::{check_value_types, ValueType, ValueTypeCheckError},
 };
 
-use crate::{error::EngineError, vm::VM, vm_stack::INFO_SEGMENT_ITEM_COUNT};
+use crate::{error::EngineError, vm::{VM, INITIAL_FRAME_POINTER}, vm_stack::INFO_SEGMENT_ITEM_COUNT};
 
 pub enum ControlResult {
     Sequence,
@@ -53,10 +53,15 @@ pub enum ControlResult {
     ProgramEnd,
 }
 
-pub fn do_return(vm: &mut VM) -> Result<ControlResult, EngineError> {
+pub fn process_return(vm: &mut VM) -> Result<ControlResult, EngineError> {
     let frame_type = &vm.status.frame_type;
     let vm_module_index = vm.status.vm_module_index;
     let function_index = vm.status.function_index;
+
+    // 如果 fp 和 lp 的值相同，则说明当前是调用帧，否则则是流程控制的结构块帧
+    let frame_pointer = vm.status.frame_pointer;
+    let local_pointer = vm.status.local_pointer;
+    let is_call_frame = frame_pointer == local_pointer;
 
     // 获取当前帧的返回值类型
     let result_types = {
@@ -102,10 +107,15 @@ pub fn do_return(vm: &mut VM) -> Result<ControlResult, EngineError> {
         }
     }
 
-    let (is_call_frame, is_program_end, vm_module_index, function_index, frame_type, address) =
+    let (vm_module_index, function_index, frame_type, address) =
         vm.pop_frame(result_count);
 
-    // let is_program_end = vm.pop_frame(result_count);
+    // 上一句 vm.pop_frame() 调用已经更新了 vm.status。
+    // 如果 vm.status.frame_pointer 的值等于 0，说明刚才弹出的栈帧是
+    // 首个函数调用的栈帧，也就是说，当这个帧弹出之后，所有栈帧都已经弹出，
+    // 意味着所有函数调用已经执行完毕，即程序已经结束。
+    let is_program_end = vm.status.frame_pointer == INITIAL_FRAME_POINTER;
+
     if is_program_end {
         Ok(ControlResult::ProgramEnd)
     } else {

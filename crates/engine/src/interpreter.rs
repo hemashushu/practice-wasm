@@ -8,7 +8,7 @@ use anvm_ast::instruction::Instruction;
 
 use crate::{
     error::EngineError,
-    ins_const,
+    ins_block, ins_const,
     ins_control::{self, ControlResult},
     ins_function::{self},
     ins_memory, ins_numeric_binary, ins_numeric_comparsion, ins_numeric_convert, ins_numeric_eqz,
@@ -262,7 +262,10 @@ pub fn exec_instruction(
         }
         object::Instruction::Control(control) => {
             let control_result = match control {
-                Control::Return => ins_control::do_return(vm),
+                // 控制指令
+                Control::Return => ins_control::process_return(vm),
+
+                // 函数调用指令
                 Control::CallInternal {
                     type_index,
                     function_index,
@@ -270,7 +273,7 @@ pub fn exec_instruction(
                     address,
                 } => {
                     let vm_module_index = vm.status.vm_module_index;
-                    ins_function::do_call_module_function(
+                    ins_function::call_function(
                         vm,
                         vm_module_index,
                         *type_index,
@@ -285,7 +288,7 @@ pub fn exec_instruction(
                     function_index,
                     internal_function_index,
                     address,
-                } => ins_function::do_call_module_function(
+                } => ins_function::call_function(
                     vm,
                     *vm_module_index,
                     *type_index,
@@ -297,7 +300,7 @@ pub fn exec_instruction(
                     native_module_index,
                     type_index,
                     function_index,
-                } => ins_function::do_call_native_function(
+                } => ins_function::call_native(
                     vm,
                     *native_module_index,
                     *type_index,
@@ -306,8 +309,39 @@ pub fn exec_instruction(
                 Control::DynamicCall {
                     type_index,
                     table_index,
-                } => ins_function::do_dynamic_call(vm, *type_index, *table_index),
-                _ => {
+                } => ins_function::dynamic_call(vm, *type_index, *table_index),
+
+                // 流程结构控制指令
+                Control::Block {
+                    block_type,
+                    block_index,
+                    end_address,
+                } => ins_block::block(vm, block_type.to_owned(), *block_index, *end_address),
+                Control::BlockJumpEqZero {
+                    block_type,
+                    block_index,
+                    alternate_address,
+                    end_address,
+                } => ins_block::block_jump_eq_zero(
+                    vm,
+                    block_type.to_owned(),
+                    *block_index,
+                    *alternate_address,
+                    *end_address,
+                ),
+                Control::Jump(relative_depth, address) => {
+                    todo!()
+                }
+                Control::JumpNotEqZero(relative_depth, address) => {
+                    todo!()
+                }
+                Control::Recur(relative_depth, address) => {
+                    todo!()
+                }
+                Control::RecurNotEqZero(relative_depth, address) => {
+                    todo!()
+                }
+                Control::Branch(branch_targets, branch_target) => {
                     todo!()
                 }
             };
