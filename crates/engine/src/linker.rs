@@ -29,8 +29,8 @@ pub enum FunctionLocation {
     Internal {
         internal_function_index: usize,
         type_index: usize,
-        start_index: usize,
-        end_index: usize, // 函数 `end 指令` 所在的位置
+        start_address: usize,
+        end_address: usize, // 函数 `end 指令` 所在的位置
     },
 }
 
@@ -178,15 +178,15 @@ pub fn link_functions(
                                 }
                                 FunctionLocation::Internal {
                                     internal_function_index,
-                                    type_index: type_index_target_module,
-                                    start_index,
-                                    end_index,
+                                    type_index: target_type_index,
+                                    start_address,
+                                    end_address,
                                 } => {
                                     // 目标函数是外部模块的内部函数
 
                                     // 检查函数的实际类型跟导入时声明的类型是否匹配
                                     let actual_type_item =
-                                        &target_ast_module.type_items[*type_index_target_module];
+                                        &target_ast_module.type_items[*target_type_index];
 
                                     if expected_type_item != actual_type_item {
                                         return Err(EngineError::InvalidOperation(
@@ -195,12 +195,12 @@ pub fn link_functions(
                                     }
 
                                     let function_item = FunctionItem::External {
-                                        type_index: *type_index_target_module,
+                                        type_index: *target_type_index,
                                         vm_module_index: target_ast_module_index,
                                         function_index: target_function_index,
                                         internal_function_index: *internal_function_index,
-                                        start_index: *start_index,
-                                        end_index: *end_index,
+                                        start_address: *start_address,
+                                        end_address: *end_address,
                                     };
                                     break function_item;
                                 }
@@ -211,13 +211,13 @@ pub fn link_functions(
                 FunctionLocation::Internal {
                     internal_function_index,
                     type_index,
-                    start_index,
-                    end_index,
+                    start_address,
+                    end_address,
                 } => FunctionItem::Internal {
                     type_index: *type_index,
                     internal_function_index: *internal_function_index,
-                    start_index: *start_index,
-                    end_index: *end_index,
+                    start_address: *start_address,
+                    end_address: *end_address,
                 },
             };
 
@@ -264,8 +264,8 @@ fn get_ast_module_internal_function_locations(ast_module: &ast::Module) -> Vec<F
         let function_location = FunctionLocation::Internal {
             internal_function_index,
             type_index: *type_index as usize,
-            start_index: function_addr_offset,
-            end_index: function_addr_offset + instruction_count - 1,
+            start_address: function_addr_offset,
+            end_address: function_addr_offset + instruction_count - 1,
         };
         function_locations.push(function_location);
 

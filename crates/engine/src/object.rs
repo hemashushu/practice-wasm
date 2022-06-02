@@ -38,14 +38,35 @@ pub enum FunctionItem {
         type_index: usize, // 目标函数在目标模块当中的类型索引
         function_index: usize,
         internal_function_index: usize, // 目标函数在目标模块当中的内部函数列表里的索引
-        start_index: usize,
-        end_index: usize, // 函数 `end 指令` 所在的位置
+        start_address: usize,
+        end_address: usize, // 函数 `end 指令` 所在的位置
     },
     Internal {
         internal_function_index: usize, // 函数在模块当中的内部函数列表里的索引
         type_index: usize,
-        start_index: usize,
-        end_index: usize, // 函数 `end 指令` 所在的位置
+        start_address: usize,
+        end_address: usize, // 函数 `end 指令` 所在的位置
+    },
+}
+
+/// 函数当中的流程控制结构块的信息
+#[derive(Debug, PartialEq, Clone)]
+pub enum BlockItem {
+    Block {
+        block_type: BlockType,
+        start_address: usize,
+        end_address: usize,
+    },
+    Loop {
+        block_type: BlockType,
+        start_address: usize,
+        end_address: usize,
+    },
+    If {
+        block_type: BlockType,
+        start_address: usize,
+        end_address: usize,
+        alternate_address: Option<usize>, // 有些 if 结构块缺少 else 结构
     },
 }
 
@@ -162,6 +183,12 @@ pub enum Control {
     },
 
     /// 原 `end 指令`，表示函数或者结构块结束
+    ///
+    /// 参数是流程控制结构块的索引，对于函数的结束指令（即函数最后一条指令，`end 指令`）
+    /// 它的参数值是 None。
+    /// 这个结构块索引只用于调式程序时方便定位出错的结构位置信息（相比于地址信息，结构信息
+    /// 有时更加直观），对程序的解析运行无影响。
+    // Return(Option<usize>),
     Return,
 }
 

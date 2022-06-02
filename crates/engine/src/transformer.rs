@@ -49,11 +49,14 @@
 //! - dynamic_call (type_index, table_index)
 //! - return
 
-use anvm_ast::{ast::CodeItem, instruction};
+use anvm_ast::{
+    ast::CodeItem,
+    instruction::{self, BlockType},
+};
 
 use crate::{
     error::EngineError,
-    object::{BranchTarget, Control, FunctionItem, Instruction, NamedAstModule},
+    object::{BlockItem, BranchTarget, Control, FunctionItem, Instruction, NamedAstModule},
 };
 
 /// 将 AST 模块当中的函数指令序列编译为虚拟机能直接解析运行的指令
@@ -85,30 +88,39 @@ pub fn transform(
         // 转换一个模块
 
         let mut instructions: Vec<Instruction> = vec![];
-        let mut function_addr_offset: usize = 0;
+        let mut function_address_offset: usize = 0;
 
         for code_item in &ast_module.module.code_items {
             // 转换一个函数
 
             // 先对一个函数的指令序列扫描一次，以获取内部结构块信息（主要是为了获取 else 和 end 指令的位置）
-            let block_locations = get_function_block_locations(code_item);
+            let block_items = get_function_block_items(code_item);
             let mut block_index_stack: Vec<usize> = vec![];
 
-            let original_instructions = &code_item.instruction_items;
-            for original_instruction in original_instructions {
-                let instruction = match original_instruction {
+            let function_original_instructions = &code_item.instruction_items;
+            for function_original_instruction in function_original_instructions {
+                let instruction = match function_original_instruction {
                     instruction::Instruction::Block(block_type, block_index) => {
                         let block_index_usize = *block_index as usize;
                         block_index_stack.push(block_index_usize);
 
                         // 获取 block 结构块当中的 `end 指令` 所在的位置
-                        let block_location = &block_locations[block_index_usize];
-                        let end_index = block_location.end_index;
+                        let block_item = &block_items[block_index_usize];
+                        let end_address = if let BlockItem::Block {
+                            block_type,
+                            start_address,
+                            end_address,
+                        } = block_item
+                        {
+                            end_address
+                        } else {
+                            unreachable!()
+                        };
 
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
                             block_index: block_index_usize,
-                            end_address: function_addr_offset + end_index,
+                            end_address: function_address_offset + end_address,
                         })
                     }
                     instruction::Instruction::Loop(block_type, block_index) => {
@@ -116,13 +128,22 @@ pub fn transform(
                         block_index_stack.push(block_index_usize);
 
                         // 获取 loop 结构块当中的 `end 指令` 所在的位置
-                        let block_location = &block_locations[block_index_usize];
-                        let end_index = block_location.end_index;
+                        let block_item = &block_items[block_index_usize];
+                        let end_address = if let BlockItem::Loop {
+                            block_type,
+                            start_address,
+                            end_address,
+                        } = block_item
+                        {
+                            end_address
+                        } else {
+                            unreachable!()
+                        };
 
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
                             block_index: block_index_usize,
-                            end_address: function_addr_offset + end_index,
+                            end_address: function_address_offset + end_address,
                         })
                     }
                     instruction::Instruction::If(block_type, block_index) => {
@@ -130,35 +151,63 @@ pub fn transform(
                         block_index_stack.push(block_index_usize);
 
                         // 获取 if 结构块当中的 `else 指令` 所在的位置
-                        let block_location = &block_locations[block_index_usize];
-                        let else_index = block_location.middle_index;
-                        let end_index = block_location.end_index;
+                        let block_item = &block_items[block_index_usize];
+                        let (end_address, option_alternate_address) = if let BlockItem::If {
+                            block_type,
+                            start_address,
+                            end_address,
+                            alternate_address,
+                        } = block_item
+                        {
+                            (end_address, alternate_address)
+                        } else {
+                            unreachable!()
+                        };
 
                         // 如果 if 结构块当中的缺少了 `else 指令`，则跳转目标为 `end 指令` 所在的位置
-                        let alternate_addr = if else_index == 0 {
-                            end_index
-                        } else {
-                            else_index
-                        };
+                        let alternate_address =
+                            if let Some(alternate_address) = option_alternate_address {
+                                alternate_address
+                            } else {
+                                end_address
+                            };
 
                         Instruction::Control(Control::BlockJumpEqZero {
                             block_type: block_type.to_owned(),
                             block_index: block_index_usize,
-                            alternate_address: function_addr_offset + alternate_addr,
-                            end_address: function_addr_offset + end_index,
+                            alternate_address: function_address_offset + alternate_address,
+                            end_address: function_address_offset + end_address,
                         })
                     }
                     instruction::Instruction::Else => {
                         let block_index = block_index_stack.last().unwrap();
+
                         // 获取 if 结构块当中的 `end 指令` 所在的位置
-                        let end_index = block_locations[*block_index as usize].end_index;
-                        Instruction::Control(Control::Jump(0, function_addr_offset + end_index))
+                        let block_index_usize = *block_index as usize;
+                        let block_item = &block_items[block_index_usize];
+
+                        let end_address = if let BlockItem::If {
+                            block_type,
+                            start_address,
+                            end_address,
+                            alternate_address,
+                        } = block_item
+                        {
+                            end_address
+                        } else {
+                            unreachable!()
+                        };
+
+                        Instruction::Control(Control::Jump(
+                            0,
+                            function_address_offset + end_address,
+                        ))
                     }
                     instruction::Instruction::Br(relative_depth) => {
                         let result = get_branch_target(
-                            original_instructions,
-                            function_addr_offset,
-                            &block_locations,
+                            function_original_instructions,
+                            function_address_offset,
+                            &block_items,
                             &block_index_stack,
                             *relative_depth as usize,
                         )?;
@@ -174,9 +223,9 @@ pub fn transform(
                     }
                     instruction::Instruction::BrIf(relative_depth) => {
                         let result = get_branch_target(
-                            original_instructions,
-                            function_addr_offset,
-                            &block_locations,
+                            function_original_instructions,
+                            function_address_offset,
+                            &block_items,
                             &block_index_stack,
                             *relative_depth as usize,
                         )?;
@@ -197,9 +246,9 @@ pub fn transform(
                         let mut targets: Vec<BranchTarget> = vec![];
                         for depth in depths {
                             let target = get_branch_target(
-                                original_instructions,
-                                function_addr_offset,
-                                &block_locations,
+                                function_original_instructions,
+                                function_address_offset,
+                                &block_items,
                                 &block_index_stack,
                                 depth as usize,
                             )?;
@@ -216,11 +265,11 @@ pub fn transform(
                     }
                     instruction::Instruction::Return => {
                         let relative_depth = block_index_stack.len();
-                        let end_index = original_instructions.len() - 1;
+                        let end_address = function_original_instructions.len() - 1;
 
                         Instruction::Control(Control::Jump(
                             relative_depth,
-                            function_addr_offset + end_index,
+                            function_address_offset + end_address,
                         ))
                     }
                     instruction::Instruction::Call(function_index) => {
@@ -232,27 +281,27 @@ pub fn transform(
                             FunctionItem::Internal {
                                 type_index,
                                 internal_function_index,
-                                start_index,
-                                end_index,
+                                start_address,
+                                end_address,
                             } => Instruction::Control(Control::CallInternal {
                                 type_index: *type_index,
                                 function_index: *function_index as usize,
                                 internal_function_index: *internal_function_index,
-                                address: *start_index,
+                                address: *start_address,
                             }),
                             FunctionItem::External {
                                 vm_module_index,
                                 type_index,
                                 function_index,
                                 internal_function_index,
-                                start_index,
-                                end_index,
+                                start_address,
+                                end_address,
                             } => Instruction::Control(Control::CallExternal {
                                 vm_module_index: *vm_module_index,
                                 type_index: *type_index,
                                 function_index: *function_index,
                                 internal_function_index: *internal_function_index,
-                                address: *start_index,
+                                address: *start_address,
                             }),
                             FunctionItem::Native {
                                 native_module_index,
@@ -280,14 +329,14 @@ pub fn transform(
 
                         Instruction::Control(Control::Return)
                     }
-                    _ => Instruction::Sequence(original_instruction.to_owned()), // 其他指令归类为 `顺序指令`，
+                    _ => Instruction::Sequence(function_original_instruction.to_owned()), // 其他指令归类为 `顺序指令`，
                 };
 
                 instructions.push(instruction);
             }
 
             // 递增函数的开始地址偏移值
-            function_addr_offset += original_instructions.len();
+            function_address_offset += function_original_instructions.len();
         }
 
         instructions_list.push(instructions);
@@ -297,9 +346,9 @@ pub fn transform(
 }
 
 fn get_branch_target(
-    original_instructions: &[instruction::Instruction],
-    function_addr_offset: usize,
-    block_locations: &[BlockLocation],
+    function_original_instructions: &[instruction::Instruction],
+    function_address_offset: usize,
+    block_items: &[BlockItem],
     block_index_stack: &[usize],
     relative_depth: usize,
 ) -> Result<BranchTarget, EngineError> {
@@ -323,32 +372,44 @@ fn get_branch_target(
     if target_level == 0 {
         // 跳到函数本层了
         // 目标位置应该是函数的最后一个指令，即 `end 指令` 所在的位置
-        let target_addr = original_instructions.len() - 1;
+        let function_end_address = function_original_instructions.len() - 1;
 
         Ok(BranchTarget::Jump(
             relative_depth,
-            function_addr_offset + target_addr,
+            function_address_offset + function_end_address,
         ))
     } else {
         let target_block_index = block_index_stack[target_level - 1];
 
         // 获取目标层的位置信息
-        let block_location = &block_locations[target_block_index];
+        let block_item = &block_items[target_block_index];
 
-        if block_location.block_structure_type == BlockStructureType::Loop {
-            let target_addr = block_location.start_index;
-
-            Ok(BranchTarget::Recur(
+        match block_item {
+            BlockItem::Loop {
+                block_type,
+                start_address,
+                end_address,
+            } => Ok(BranchTarget::Recur(
                 relative_depth,
-                function_addr_offset + target_addr,
-            ))
-        } else {
-            let target_addr = block_location.end_index;
-
-            Ok(BranchTarget::Jump(
+                function_address_offset + *start_address,
+            )),
+            BlockItem::Block {
+                block_type,
+                start_address,
+                end_address,
+            } => Ok(BranchTarget::Jump(
                 relative_depth,
-                function_addr_offset + target_addr,
-            ))
+                function_address_offset + *end_address,
+            )),
+            BlockItem::If {
+                block_type,
+                start_address,
+                end_address,
+                alternate_address: middle_address,
+            } => Ok(BranchTarget::Jump(
+                relative_depth,
+                function_address_offset + *end_address,
+            )),
         }
     }
 }
@@ -400,46 +461,21 @@ pub fn transform_constant_expression(
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum BlockStructureType {
-    Block,
-    Loop,
-    If,
-}
-
-#[derive(Debug, PartialEq, Clone)]
 struct BlockLocation {
-    block_structure_type: BlockStructureType,
-    start_index: usize,
-    end_index: usize,
-    middle_index: usize, // 仅 if 结构块才有
-}
-
-#[derive(Debug, PartialEq, Clone)]
-struct IndexedBlockLocation {
     block_index: usize,
-    block_location: BlockLocation,
+    block_item: BlockItem,
 }
 
-impl IndexedBlockLocation {
-    fn new(
-        block_structure_type: BlockStructureType,
-        block_index: usize,
-        start_index: usize,
-    ) -> Self {
+impl BlockLocation {
+    fn new(block_index: usize, block_item: BlockItem) -> Self {
         Self {
             block_index,
-            block_location: BlockLocation {
-                block_structure_type,
-                start_index,
-                end_index: 0,
-                middle_index: 0,
-            },
+            block_item,
         }
     }
 }
 
 /// 对一个函数的指令序列当中的块结构生成位置信息列表
-/// 主要是为了获取 else 和 end 指令的位置
 ///
 /// 示例：
 /// function
@@ -459,49 +495,96 @@ impl IndexedBlockLocation {
 /// |  0--block-end
 /// |  6--block-start
 /// |  6--block-end
-fn get_function_block_locations(code_item: &CodeItem) -> Vec<BlockLocation> {
-    let mut indexed_block_locations: Vec<IndexedBlockLocation> = vec![]; // 未排序的
-    let mut block_stack: Vec<IndexedBlockLocation> = vec![];
+fn get_function_block_items(code_item: &CodeItem) -> Vec<BlockItem> {
+    let mut block_location_stack: Vec<BlockLocation> = vec![];
+    let mut block_locations: Vec<BlockLocation> = vec![]; // 未排序的
 
     for (address, instruction) in code_item.instruction_items.iter().enumerate() {
         match instruction {
-            instruction::Instruction::Block(_, block_index) => {
-                block_stack.push(IndexedBlockLocation::new(
-                    BlockStructureType::Block,
+            instruction::Instruction::Block(block_type, block_index) => {
+                block_location_stack.push(BlockLocation::new(
                     *block_index as usize,
-                    address,
+                    BlockItem::Block {
+                        block_type: block_type.to_owned(),
+                        start_address: address,
+                        end_address: 0, // 临时值
+                    },
                 ));
             }
-            instruction::Instruction::Loop(_, block_index) => {
-                block_stack.push(IndexedBlockLocation::new(
-                    BlockStructureType::Loop,
+            instruction::Instruction::Loop(block_type, block_index) => {
+                block_location_stack.push(BlockLocation::new(
                     *block_index as usize,
-                    address,
+                    BlockItem::Loop {
+                        block_type: block_type.to_owned(),
+                        start_address: address,
+                        end_address: 0, // 临时值
+                    },
                 ));
             }
-            instruction::Instruction::If(_, block_index) => {
-                block_stack.push(IndexedBlockLocation::new(
-                    BlockStructureType::If,
+            instruction::Instruction::If(block_type, block_index) => {
+                block_location_stack.push(BlockLocation::new(
                     *block_index as usize,
-                    address,
+                    BlockItem::If {
+                        block_type: block_type.to_owned(),
+                        start_address: address,
+                        end_address: 0,          // 临时值
+                        alternate_address: None, // 临时值
+                    },
                 ));
             }
             instruction::Instruction::Else => {
-                let stack_last_index = block_stack.len() - 1;
-                let indexed_block_location = &mut block_stack[stack_last_index];
-                indexed_block_location.block_location.middle_index = address;
+                let stack_last_index = block_location_stack.len() - 1;
+                let last_block_location = &mut block_location_stack[stack_last_index];
+                let last_block_item = &mut last_block_location.block_item;
+
+                if let BlockItem::If {
+                    block_type,
+                    start_address,
+                    end_address,
+                    alternate_address,
+                } = last_block_item
+                {
+                    *alternate_address = Some(address); // 替换临时值
+                } else {
+                    unreachable!()
+                }
             }
             instruction::Instruction::End => {
                 // 函数的指令序列最后一个指令，即 `end 指令` 不属于结构块，所以需要排除
                 // 结构块栈已经弹空的情况
-                if block_stack.len() > 0 {
-                    let stack_last_index = block_stack.len() - 1;
-                    let indexex_block_location = &mut block_stack[stack_last_index];
-                    indexex_block_location.block_location.end_index = address;
+                if block_location_stack.len() > 0 {
+                    let stack_last_index = block_location_stack.len() - 1;
+                    let last_block_location = &mut block_location_stack[stack_last_index];
+                    let last_block_item = &mut last_block_location.block_item;
 
-                    // 弹出一项并移入 indexed_block_locations
-                    let last_indexed_block_location = block_stack.pop().unwrap();
-                    indexed_block_locations.push(last_indexed_block_location);
+                    match last_block_item {
+                        BlockItem::Block {
+                            block_type,
+                            start_address,
+                            end_address,
+                        } => {
+                            *end_address = address; // 替换临时值
+                        }
+                        BlockItem::Loop {
+                            block_type,
+                            start_address,
+                            end_address,
+                        } => {
+                            *end_address = address; // 替换临时值
+                        }
+                        BlockItem::If {
+                            block_type,
+                            start_address,
+                            end_address,
+                            alternate_address,
+                        } => {
+                            *end_address = address; // 替换临时值
+                        }
+                    }
+
+                    // 弹出一项 block_location 然后移入 block_locations
+                    let block_location = block_location_stack.pop().unwrap();
+                    block_locations.push(block_location);
                 }
             }
             _ => {
@@ -510,15 +593,14 @@ fn get_function_block_locations(code_item: &CodeItem) -> Vec<BlockLocation> {
         }
     }
 
-    // 对 indexed_block_locations 按照 block index 进行排序
-    indexed_block_locations.sort_by_key(|item| item.block_index);
+    // 对 block_locations 按照 block index 进行排序
+    block_locations.sort_by_key(|item| item.block_index);
 
-    // 提取结构位置信息列表
-    indexed_block_locations
+    // 转换到结构位置信息列表
+    block_locations
         .iter()
-        .map(|item| &item.block_location)
-        .map(|item| item.to_owned())
-        .collect::<Vec<BlockLocation>>()
+        .map(|item| item.block_item.clone())
+        .collect::<Vec<BlockItem>>()
 }
 
 #[cfg(test)]

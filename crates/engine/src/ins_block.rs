@@ -68,6 +68,7 @@ use crate::{
     vm_stack::INFO_SEGMENT_ITEM_COUNT,
 };
 
+/// 处理原 `block 指令` 和 `loop 指令`
 pub fn block(
     vm: &mut VM,
     block_type: BlockType,
@@ -89,6 +90,7 @@ pub fn block(
     )
 }
 
+/// 处理原 `if 指令`
 pub fn block_jump_eq_zero(
     vm: &mut VM,
     block_type: BlockType,

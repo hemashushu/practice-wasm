@@ -367,8 +367,8 @@ pub fn dynamic_call(
         FunctionItem::Internal {
             internal_function_index,
             type_index,
-            start_index,
-            end_index,
+            start_address,
+            end_address,
         } => {
             let vm_module = &vm.resource.vm_modules[vm_module_index];
             let function_type = &vm_module.function_types[type_index];
@@ -379,8 +379,8 @@ pub fn dynamic_call(
             type_index,
             function_index,
             internal_function_index,
-            start_index,
-            end_index,
+            start_address,
+            end_address,
         } => {
             let vm_module = &vm.resource.vm_modules[vm_module_index];
             let function_type = &vm_module.function_types[type_index];
@@ -419,30 +419,30 @@ pub fn dynamic_call(
         FunctionItem::Internal {
             internal_function_index,
             type_index,
-            start_index,
-            end_index,
+            start_address,
+            end_address,
         } => call_function(
             vm,
             vm_module_index,
             type_index,
             function_index,
             internal_function_index,
-            start_index,
+            start_address,
         ),
         FunctionItem::External {
             vm_module_index,
             type_index,
             function_index,
             internal_function_index,
-            start_index,
-            end_index,
+            start_address,
+            end_address,
         } => call_function(
             vm,
             vm_module_index,
             type_index,
             function_index,
             internal_function_index,
-            start_index,
+            start_address,
         ),
         FunctionItem::Native {
             native_module_index,

@@ -218,15 +218,15 @@ impl VM {
                 type_index: target_type_index,
                 function_index: target_function_index,
                 internal_function_index: target_internal_function_index,
-                start_index,
-                end_index,
+                start_address,
+                end_address,
             } => {
                 let result = self.call_module_function(
                     target_vm_module_index,
                     target_type_index,
                     target_function_index,
                     target_internal_function_index,
-                    start_index,
+                    start_address,
                     arguments,
                 )?;
                 Ok(CallFunctionResult::Standby(result))
@@ -234,15 +234,15 @@ impl VM {
             FunctionItem::Internal {
                 type_index,
                 internal_function_index,
-                start_index,
-                end_index,
+                start_address,
+                end_address,
             } => {
                 let result = self.call_module_function(
                     vm_module_index,
                     type_index,
                     function_index,
                     internal_function_index,
-                    start_index,
+                    start_address,
                     arguments,
                 )?;
                 Ok(CallFunctionResult::Standby(result))
