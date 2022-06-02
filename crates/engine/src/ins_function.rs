@@ -364,16 +364,16 @@ pub fn dynamic_call(
 
     // 核对函数的签名
     let actual_function_type = match function_item {
-        FunctionItem::Internal {
-            internal_function_index,
-            type_index,
-            start_address,
-            end_address,
-        } => {
-            let vm_module = &vm.resource.vm_modules[vm_module_index];
-            let function_type = &vm_module.function_types[type_index];
-            function_type.to_owned()
-        }
+        // FunctionItem::Internal {
+        //     internal_function_index,
+        //     type_index,
+        //     start_address,
+        //     end_address,
+        // } => {
+        //     let vm_module = &vm.resource.vm_modules[vm_module_index];
+        //     let function_type = &vm_module.function_types[type_index];
+        //     function_type.to_owned()
+        // }
         FunctionItem::External {
             vm_module_index,
             type_index,
@@ -416,19 +416,19 @@ pub fn dynamic_call(
 
     // 调用处理函数
     match function_item {
-        FunctionItem::Internal {
-            internal_function_index,
-            type_index,
-            start_address,
-            end_address,
-        } => call_function(
-            vm,
-            vm_module_index,
-            type_index,
-            function_index,
-            internal_function_index,
-            start_address,
-        ),
+        // FunctionItem::Internal {
+        //     internal_function_index,
+        //     type_index,
+        //     start_address,
+        //     end_address,
+        // } => call_function(
+        //     vm,
+        //     vm_module_index,
+        //     type_index,
+        //     function_index,
+        //     internal_function_index,
+        //     start_address,
+        // ),
         FunctionItem::External {
             vm_module_index,
             type_index,

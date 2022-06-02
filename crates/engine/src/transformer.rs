@@ -278,17 +278,17 @@ pub fn transform(
                             &function_items_list[ast_module_index][*function_index as usize];
 
                         match function_item {
-                            FunctionItem::Internal {
-                                type_index,
-                                internal_function_index,
-                                start_address,
-                                end_address,
-                            } => Instruction::Control(Control::CallInternal {
-                                type_index: *type_index,
-                                function_index: *function_index as usize,
-                                internal_function_index: *internal_function_index,
-                                address: *start_address,
-                            }),
+                            // FunctionItem::Internal {
+                            //     type_index,
+                            //     internal_function_index,
+                            //     start_address,
+                            //     end_address,
+                            // } => Instruction::Control(Control::CallInternal {
+                            //     type_index: *type_index,
+                            //     function_index: *function_index as usize,
+                            //     internal_function_index: *internal_function_index,
+                            //     address: *start_address,
+                            // }),
                             FunctionItem::External {
                                 vm_module_index,
                                 type_index,
@@ -1338,14 +1338,16 @@ mod tests {
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
-            Instruction::Control(Control::CallInternal {
+            Instruction::Control(Control::CallExternal {
+                vm_module_index: 0,
                 type_index: 0,
                 function_index: 1,
                 internal_function_index: 1,
                 address: 7,
             }), // #02
             Instruction::Sequence(instruction::Instruction::I32Const(10)), // #03
-            Instruction::Control(Control::CallInternal {
+            Instruction::Control(Control::CallExternal {
+                vm_module_index: 0,
                 type_index: 0,
                 function_index: 2,
                 internal_function_index: 2,
@@ -1478,7 +1480,8 @@ mod tests {
                 // function 1
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #03
                 Instruction::Sequence(instruction::Instruction::I32Const(3)), // #04
-                Instruction::Control(Control::CallInternal {
+                Instruction::Control(Control::CallExternal {
+                    vm_module_index: 0,
                     type_index: 0,
                     function_index: 0,
                     internal_function_index: 0,
@@ -1506,7 +1509,8 @@ mod tests {
                     address: 3,
                 }), // #04
                 Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
-                Instruction::Control(Control::CallInternal {
+                Instruction::Control(Control::CallExternal {
+                    vm_module_index: 1,
                     type_index: 0,
                     function_index: 3,
                     internal_function_index: 1,
@@ -1613,7 +1617,8 @@ mod tests {
                 function_index: 1,
             }), // #04
             Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
-            Instruction::Control(Control::CallInternal {
+            Instruction::Control(Control::CallExternal {
+                vm_module_index: 0,
                 type_index: 0,
                 function_index: 3,
                 internal_function_index: 1,
@@ -1859,7 +1864,8 @@ mod tests {
                     address: 3,
                 }), // #05
                 Instruction::Control(Control::Return),                        // #06
-                Instruction::Control(Control::CallInternal {
+                Instruction::Control(Control::CallExternal {
+                    vm_module_index: 2,
                     type_index: 3,
                     function_index: 3,
                     internal_function_index: 0,

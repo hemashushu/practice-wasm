@@ -231,22 +231,22 @@ impl VM {
                 )?;
                 Ok(CallFunctionResult::Standby(result))
             }
-            FunctionItem::Internal {
-                type_index,
-                internal_function_index,
-                start_address,
-                end_address,
-            } => {
-                let result = self.call_module_function(
-                    vm_module_index,
-                    type_index,
-                    function_index,
-                    internal_function_index,
-                    start_address,
-                    arguments,
-                )?;
-                Ok(CallFunctionResult::Standby(result))
-            }
+            // FunctionItem::Internal {
+            //     type_index,
+            //     internal_function_index,
+            //     start_address,
+            //     end_address,
+            // } => {
+            //     let result = self.call_module_function(
+            //         vm_module_index,
+            //         type_index,
+            //         function_index,
+            //         internal_function_index,
+            //         start_address,
+            //         arguments,
+            //     )?;
+            //     Ok(CallFunctionResult::Standby(result))
+            // }
         }
     }
 

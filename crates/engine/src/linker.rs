@@ -84,7 +84,7 @@ pub fn link_functions(
     for (ast_module_index, function_locations) in function_locations_list.iter().enumerate() {
         let mut function_items: Vec<FunctionItem> = vec![];
 
-        for function_location in function_locations {
+        for (function_index, function_location) in function_locations.iter().enumerate() {
             let function_item = match function_location {
                 FunctionLocation::Import {
                     type_index, // 导入项所期望的函数类型
@@ -213,8 +213,10 @@ pub fn link_functions(
                     type_index,
                     start_address,
                     end_address,
-                } => FunctionItem::Internal {
+                } => FunctionItem::External {
+                    vm_module_index: ast_module_index,
                     type_index: *type_index,
+                    function_index,
                     internal_function_index: *internal_function_index,
                     start_address: *start_address,
                     end_address: *end_address,

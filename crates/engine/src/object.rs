@@ -41,12 +41,12 @@ pub enum FunctionItem {
         start_address: usize,
         end_address: usize, // 函数 `end 指令` 所在的位置
     },
-    Internal {
-        internal_function_index: usize, // 函数在模块当中的内部函数列表里的索引
-        type_index: usize,
-        start_address: usize,
-        end_address: usize, // 函数 `end 指令` 所在的位置
-    },
+    // Internal {
+    //     internal_function_index: usize, // 函数在模块当中的内部函数列表里的索引
+    //     type_index: usize,
+    //     start_address: usize,
+    //     end_address: usize, // 函数 `end 指令` 所在的位置
+    // },
 }
 
 /// 函数当中的流程控制结构块的信息
@@ -122,25 +122,25 @@ pub enum Control {
     /// 原 `br_table 指令`
     Branch(Vec<BranchTarget>, BranchTarget),
 
-    /// 调用模块内的函数
-    CallInternal {
-        /// 被调用者的类型索引
-        /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
-        type_index: usize,
-
-        /// 被调用者的函数索引
-        /// 此索引并非内部函数索引，而是模块内所有函数的索引
-        function_index: usize,
-
-        /// 被调用者的内部函数索引
-        /// 即被调用者在内部函数列表里的索引，
-        /// 这是一个冗余信息，用于快速获取内部函数的局部变量信息
-        internal_function_index: usize,
-
-        /// 被调用函数的指令开始位置
-        /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
-        address: usize,
-    },
+//     /// 调用模块内的函数
+//     CallInternal {
+//         /// 被调用者的类型索引
+//         /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
+//         type_index: usize,
+//
+//         /// 被调用者的函数索引
+//         /// 此索引并非内部函数索引，而是模块内所有函数的索引
+//         function_index: usize,
+//
+//         /// 被调用者的内部函数索引
+//         /// 即被调用者在内部函数列表里的索引，
+//         /// 这是一个冗余信息，用于快速获取内部函数的局部变量信息
+//         internal_function_index: usize,
+//
+//         /// 被调用函数的指令开始位置
+//         /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
+//         address: usize,
+//     },
 
     /// 调用模块外的函数
     CallExternal {
