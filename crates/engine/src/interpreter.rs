@@ -263,7 +263,7 @@ pub fn exec_instruction(
         object::Instruction::Control(control) => {
             let control_result = match control {
                 // 控制指令
-                Control::Return => ins_control::process_return(vm),
+                Control::Return(block_index) => ins_control::process_return(vm, block_index),
 
                 // 函数调用指令
                 // Control::CallInternal {
@@ -282,13 +282,13 @@ pub fn exec_instruction(
                 //         *address,
                 //     )
                 // }
-                Control::CallExternal {
+                Control::Call {
                     vm_module_index,
                     type_index,
                     function_index,
                     internal_function_index,
                     address,
-                } => ins_function::call_function(
+                } => ins_function::call(
                     vm,
                     *vm_module_index,
                     *type_index,
@@ -306,17 +306,17 @@ pub fn exec_instruction(
                     *type_index,
                     *function_index,
                 ),
-                Control::DynamicCall {
+                Control::CallIndirect {
                     type_index,
                     table_index,
-                } => ins_function::dynamic_call(vm, *type_index, *table_index),
+                } => ins_function::call_indirect(vm, *type_index, *table_index),
 
                 // 流程结构控制指令
                 Control::Block {
                     block_type,
                     block_index,
                     end_address,
-                } => ins_block::block(vm, block_type.to_owned(), *block_index, *end_address),
+                } => ins_block::block(vm, block_type, *block_index, *end_address),
                 Control::BlockJumpEqZero {
                     block_type,
                     block_index,
@@ -324,7 +324,7 @@ pub fn exec_instruction(
                     end_address,
                 } => ins_block::block_jump_eq_zero(
                     vm,
-                    block_type.to_owned(),
+                    block_type,
                     *block_index,
                     *alternate_address,
                     *end_address,

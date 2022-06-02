@@ -213,13 +213,14 @@ impl VM {
                 )?;
                 Ok(CallFunctionResult::Immediate(result))
             }
-            FunctionItem::External {
+            FunctionItem::Normal {
                 vm_module_index: target_vm_module_index,
                 type_index: target_type_index,
                 function_index: target_function_index,
                 internal_function_index: target_internal_function_index,
                 start_address,
                 end_address,
+                block_items,
             } => {
                 let result = self.call_module_function(
                     target_vm_module_index,
@@ -231,22 +232,6 @@ impl VM {
                 )?;
                 Ok(CallFunctionResult::Standby(result))
             }
-            // FunctionItem::Internal {
-            //     type_index,
-            //     internal_function_index,
-            //     start_address,
-            //     end_address,
-            // } => {
-            //     let result = self.call_module_function(
-            //         vm_module_index,
-            //         type_index,
-            //         function_index,
-            //         internal_function_index,
-            //         start_address,
-            //         arguments,
-            //     )?;
-            //     Ok(CallFunctionResult::Standby(result))
-            // }
         }
     }
 
@@ -265,7 +250,7 @@ impl VM {
             let local_variable_types =
                 &vm_module.internal_function_local_variable_types_list[internal_function_index];
             (
-                function_type.params.to_owned(),
+                &function_type.params,
                 local_variable_types.to_owned(),
                 function_type.results.len(),
             )
@@ -274,7 +259,7 @@ impl VM {
         let parameter_count = parameter_types.len();
 
         // 核对实参的数据类型和数量
-        match check_value_types(arguments, &parameter_types) {
+        match check_value_types(arguments, parameter_types) {
             Err(ValueTypeCheckError::LengthMismatch) => {
                 return Err(EngineError::InvalidOperation(format!(
                     "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
@@ -324,8 +309,8 @@ impl VM {
             let native_function = native_module.native_functions[function_index];
 
             (
-                function_type.params.to_owned(),
-                function_type.results.to_owned(),
+                &function_type.params,
+                &function_type.results,
                 native_function,
             )
         };
@@ -333,7 +318,7 @@ impl VM {
         let parameter_count = parameter_types.len();
 
         // 核对实参的数据类型和数量
-        match check_value_types(&arguments, &parameter_types) {
+        match check_value_types(&arguments, parameter_types) {
             Err(ValueTypeCheckError::LengthMismatch) => {
                 return Err(EngineError::InvalidOperation(format!(
                     "failed to call function {} (native module {}). The number of parameters does not match, expected: {}, actual: {}",

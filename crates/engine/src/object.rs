@@ -26,27 +26,25 @@ impl NamedAstModule {
 ///
 /// 函数包括导入的函数（分为本地函数和外部模块普通函数）以及
 /// 模块内部定义的普通函数。
+/// 经过链接和解析之后，最终函数被分为：本地函数和普通函数两种，
+/// 即在模块之外的用户函数以及在模块之内的用户函数合并，它们仅
+/// 函数的模块索引值不同。
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunctionItem {
     Native {
-        native_module_index: usize,
-        type_index: usize, // 目标函数在目标模块当中的类型索引
-        function_index: usize,
+        native_module_index: usize, //
+        type_index: usize,          // 目标函数在目标模块当中的类型索引
+        function_index: usize,      //
     },
-    External {
-        vm_module_index: usize,
-        type_index: usize, // 目标函数在目标模块当中的类型索引
-        function_index: usize,
+    Normal {
+        vm_module_index: usize,         // 目标模块的索引
+        type_index: usize,              // 目标函数在目标模块当中的类型索引
+        function_index: usize,          // 目标函数在目标模块当中的索引（索引从导入函数开始计数）
         internal_function_index: usize, // 目标函数在目标模块当中的内部函数列表里的索引
-        start_address: usize,
-        end_address: usize, // 函数 `end 指令` 所在的位置
+        start_address: usize,           // 目标函数的起始位置
+        end_address: usize,             // 函数 `end 指令` 所在的位置
+        block_items: Vec<BlockItem>,    // 函数内部结构块的位置信息
     },
-    // Internal {
-    //     internal_function_index: usize, // 函数在模块当中的内部函数列表里的索引
-    //     type_index: usize,
-    //     start_address: usize,
-    //     end_address: usize, // 函数 `end 指令` 所在的位置
-    // },
 }
 
 /// 函数当中的流程控制结构块的信息
@@ -122,28 +120,8 @@ pub enum Control {
     /// 原 `br_table 指令`
     Branch(Vec<BranchTarget>, BranchTarget),
 
-//     /// 调用模块内的函数
-//     CallInternal {
-//         /// 被调用者的类型索引
-//         /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
-//         type_index: usize,
-//
-//         /// 被调用者的函数索引
-//         /// 此索引并非内部函数索引，而是模块内所有函数的索引
-//         function_index: usize,
-//
-//         /// 被调用者的内部函数索引
-//         /// 即被调用者在内部函数列表里的索引，
-//         /// 这是一个冗余信息，用于快速获取内部函数的局部变量信息
-//         internal_function_index: usize,
-//
-//         /// 被调用函数的指令开始位置
-//         /// 这是一个冗余信息，用于省去函数调用时的一次查询过程
-//         address: usize,
-//     },
-
-    /// 调用模块外的函数
-    CallExternal {
+    /// 调用（普通）函数
+    Call {
         /// 目标模块的索引
         vm_module_index: usize,
 
@@ -177,7 +155,7 @@ pub enum Control {
     },
 
     /// 原 `call_indirect 指令`
-    DynamicCall {
+    CallIndirect {
         type_index: usize,
         table_index: usize,
     },
@@ -185,11 +163,8 @@ pub enum Control {
     /// 原 `end 指令`，表示函数或者结构块结束
     ///
     /// 参数是流程控制结构块的索引，对于函数的结束指令（即函数最后一条指令，`end 指令`）
-    /// 它的参数值是 None。
-    /// 这个结构块索引只用于调式程序时方便定位出错的结构位置信息（相比于地址信息，结构信息
-    /// 有时更加直观），对程序的解析运行无影响。
-    // Return(Option<usize>),
-    Return,
+    /// 它的参数值是 None。结构块索引主要用于调式程序时方便定位出错的结构位置信息。
+    Return(Option<usize>),
 }
 
 /// 编译后的指令

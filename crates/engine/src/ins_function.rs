@@ -156,7 +156,7 @@ use crate::{
     vm_stack::INFO_SEGMENT_ITEM_COUNT,
 };
 
-pub fn call_function(
+pub fn call(
     vm: &mut VM,
     vm_module_index: usize,
     type_index: usize,
@@ -169,10 +169,7 @@ pub fn call_function(
         let function_type = &vm_module.function_types[type_index];
         let local_variable_types =
             &vm_module.internal_function_local_variable_types_list[internal_function_index];
-        (
-            function_type.params.to_owned(),
-            local_variable_types.to_owned(),
-        )
+        (&function_type.params, local_variable_types.to_owned())
     };
 
     // 判断操作数是否足够当前函数或结构块用于返回
@@ -191,7 +188,7 @@ pub fn call_function(
         .peek_values(stack_size - parameter_count, stack_size);
 
     // 核对实参的数据类型和数量
-    match check_value_types(arguments, &parameter_types) {
+    match check_value_types(arguments, parameter_types) {
         Err(ValueTypeCheckError::LengthMismatch) => {
             return Err(EngineError::InvalidOperation(format!(
                 "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
@@ -313,7 +310,7 @@ pub fn push_results(vm: &mut VM, results: &[Value]) {
     vm.stack.push_values(results)
 }
 
-pub fn dynamic_call(
+pub fn call_indirect(
     vm: &mut VM,
     type_index: usize,
     table_index: usize,
@@ -357,43 +354,34 @@ pub fn dynamic_call(
         (
             vm_module_index,
             function_index,
-            function_item.to_owned(),
-            expected_function_type.to_owned(),
+            function_item,
+            expected_function_type,
         )
     };
 
     // 核对函数的签名
     let actual_function_type = match function_item {
-        // FunctionItem::Internal {
-        //     internal_function_index,
-        //     type_index,
-        //     start_address,
-        //     end_address,
-        // } => {
-        //     let vm_module = &vm.resource.vm_modules[vm_module_index];
-        //     let function_type = &vm_module.function_types[type_index];
-        //     function_type.to_owned()
-        // }
-        FunctionItem::External {
+        FunctionItem::Normal {
             vm_module_index,
             type_index,
             function_index,
             internal_function_index,
             start_address,
             end_address,
+            block_items,
         } => {
-            let vm_module = &vm.resource.vm_modules[vm_module_index];
-            let function_type = &vm_module.function_types[type_index];
-            function_type.to_owned()
+            let vm_module = &vm.resource.vm_modules[*vm_module_index];
+            let function_type = &vm_module.function_types[*type_index];
+            function_type
         }
         FunctionItem::Native {
             native_module_index,
             type_index,
             function_index,
         } => {
-            let native_module = &vm.resource.native_modules[native_module_index];
-            let function_type = &native_module.function_types[type_index];
-            function_type.to_owned()
+            let native_module = &vm.resource.native_modules[*native_module_index];
+            let function_type = &native_module.function_types[*type_index];
+            function_type
         }
     };
 
@@ -416,38 +404,26 @@ pub fn dynamic_call(
 
     // 调用处理函数
     match function_item {
-        // FunctionItem::Internal {
-        //     internal_function_index,
-        //     type_index,
-        //     start_address,
-        //     end_address,
-        // } => call_function(
-        //     vm,
-        //     vm_module_index,
-        //     type_index,
-        //     function_index,
-        //     internal_function_index,
-        //     start_address,
-        // ),
-        FunctionItem::External {
+        FunctionItem::Normal {
             vm_module_index,
             type_index,
             function_index,
             internal_function_index,
             start_address,
             end_address,
-        } => call_function(
+            block_items,
+        } => call(
             vm,
-            vm_module_index,
-            type_index,
-            function_index,
-            internal_function_index,
-            start_address,
+            *vm_module_index,
+            *type_index,
+            *function_index,
+            *internal_function_index,
+            *start_address,
         ),
         FunctionItem::Native {
             native_module_index,
             type_index,
             function_index,
-        } => call_native(vm, native_module_index, type_index, function_index),
+        } => call_native(vm, *native_module_index, *type_index, *function_index),
     }
 }

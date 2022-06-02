@@ -71,7 +71,7 @@ use crate::{
 /// 处理原 `block 指令` 和 `loop 指令`
 pub fn block(
     vm: &mut VM,
-    block_type: BlockType,
+    block_type: &BlockType,
     block_index: usize,
     end_address: usize,
 ) -> Result<ControlResult, EngineError> {
@@ -93,7 +93,7 @@ pub fn block(
 /// 处理原 `if 指令`
 pub fn block_jump_eq_zero(
     vm: &mut VM,
-    block_type: BlockType,
+    block_type: &BlockType,
     block_index: usize,
     alternate_address: usize,
     end_address: usize,
@@ -121,7 +121,7 @@ pub fn block_jump_eq_zero(
 
 fn call_block(
     vm: &mut VM,
-    block_type: BlockType,
+    block_type: &BlockType,
     block_index: usize,
     next_instruction_address: usize,
     return_address: usize,
@@ -138,7 +138,7 @@ fn call_block(
             BlockType::TypeIndex(type_index) => {
                 let vm_module_index = vm.status.vm_module_index;
                 let vm_module = &vm.resource.vm_modules[vm_module_index];
-                let function_type = &vm_module.function_types[type_index as usize];
+                let function_type = &vm_module.function_types[*type_index as usize];
                 function_type.params.to_owned()
             }
         }
@@ -182,7 +182,7 @@ fn call_block(
         is_function_call: false,
         vm_module_index,
         function_index,
-        frame_type: block_type,
+        frame_type: block_type.to_owned(),
         address: next_instruction_address,
     };
 

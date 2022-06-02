@@ -49,10 +49,7 @@
 //! - dynamic_call (type_index, table_index)
 //! - return
 
-use anvm_ast::{
-    ast::CodeItem,
-    instruction::{self, BlockType},
-};
+use anvm_ast::{ast::ImportDescriptor, instruction};
 
 use crate::{
     error::EngineError,
@@ -84,20 +81,48 @@ pub fn transform(
 
     let mut instructions_list: Vec<Vec<Instruction>> = vec![];
 
-    for (ast_module_index, ast_module) in named_ast_modules.iter().enumerate() {
-        // 转换一个模块
-
+    // 转换一个模块
+    for (ast_module_index, named_ast_module) in named_ast_modules.iter().enumerate() {
         let mut instructions: Vec<Instruction> = vec![];
-        let mut function_address_offset: usize = 0;
+        // let mut function_address_offset: usize = 0;
 
-        for code_item in &ast_module.module.code_items {
-            // 转换一个函数
+        // 获取模块第一个内部函数的索引值
+        let internal_function_index_offset = named_ast_module
+            .module
+            .import_items
+            .iter()
+            .filter(|item| match item.import_descriptor {
+                ImportDescriptor::FunctionTypeIndex(_) => true,
+                _ => false,
+            })
+            .count();
 
-            // 先对一个函数的指令序列扫描一次，以获取内部结构块信息（主要是为了获取 else 和 end 指令的位置）
-            let block_items = get_function_block_items(code_item);
+        let function_items = &function_items_list[ast_module_index];
+
+        // 转换一个函数
+        for (internal_function_index, code_item) in
+            named_ast_module.module.code_items.iter().enumerate()
+        {
+            let function_index = internal_function_index_offset + internal_function_index;
+            let function_item = &function_items[function_index];
+
+            let (block_items, function_start_address, function_end_address) = match function_item {
+                FunctionItem::Normal {
+                    vm_module_index,
+                    type_index,
+                    function_index,
+                    internal_function_index,
+                    start_address,
+                    end_address,
+                    block_items,
+                } => (block_items, *start_address, *end_address),
+                _ => unreachable!(),
+            };
+
             let mut block_index_stack: Vec<usize> = vec![];
 
             let function_original_instructions = &code_item.instruction_items;
+
             for function_original_instruction in function_original_instructions {
                 let instruction = match function_original_instruction {
                     instruction::Instruction::Block(block_type, block_index) => {
@@ -116,11 +141,10 @@ pub fn transform(
                         } else {
                             unreachable!()
                         };
-
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
                             block_index: block_index_usize,
-                            end_address: function_address_offset + end_address,
+                            end_address: function_start_address + end_address,
                         })
                     }
                     instruction::Instruction::Loop(block_type, block_index) => {
@@ -139,11 +163,10 @@ pub fn transform(
                         } else {
                             unreachable!()
                         };
-
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
                             block_index: block_index_usize,
-                            end_address: function_address_offset + end_address,
+                            end_address: function_start_address + end_address,
                         })
                     }
                     instruction::Instruction::If(block_type, block_index) => {
@@ -171,12 +194,11 @@ pub fn transform(
                             } else {
                                 end_address
                             };
-
                         Instruction::Control(Control::BlockJumpEqZero {
                             block_type: block_type.to_owned(),
                             block_index: block_index_usize,
-                            alternate_address: function_address_offset + alternate_address,
-                            end_address: function_address_offset + end_address,
+                            alternate_address: function_start_address + alternate_address,
+                            end_address: function_start_address + end_address,
                         })
                     }
                     instruction::Instruction::Else => {
@@ -197,16 +219,12 @@ pub fn transform(
                         } else {
                             unreachable!()
                         };
-
-                        Instruction::Control(Control::Jump(
-                            0,
-                            function_address_offset + end_address,
-                        ))
+                        Instruction::Control(Control::Jump(0, function_start_address + end_address))
                     }
                     instruction::Instruction::Br(relative_depth) => {
                         let result = get_branch_target(
-                            function_original_instructions,
-                            function_address_offset,
+                            function_start_address,
+                            function_end_address,
                             &block_items,
                             &block_index_stack,
                             *relative_depth as usize,
@@ -223,8 +241,8 @@ pub fn transform(
                     }
                     instruction::Instruction::BrIf(relative_depth) => {
                         let result = get_branch_target(
-                            function_original_instructions,
-                            function_address_offset,
+                            function_start_address,
+                            function_end_address,
                             &block_items,
                             &block_index_stack,
                             *relative_depth as usize,
@@ -246,8 +264,8 @@ pub fn transform(
                         let mut targets: Vec<BranchTarget> = vec![];
                         for depth in depths {
                             let target = get_branch_target(
-                                function_original_instructions,
-                                function_address_offset,
+                                function_start_address,
+                                function_end_address,
                                 &block_items,
                                 &block_index_stack,
                                 depth as usize,
@@ -266,10 +284,9 @@ pub fn transform(
                     instruction::Instruction::Return => {
                         let relative_depth = block_index_stack.len();
                         let end_address = function_original_instructions.len() - 1;
-
                         Instruction::Control(Control::Jump(
                             relative_depth,
-                            function_address_offset + end_address,
+                            function_start_address + end_address,
                         ))
                     }
                     instruction::Instruction::Call(function_index) => {
@@ -278,25 +295,15 @@ pub fn transform(
                             &function_items_list[ast_module_index][*function_index as usize];
 
                         match function_item {
-                            // FunctionItem::Internal {
-                            //     type_index,
-                            //     internal_function_index,
-                            //     start_address,
-                            //     end_address,
-                            // } => Instruction::Control(Control::CallInternal {
-                            //     type_index: *type_index,
-                            //     function_index: *function_index as usize,
-                            //     internal_function_index: *internal_function_index,
-                            //     address: *start_address,
-                            // }),
-                            FunctionItem::External {
+                            FunctionItem::Normal {
                                 vm_module_index,
                                 type_index,
                                 function_index,
                                 internal_function_index,
                                 start_address,
                                 end_address,
-                            } => Instruction::Control(Control::CallExternal {
+                                block_items,
+                            } => Instruction::Control(Control::Call {
                                 vm_module_index: *vm_module_index,
                                 type_index: *type_index,
                                 function_index: *function_index,
@@ -315,7 +322,7 @@ pub fn transform(
                         }
                     }
                     instruction::Instruction::CallIndirect(type_index, table_index) => {
-                        Instruction::Control(Control::DynamicCall {
+                        Instruction::Control(Control::CallIndirect {
                             type_index: *type_index as usize,
                             table_index: *table_index as usize,
                         })
@@ -323,20 +330,18 @@ pub fn transform(
                     instruction::Instruction::End => {
                         // 函数的指令序列最后一个指令，即 `end 指令` 不属于结构块，所以需要排除
                         // 结构块栈已经弹空的情况
-                        if block_index_stack.len() > 0 {
-                            block_index_stack.pop();
-                        }
-
-                        Instruction::Control(Control::Return)
+                        // if block_index_stack.len() > 0 {
+                        let option_block_index = block_index_stack.pop();
+                        Instruction::Control(Control::Return(option_block_index))
+                        // } else {
+                        //     Instruction::Control(Control::Return(None))
+                        // }
                     }
                     _ => Instruction::Sequence(function_original_instruction.to_owned()), // 其他指令归类为 `顺序指令`，
                 };
 
                 instructions.push(instruction);
             }
-
-            // 递增函数的开始地址偏移值
-            function_address_offset += function_original_instructions.len();
         }
 
         instructions_list.push(instructions);
@@ -346,8 +351,10 @@ pub fn transform(
 }
 
 fn get_branch_target(
-    function_original_instructions: &[instruction::Instruction],
-    function_address_offset: usize,
+    // function_original_instructions: &[instruction::Instruction],
+    function_start_address: usize,
+    function_end_address: usize,
+    // function_address_offset: usize,
     block_items: &[BlockItem],
     block_index_stack: &[usize],
     relative_depth: usize,
@@ -372,11 +379,13 @@ fn get_branch_target(
     if target_level == 0 {
         // 跳到函数本层了
         // 目标位置应该是函数的最后一个指令，即 `end 指令` 所在的位置
-        let function_end_address = function_original_instructions.len() - 1;
+
+        // let function_end_offset = function_original_instructions.len() - 1;
 
         Ok(BranchTarget::Jump(
             relative_depth,
-            function_address_offset + function_end_address,
+            // function_address_offset + function_end_offset,
+            function_end_address,
         ))
     } else {
         let target_block_index = block_index_stack[target_level - 1];
@@ -391,7 +400,7 @@ fn get_branch_target(
                 end_address,
             } => Ok(BranchTarget::Recur(
                 relative_depth,
-                function_address_offset + *start_address,
+                function_start_address + *start_address,
             )),
             BlockItem::Block {
                 block_type,
@@ -399,7 +408,7 @@ fn get_branch_target(
                 end_address,
             } => Ok(BranchTarget::Jump(
                 relative_depth,
-                function_address_offset + *end_address,
+                function_start_address + *end_address,
             )),
             BlockItem::If {
                 block_type,
@@ -408,7 +417,7 @@ fn get_branch_target(
                 alternate_address: middle_address,
             } => Ok(BranchTarget::Jump(
                 relative_depth,
-                function_address_offset + *end_address,
+                function_start_address + *end_address,
             )),
         }
     }
@@ -445,7 +454,7 @@ pub fn transform_constant_expression(
             | instruction::Instruction::I64Const(_)
             | instruction::Instruction::F32Const(_)
             | instruction::Instruction::F64Const(_) => Instruction::Sequence(inst.to_owned()),
-            instruction::Instruction::End => Instruction::Control(Control::Return),
+            instruction::Instruction::End => Instruction::Control(Control::Return(None)),
             _ => {
                 return Err(EngineError::InvalidOperation(format!(
                     "does not support instruction \"{:?}\" in constant expression",
@@ -458,149 +467,6 @@ pub fn transform_constant_expression(
     }
 
     Ok(instructions)
-}
-
-#[derive(Debug, PartialEq, Clone)]
-struct BlockLocation {
-    block_index: usize,
-    block_item: BlockItem,
-}
-
-impl BlockLocation {
-    fn new(block_index: usize, block_item: BlockItem) -> Self {
-        Self {
-            block_index,
-            block_item,
-        }
-    }
-}
-
-/// 对一个函数的指令序列当中的块结构生成位置信息列表
-///
-/// 示例：
-/// function
-/// |
-/// |  0--block-start
-/// |  |  1--loop-start
-/// |  |  |  2--block-start
-/// |  |  |  2--block-end
-/// |  |  1--loop-end
-/// |  |  3--block-start
-/// |  |  |  4--if-start
-/// |  |  |  |  5--block-start
-/// |  |  |  |  5--block-end
-/// |  |  |  4--if-mid
-/// |  |  |  4--if-end
-/// |  |  3--block-end
-/// |  0--block-end
-/// |  6--block-start
-/// |  6--block-end
-fn get_function_block_items(code_item: &CodeItem) -> Vec<BlockItem> {
-    let mut block_location_stack: Vec<BlockLocation> = vec![];
-    let mut block_locations: Vec<BlockLocation> = vec![]; // 未排序的
-
-    for (address, instruction) in code_item.instruction_items.iter().enumerate() {
-        match instruction {
-            instruction::Instruction::Block(block_type, block_index) => {
-                block_location_stack.push(BlockLocation::new(
-                    *block_index as usize,
-                    BlockItem::Block {
-                        block_type: block_type.to_owned(),
-                        start_address: address,
-                        end_address: 0, // 临时值
-                    },
-                ));
-            }
-            instruction::Instruction::Loop(block_type, block_index) => {
-                block_location_stack.push(BlockLocation::new(
-                    *block_index as usize,
-                    BlockItem::Loop {
-                        block_type: block_type.to_owned(),
-                        start_address: address,
-                        end_address: 0, // 临时值
-                    },
-                ));
-            }
-            instruction::Instruction::If(block_type, block_index) => {
-                block_location_stack.push(BlockLocation::new(
-                    *block_index as usize,
-                    BlockItem::If {
-                        block_type: block_type.to_owned(),
-                        start_address: address,
-                        end_address: 0,          // 临时值
-                        alternate_address: None, // 临时值
-                    },
-                ));
-            }
-            instruction::Instruction::Else => {
-                let stack_last_index = block_location_stack.len() - 1;
-                let last_block_location = &mut block_location_stack[stack_last_index];
-                let last_block_item = &mut last_block_location.block_item;
-
-                if let BlockItem::If {
-                    block_type,
-                    start_address,
-                    end_address,
-                    alternate_address,
-                } = last_block_item
-                {
-                    *alternate_address = Some(address); // 替换临时值
-                } else {
-                    unreachable!()
-                }
-            }
-            instruction::Instruction::End => {
-                // 函数的指令序列最后一个指令，即 `end 指令` 不属于结构块，所以需要排除
-                // 结构块栈已经弹空的情况
-                if block_location_stack.len() > 0 {
-                    let stack_last_index = block_location_stack.len() - 1;
-                    let last_block_location = &mut block_location_stack[stack_last_index];
-                    let last_block_item = &mut last_block_location.block_item;
-
-                    match last_block_item {
-                        BlockItem::Block {
-                            block_type,
-                            start_address,
-                            end_address,
-                        } => {
-                            *end_address = address; // 替换临时值
-                        }
-                        BlockItem::Loop {
-                            block_type,
-                            start_address,
-                            end_address,
-                        } => {
-                            *end_address = address; // 替换临时值
-                        }
-                        BlockItem::If {
-                            block_type,
-                            start_address,
-                            end_address,
-                            alternate_address,
-                        } => {
-                            *end_address = address; // 替换临时值
-                        }
-                    }
-
-                    // 弹出一项 block_location 然后移入 block_locations
-                    let block_location = block_location_stack.pop().unwrap();
-                    block_locations.push(block_location);
-                }
-            }
-            _ => {
-                //
-            }
-        }
-    }
-
-    // 对 block_locations 按照 block index 进行排序
-    block_locations.sort_by_key(|item| item.block_index);
-
-    // 转换到结构位置信息列表
-    block_locations
-        .iter()
-        .map(|item| item.block_item.clone())
-        .collect::<Vec<BlockItem>>()
 }
 
 #[cfg(test)]
@@ -767,19 +633,19 @@ mod tests {
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 Instruction::Sequence(instruction::Instruction::I32Const(1)),
-                Instruction::Control(Control::Return),
+                Instruction::Control(Control::Return(None)),
                 Instruction::Sequence(instruction::Instruction::I32Const(2)),
-                Instruction::Control(Control::Return),
+                Instruction::Control(Control::Return(None)),
                 Instruction::Sequence(instruction::Instruction::I32Const(3)),
-                Instruction::Control(Control::Return),
+                Instruction::Control(Control::Return(None)),
             ],
             vec![
                 Instruction::Sequence(instruction::Instruction::I32Const(1)),
-                Instruction::Control(Control::Return),
+                Instruction::Control(Control::Return(None)),
                 Instruction::Sequence(instruction::Instruction::I32Const(2)),
                 Instruction::Sequence(instruction::Instruction::I32Const(3)),
                 Instruction::Sequence(instruction::Instruction::I32Add),
-                Instruction::Control(Control::Return),
+                Instruction::Control(Control::Return(None)),
             ],
         ];
 
@@ -795,7 +661,7 @@ mod tests {
                 params: vec![ValueType::I32],
                 results: vec![ValueType::I32],
             })],
-            vec![0, 0],
+            vec![0, 0, 0, 0],
             vec![
                 CodeItem {
                     local_groups: vec![],
@@ -966,7 +832,7 @@ mod tests {
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)),
-            Instruction::Control(Control::Return),
+            Instruction::Control(Control::Return(None)),
             // function 1
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #02
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #03
@@ -997,23 +863,23 @@ mod tests {
             Instruction::Control(Control::Jump(2, 28)),                   // #16
             Instruction::Control(Control::Jump(3, 35)),                   // #17
             Instruction::Control(Control::Jump(3, 35)),                   // #18
-            Instruction::Control(Control::Return),                        // #19 - block 2 end
+            Instruction::Control(Control::Return(Some(2))),               // #19 - block 2 end
             Instruction::Control(Control::Recur(0, 8)),                   // #20
             Instruction::Control(Control::Jump(1, 28)),                   // #21
             Instruction::Control(Control::Jump(2, 35)),                   // #22
             Instruction::Control(Control::Jump(2, 35)),                   // #23
-            Instruction::Control(Control::Return),                        // #24 - block 1 end
+            Instruction::Control(Control::Return(Some(1))),               // #24 - block 1 end
             Instruction::Control(Control::Jump(0, 28)),                   // #25
             Instruction::Control(Control::Jump(1, 35)),                   // #26
             Instruction::Control(Control::Jump(1, 35)),                   // #27
-            Instruction::Control(Control::Return),                        // #28 - block 0 end
+            Instruction::Control(Control::Return(Some(0))),               // #28 - block 0 end
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #29
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #30
             Instruction::Control(Control::Jump(0, 35)),                   // #31
             Instruction::Control(Control::Jump(0, 35)),                   // #32
             Instruction::Sequence(instruction::Instruction::I32Const(4)), // #33
             Instruction::Sequence(instruction::Instruction::I32Const(5)), // #34
-            Instruction::Control(Control::Return),                        // #35
+            Instruction::Control(Control::Return(None)),                  // #35
             // function 3
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #36
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #37
@@ -1032,8 +898,8 @@ mod tests {
                 block_index: 2,
                 end_address: 41,
             }), // #40 - block 2
-            Instruction::Control(Control::Return),                        // #41 - block 2 end
-            Instruction::Control(Control::Return),                        // #42 - block 1 end
+            Instruction::Control(Control::Return(Some(2))),               // #41 - block 2 end
+            Instruction::Control(Control::Return(Some(1))),               // #42 - block 1 end
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
                 block_index: 3,
@@ -1063,7 +929,7 @@ mod tests {
             Instruction::Control(Control::Jump(3, 80)),                   // #56
             Instruction::Control(Control::Jump(4, 85)), // #57 - jump to function end
             Instruction::Control(Control::Jump(4, 85)), // #58
-            Instruction::Control(Control::Return),      // #59 - block 5 end
+            Instruction::Control(Control::Return(Some(5))), // #59 - block 5 end
             Instruction::Control(Control::Jump(0, 73)), // #60 - else
             Instruction::Control(Control::Jump(0, 73)), // #61
             Instruction::Control(Control::Jump(1, 77)), // #62
@@ -1080,20 +946,20 @@ mod tests {
             Instruction::Control(Control::Jump(3, 80)), // #69
             Instruction::Control(Control::Jump(4, 85)), // #70 - jump to function end
             Instruction::Control(Control::Jump(4, 85)), // #71
-            Instruction::Control(Control::Return),      // #72 - block 6 end
-            Instruction::Control(Control::Return),      // #73 // block 4 end
+            Instruction::Control(Control::Return(Some(6))), // #72 - block 6 end
+            Instruction::Control(Control::Return(Some(4))), // #73 // block 4 end
             Instruction::Control(Control::Jump(0, 77)), // #74
             Instruction::Control(Control::Jump(1, 80)), // #75
             Instruction::Control(Control::Jump(2, 85)), // #76
-            Instruction::Control(Control::Return),      // #77 // block 3 end
+            Instruction::Control(Control::Return(Some(3))), // #77 // block 3 end
             Instruction::Control(Control::Jump(0, 80)), // #78
             Instruction::Control(Control::Jump(1, 85)), // #79
-            Instruction::Control(Control::Return),      // #80 // block 0 end
+            Instruction::Control(Control::Return(Some(0))), // #80 // block 0 end
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #81
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #82
             Instruction::Control(Control::Jump(0, 85)), // #83
             Instruction::Control(Control::Jump(0, 85)), // #84
-            Instruction::Control(Control::Return),      // #85
+            Instruction::Control(Control::Return(None)), // #85
             // function 4
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #86
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #87
@@ -1115,14 +981,14 @@ mod tests {
             Instruction::Control(Control::Jump(1, 101)),                  // #94
             Instruction::Control(Control::Jump(2, 104)),                  // #95
             Instruction::Control(Control::Jump(2, 104)),                  // #96
-            Instruction::Control(Control::Return),                        // #97 - block 1 end
+            Instruction::Control(Control::Return(Some(1))),               // #97 - block 1 end
             Instruction::Control(Control::Jump(0, 101)),                  // #98
             Instruction::Control(Control::Jump(1, 104)),                  // #99
             Instruction::Control(Control::Jump(1, 104)),                  // #100
-            Instruction::Control(Control::Return),                        // #101 - block 0 end
+            Instruction::Control(Control::Return(Some(0))),               // #101 - block 0 end
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #102
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #103
-            Instruction::Control(Control::Return),                        // #104
+            Instruction::Control(Control::Return(None)),                  // #104
         ]];
 
         assert_eq!(actual, expected);
@@ -1195,10 +1061,10 @@ mod tests {
             Instruction::Control(Control::RecurNotEqZero(1, 3)), // #08 jump to `block 1 loop`
             Instruction::Control(Control::JumpNotEqZero(2, 13)), // #09 jump to `block 0 end`
             Instruction::Control(Control::JumpNotEqZero(3, 14)), // #10 jump to `function end`
-            Instruction::Control(Control::Return),               // #11 - block 2 end
-            Instruction::Control(Control::Return),               // #12 - block 1 end
-            Instruction::Control(Control::Return),               // #13 - block 0 end
-            Instruction::Control(Control::Return),               // #14
+            Instruction::Control(Control::Return(Some(2))),      // #11 - block 2 end
+            Instruction::Control(Control::Return(Some(1))),      // #12 - block 1 end
+            Instruction::Control(Control::Return(Some(0))),      // #13 - block 0 end
+            Instruction::Control(Control::Return(None)),         // #14
         ]];
 
         assert_eq!(actual, expected);
@@ -1274,10 +1140,10 @@ mod tests {
                 ],
                 BranchTarget::Jump(3, 11),
             )), // #07
-            Instruction::Control(Control::Return), // #08 - block 2 end
-            Instruction::Control(Control::Return), // #09 - block 1 end
-            Instruction::Control(Control::Return), // #10 - block 0 end
-            Instruction::Control(Control::Return), // #11
+            Instruction::Control(Control::Return(Some(2))), // #08 - block 2 end
+            Instruction::Control(Control::Return(Some(1))), // #09 - block 1 end
+            Instruction::Control(Control::Return(Some(0))), // #10 - block 0 end
+            Instruction::Control(Control::Return(None)),    // #11
         ]];
 
         assert_eq!(actual, expected);
@@ -1338,7 +1204,7 @@ mod tests {
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
-            Instruction::Control(Control::CallExternal {
+            Instruction::Control(Control::Call {
                 vm_module_index: 0,
                 type_index: 0,
                 function_index: 1,
@@ -1346,7 +1212,7 @@ mod tests {
                 address: 7,
             }), // #02
             Instruction::Sequence(instruction::Instruction::I32Const(10)), // #03
-            Instruction::Control(Control::CallExternal {
+            Instruction::Control(Control::Call {
                 vm_module_index: 0,
                 type_index: 0,
                 function_index: 2,
@@ -1354,22 +1220,22 @@ mod tests {
                 address: 10,
             }), // #04
             Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
-            Instruction::Control(Control::Return),                        // #06
+            Instruction::Control(Control::Return(None)),                  // #06
             // function 1
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #07
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #08
-            Instruction::Control(Control::Return),                        // #09
+            Instruction::Control(Control::Return(None)),                  // #09
             // function 2
             Instruction::Sequence(instruction::Instruction::I32Const(4)), // #10
             Instruction::Sequence(instruction::Instruction::I32Const(5)), // #11
-            Instruction::Control(Control::Return),                        // #12
+            Instruction::Control(Control::Return(None)),                  // #12
             // function 3
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #13
-            Instruction::Control(Control::DynamicCall {
+            Instruction::Control(Control::CallIndirect {
                 type_index: 1,
                 table_index: 0,
             }), // #14
-            Instruction::Control(Control::Return),                        // #15
+            Instruction::Control(Control::Return(None)),                  // #15
         ]];
 
         assert_eq!(actual, expected);
@@ -1476,24 +1342,24 @@ mod tests {
                 // function 0
                 Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
                 Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
-                Instruction::Control(Control::Return),                        // #02
+                Instruction::Control(Control::Return(None)),                  // #02
                 // function 1
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #03
                 Instruction::Sequence(instruction::Instruction::I32Const(3)), // #04
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Call {
                     vm_module_index: 0,
                     type_index: 0,
                     function_index: 0,
                     internal_function_index: 0,
                     address: 0,
                 }), // #05
-                Instruction::Control(Control::Return),                        // #06
+                Instruction::Control(Control::Return(None)),                  // #06
             ],
             vec![
                 // function index 2
                 Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
                 Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Call {
                     vm_module_index: 0,
                     type_index: 0,
                     function_index: 0,
@@ -1501,7 +1367,7 @@ mod tests {
                     address: 0,
                 }), // #02
                 Instruction::Sequence(instruction::Instruction::I32Const(10)), // #03
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Call {
                     vm_module_index: 0,
                     type_index: 0,
                     function_index: 1,
@@ -1509,7 +1375,7 @@ mod tests {
                     address: 3,
                 }), // #04
                 Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Call {
                     vm_module_index: 1,
                     type_index: 0,
                     function_index: 3,
@@ -1517,11 +1383,11 @@ mod tests {
                     address: 9,
                 }), // #06
                 Instruction::Sequence(instruction::Instruction::I32Const(12)), // #07
-                Instruction::Control(Control::Return),                        // #08
+                Instruction::Control(Control::Return(None)),                  // #08
                 // function index 3
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #09
                 Instruction::Sequence(instruction::Instruction::I32Const(3)), // #10
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Call {
                     vm_module_index: 0,
                     type_index: 0,
                     function_index: 0,
@@ -1529,7 +1395,7 @@ mod tests {
                     address: 0,
                 }), // #11
                 Instruction::Sequence(instruction::Instruction::I32Const(20)), // #12
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Call {
                     vm_module_index: 0,
                     type_index: 0,
                     function_index: 1,
@@ -1537,7 +1403,7 @@ mod tests {
                     address: 3,
                 }), // #13
                 Instruction::Sequence(instruction::Instruction::I32Const(21)), // #14
-                Instruction::Control(Control::Return),                        // #15
+                Instruction::Control(Control::Return(None)),                  // #15
             ],
         ];
 
@@ -1617,7 +1483,7 @@ mod tests {
                 function_index: 1,
             }), // #04
             Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
-            Instruction::Control(Control::CallExternal {
+            Instruction::Control(Control::Call {
                 vm_module_index: 0,
                 type_index: 0,
                 function_index: 3,
@@ -1625,7 +1491,7 @@ mod tests {
                 address: 9,
             }), // #06
             Instruction::Sequence(instruction::Instruction::I32Const(12)), // #07
-            Instruction::Control(Control::Return),                        // #08
+            Instruction::Control(Control::Return(None)),                  // #08
             // function index 3
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #09
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #10
@@ -1641,7 +1507,7 @@ mod tests {
                 function_index: 1,
             }), // #13
             Instruction::Sequence(instruction::Instruction::I32Const(21)), // #14
-            Instruction::Control(Control::Return),                        // #15
+            Instruction::Control(Control::Return(None)),                  // #15
         ]];
 
         assert_eq!(actual, expected);
@@ -1825,19 +1691,19 @@ mod tests {
             vec![
                 // function index 0
                 Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
-                Instruction::Control(Control::Return),                        // #01
+                Instruction::Control(Control::Return(None)),                  // #01
                 // function index 1
                 Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
-                Instruction::Control(Control::Return),                        // #03
+                Instruction::Control(Control::Return(None)),                  // #03
             ],
             vec![
                 // function index 2
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #00
                 Instruction::Sequence(instruction::Instruction::Drop),        // #01
-                Instruction::Control(Control::Return),                        // #02
+                Instruction::Control(Control::Return(None)),                  // #02
                 // function index 3
                 Instruction::Sequence(instruction::Instruction::I32Const(3)), // #03
-                Instruction::Control(Control::Return),                        // #04
+                Instruction::Control(Control::Return(None)),                  // #04
             ],
             vec![
                 // function index 3
@@ -1848,7 +1714,7 @@ mod tests {
                     function_index: 0,
                 }), // #01
                 Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Call {
                     vm_module_index: 0,
                     type_index: 0,
                     function_index: 1,
@@ -1856,22 +1722,22 @@ mod tests {
                     address: 2,
                 }), // #03
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #04
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Call {
                     vm_module_index: 1,
                     type_index: 2,
                     function_index: 3,
                     internal_function_index: 1,
                     address: 3,
                 }), // #05
-                Instruction::Control(Control::Return),                        // #06
-                Instruction::Control(Control::CallExternal {
+                Instruction::Control(Control::Return(None)),                  // #06
+                Instruction::Control(Control::Call {
                     vm_module_index: 2,
                     type_index: 3,
                     function_index: 3,
                     internal_function_index: 0,
                     address: 0,
                 }), // #07
-                Instruction::Control(Control::Return),                        // #08
+                Instruction::Control(Control::Return(None)),                  // #08
             ],
         ];
 

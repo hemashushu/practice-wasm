@@ -23,7 +23,11 @@ use anvm_ast::{
     types::{check_value_types, ValueType, ValueTypeCheckError},
 };
 
-use crate::{error::EngineError, vm::{VM, INITIAL_FRAME_POINTER}, vm_stack::INFO_SEGMENT_ITEM_COUNT};
+use crate::{
+    error::EngineError,
+    vm::{INITIAL_FRAME_POINTER, VM},
+    vm_stack::INFO_SEGMENT_ITEM_COUNT,
+};
 
 pub enum ControlResult {
     Sequence,
@@ -53,7 +57,10 @@ pub enum ControlResult {
     ProgramEnd,
 }
 
-pub fn process_return(vm: &mut VM) -> Result<ControlResult, EngineError> {
+pub fn process_return(
+    vm: &mut VM,
+    option_block_index: &Option<usize>,
+) -> Result<ControlResult, EngineError> {
     let frame_type = &vm.status.frame_type;
     let vm_module_index = vm.status.vm_module_index;
     let function_index = vm.status.function_index;
@@ -84,9 +91,16 @@ pub fn process_return(vm: &mut VM) -> Result<ControlResult, EngineError> {
     let stack_size = vm.stack.get_size();
     let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
     if operands_count < result_count {
-        return Err(EngineError::InvalidOperation(format!(
-            "failed to return result from function {} (module {}), not enough operands, expected: {}, actual: {}",
-            function_index, vm_module_index, result_count, operands_count)));
+        let message = if let Some(block_index) = option_block_index {
+            format!(
+                "failed to return result from block {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
+                block_index, function_index, vm_module_index, result_count, operands_count)
+        } else {
+            format!(
+                "failed to return result from function {} (module {}), not enough operands, expected: {}, actual: {}",
+                function_index, vm_module_index, result_count, operands_count)
+        };
+        return Err(EngineError::InvalidOperation(message));
     }
 
     // 判断返回值的数据类型
@@ -94,21 +108,32 @@ pub fn process_return(vm: &mut VM) -> Result<ControlResult, EngineError> {
     match check_value_types(results, &result_types) {
         Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
         Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-            return Err(EngineError::InvalidOperation(format!(
-                "failed to return result from function {} (module {}), The data type of result {} does not match, expected: {}, actual: {}",
-                function_index,
-                vm_module_index,
-                index +1,
-                result_types[index],
-                results[index].get_type())));
+            let message = if let Some(block_index) = option_block_index {
+                format!(
+                    "failed to return result from block {} (function {}, module {}), The data type of result {} does not match, expected: {}, actual: {}",
+                    block_index,
+                    function_index,
+                    vm_module_index,
+                    index +1,
+                    result_types[index],
+                    results[index].get_type())
+            } else {
+                format!(
+                    "failed to return result from function {} (module {}), The data type of result {} does not match, expected: {}, actual: {}",
+                    function_index,
+                    vm_module_index,
+                    index +1,
+                    result_types[index],
+                    results[index].get_type())
+            };
+            return Err(EngineError::InvalidOperation(message));
         }
         _ => {
             // pass
         }
     }
 
-    let (vm_module_index, function_index, frame_type, address) =
-        vm.pop_frame(result_count);
+    let (vm_module_index, function_index, frame_type, address) = vm.pop_frame(result_count);
 
     // 上一句 vm.pop_frame() 调用已经更新了 vm.status。
     // 如果 vm.status.frame_pointer 的值等于 0，说明刚才弹出的栈帧是
