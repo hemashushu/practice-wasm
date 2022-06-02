@@ -78,7 +78,8 @@ pub enum BranchTarget {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Control {
     /// 进入一个新的栈帧
-    /// 对应 block/loop 指令
+    ///
+    /// 原 `block/loop 指令`
     Block {
         block_type: BlockType,
         block_index: usize,
@@ -86,7 +87,8 @@ pub enum Control {
     },
 
     /// 进入一个新的栈帧，并当原栈顶的数值等于 0 时，跳转到指定的地址 alternate_address,
-    /// 对应 if 指令
+    ///
+    /// 原 `if 指令`
     /// 有时 if 指令结构缺少 else 结构，这时 alternate_address 的值跟 end_address 的值相同。
     BlockJumpEqZero {
         block_type: BlockType,
@@ -98,29 +100,37 @@ pub enum Control {
     /// 跳转到指定的地址
     /// 其中 relative_depth 为当前栈帧距离目标栈帧的层次数量，当数量为 0 时，表示
     /// 跳转到当前栈帧层的其他地址，当数量 >0 时，表示需要弹出相应的栈帧数量。
-    /// 对应 else/br/return 指令
-    /// 显然对于 else 指令，relative_depth 的值为 0.
+    ///
+    /// 原 `else/br/return 指令`
+    /// 对于 else 指令，relative_depth 的值为 0。
     Jump(/* relative_depth */ usize, /* address */ usize),
 
     /// 跳转到指定的地址
     /// 跟 Jump 指令类似，但仅当原栈顶的数值不等于 0 时才跳转，否则什么事都不做
-    /// 对应 br_if 指令
+    ///
+    /// 原 `br_if 指令`
     JumpNotEqZero(/* relative_depth */ usize, /* address */ usize),
 
     /// 重复执行当前结构块
-    /// 对应 br 跳转到 loop 结构块的情况
+    ///
+    /// 原 `br 指令` 跳转到 loop 结构块的情况
     /// - 如果 relative_depth 为 0，只需简单地跳到 loop 指令所在地位置即可，
     ///   不需要弹出/压入参数，也不需要弹出/压入栈帧
     /// - 如果 relative_depth 大于 0，则需要弹出目标 loop 结构块所需要的参数，
     ///   然后弹出跟 relative_depth 的值一样数量的栈帧，再压入实参，然而还是不需要创建新的栈帧
     Recur(/* relative_depth */ usize, /* address */ usize),
 
+    /// 重复执行当前结构块
+    ///
+    /// 原 `br_if 指令` 跳转到 loop 结构块的情况
     RecurNotEqZero(/* relative_depth */ usize, /* address */ usize),
 
     /// 原 `br_table 指令`
     Branch(Vec<BranchTarget>, BranchTarget),
 
     /// 调用（普通）函数
+    ///
+    /// 原 `call 指令`
     Call {
         /// 目标模块的索引
         vm_module_index: usize,
@@ -142,6 +152,8 @@ pub enum Control {
     },
 
     /// 调用本地函数（native function）模块的本地函数
+    ///
+    /// 原 `call 指令`
     CallNative {
         native_module_index: usize,
 
@@ -154,20 +166,23 @@ pub enum Control {
         function_index: usize,
     },
 
+    /// 函数间接调用
+    ///
     /// 原 `call_indirect 指令`
     CallIndirect {
         type_index: usize,
         table_index: usize,
     },
 
-    /// 原 `end 指令`，表示函数或者结构块结束
+    /// 函数或者结构块结束
     ///
+    /// 原 `end 指令`
     /// 参数是流程控制结构块的索引，对于函数的结束指令（即函数最后一条指令，`end 指令`）
     /// 它的参数值是 None。结构块索引主要用于调式程序时方便定位出错的结构位置信息。
     Return(Option<usize>),
 }
 
-/// 编译后的指令
+/// 转换后的指令
 #[derive(Debug, PartialEq, Clone)]
 pub enum Instruction {
     /// 按顺序执行的指令

@@ -50,10 +50,8 @@ impl VMModule {
         global_variable_indexes: Vec<usize>,
         function_types: Vec<FunctionType>,
         internal_function_local_variable_types_list: Vec<Vec<ValueType>>,
-        // function_to_type_indexes: Vec<usize>,
         function_items: Vec<FunctionItem>,
         instructions: Vec<Instruction>,
-        // ast_module: anvm_ast::ast::Module,
     ) -> Self {
         Self {
             name,
@@ -62,10 +60,8 @@ impl VMModule {
             global_variable_indexes,
             function_types,
             internal_function_local_variable_types_list,
-            // function_to_type_indexes,
             function_items,
             instructions,
-            // ast_module,
         }
     }
 }

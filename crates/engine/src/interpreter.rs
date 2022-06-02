@@ -265,23 +265,6 @@ pub fn exec_instruction(
                 // 控制指令
                 Control::Return(block_index) => ins_control::process_return(vm, block_index),
 
-                // 函数调用指令
-                // Control::CallInternal {
-                //     type_index,
-                //     function_index,
-                //     internal_function_index,
-                //     address,
-                // } => {
-                //     let vm_module_index = vm.status.vm_module_index;
-                //     ins_function::call_function(
-                //         vm,
-                //         vm_module_index,
-                //         *type_index,
-                //         *function_index,
-                //         *internal_function_index,
-                //         *address,
-                //     )
-                // }
                 Control::Call {
                     vm_module_index,
                     type_index,

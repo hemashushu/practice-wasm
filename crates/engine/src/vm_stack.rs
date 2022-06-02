@@ -251,10 +251,6 @@ impl VMStack {
     pub fn peek_values(&self, start: usize, end: usize) -> &[Value] {
         &self.slots[start..end]
     }
-
-    // pub fn reset(&mut self) {
-    //     self.slots.clear()
-    // }
 }
 
 #[cfg(test)]

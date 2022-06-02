@@ -134,7 +134,6 @@ impl Resource {
         vm_modules: Vec<VMModule>,
     ) -> Self {
         Self {
-            // stack,
             memory_blocks,
             tables,
             global_variables,
