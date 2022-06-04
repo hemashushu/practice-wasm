@@ -7,7 +7,6 @@
 use anvm_ast::{
     ast::Module,
     instruction::{BlockType, Instruction, MemoryArgument},
-    types::ValueType,
 };
 use std::fmt::Write;
 
@@ -37,7 +36,7 @@ impl InstructionConvert for BlockType {
     fn text(
         &self,
         module: &Module,
-        option_function_index: Option<u32>,
+        _option_function_index: Option<u32>,
         f: &mut String,
     ) -> std::fmt::Result {
         match self {
@@ -63,8 +62,8 @@ impl InstructionConvert for BlockType {
 impl InstructionConvert for MemoryArgument {
     fn text(
         &self,
-        module: &Module,
-        option_function_index: Option<u32>,
+        _module: &Module,
+        _option_function_index: Option<u32>,
         f: &mut String,
     ) -> std::fmt::Result {
         write!(f, "offset={} align={}", self.offset, 2i32.pow(self.align))
@@ -159,7 +158,7 @@ impl InstructionConvert for Instruction {
                     write!(f, "call {}", function_index)
                 }
             }
-            Self::CallIndirect(type_index, table_index) => {
+            Self::CallIndirect(type_index, _table_index) => {
                 // table_index 暂时用不上
                 if let Some(type_name) = get_type_name(module, *type_index) {
                     write!(f, "call_indirect (type {})", type_name)
@@ -350,8 +349,8 @@ impl InstructionConvert for Instruction {
                 "i64.store32 {}",
                 instruction_to_string(memory_argument, module, option_function_index)
             ),
-            Self::MemorySize(memory_block_index) => write!(f, "memory.size"), // memory_block_index 暂时用不上
-            Self::MemoryGrow(memory_block_index) => write!(f, "memory.grow"), // memory_block_index 暂时用不上
+            Self::MemorySize(_memory_block_index) => write!(f, "memory.size"), // memory_block_index 暂时用不上
+            Self::MemoryGrow(_memory_block_index) => write!(f, "memory.grow"), // memory_block_index 暂时用不上
 
             Self::I32Const(immediate_number) => write!(f, "i32.const {}", immediate_number),
             Self::I64Const(immediate_number) => write!(f, "i64.const {}", immediate_number),
@@ -530,7 +529,6 @@ mod tests {
             IndexNamePair, Module, NameCollection,
         },
         instruction::{BlockType, Instruction, MemoryArgument},
-        types::ValueType,
     };
     use pretty_assertions::assert_eq;
 
