@@ -10,13 +10,13 @@ use anvm_ast::{
 };
 
 use crate::{
+    decoder::{decode, decode_constant_expression},
     error::{
         make_invalid_memory_index_engine_error, make_invalid_table_index_engine_error, EngineError,
     },
     linker::{link_functions, link_global_variables, link_memorys, link_tables},
     native_module::NativeModule,
     object::NamedAstModule,
-    decoder::{decode, decode_constant_expression},
     vm::{Resource, Status, VM},
     vm_module::VMModule,
     vm_stack::VMStack,
@@ -1055,67 +1055,54 @@ mod tests {
             vec![Value::I32(0)]
         );
     }
-}
 
-/*
     #[test]
-    fn test_branch() {
-        let module = get_test_vm_module("test-branch.wasm");
+    fn test_block() {
+        let module_name = "test-block.wasm";
 
         // 测试 return
-        assert_eq!(
-            eval(module_name, 0, &vec![]).unwrap(),
-            vec![Value::I32(1)]
-        );
-        assert_eq!(
-            eval(module_name, 1, &vec![]).unwrap(),
-            vec![Value::I32(2)]
-        );
-        assert_eq!(
-            eval(module_name, 2, &vec![]).unwrap(),
-            vec![Value::I32(3)]
-        );
+        assert_eq!(eval(module_name, 0, &vec![]).unwrap(), vec![Value::I32(1)]);
+        assert_eq!(eval(module_name, 1, &vec![]).unwrap(), vec![Value::I32(2)]);
+        assert_eq!(eval(module_name, 2, &vec![]).unwrap(), vec![Value::I32(3)]);
 
         // 测试 br
-        assert_eq!(
-            eval(module_name, 3, &vec![]).unwrap(),
-            vec![Value::I32(4)]
-        );
-        assert_eq!(
-            eval(module_name, 4, &vec![]).unwrap(),
-            vec![Value::I32(2)]
-        );
-        assert_eq!(
-            eval(module_name, 5, &vec![]).unwrap(),
-            vec![Value::I32(11)]
-        );
-        assert_eq!(
-            eval(module_name, 6, &vec![]).unwrap(),
-            vec![Value::I32(12)]
-        );
-        assert_eq!(
-            eval(module_name, 7, &vec![]).unwrap(),
-            vec![Value::I32(13)]
-        );
+        assert_eq!(eval(module_name, 3, &vec![]).unwrap(), vec![Value::I32(4)]);
+        assert_eq!(eval(module_name, 4, &vec![]).unwrap(), vec![Value::I32(2)]);
+        assert_eq!(eval(module_name, 5, &vec![]).unwrap(), vec![Value::I32(11)]);
+        assert_eq!(eval(module_name, 6, &vec![]).unwrap(), vec![Value::I32(12)]);
+        assert_eq!(eval(module_name, 7, &vec![]).unwrap(), vec![Value::I32(13)]);
 
         // 测试 br_if
-        assert_eq!(
-            eval(module_name, 8, &vec![]).unwrap(),
-            vec![Value::I32(55)]
-        );
+        assert_eq!(eval(module_name, 8, &vec![]).unwrap(), vec![Value::I32(55)]);
 
-        // 测试 br_table
-        // todo::
-
-        // 测试 if
+        // 测试在结构块里访问函数的局部变量，以及返回值的类型等
         assert_eq!(
-            eval(module_name, 9, &vec![]).unwrap(),
-            vec![Value::I32(2)]
-        );
-        assert_eq!(
-            eval(module_name, 10, &vec![]).unwrap(),
-            vec![Value::I32(1)]
+            eval(module_name, 9, &vec![Value::I32(55), Value::I32(66)]).unwrap(),
+            vec![Value::I32(77)]
         );
     }
 
-*/
+    #[test]
+    fn test_block_if() {
+        let module_name = "test-block-if.wasm";
+
+        // 测试 if
+        assert_eq!(eval(module_name, 0, &vec![]).unwrap(), vec![Value::I32(2)]);
+        assert_eq!(eval(module_name, 1, &vec![]).unwrap(), vec![Value::I32(1)]);
+    }
+
+    #[test]
+    fn test_block_branch_table() {
+        let module_name = "test-block-branch-table.wasm";
+
+        // 测试 br_table
+        assert_eq!(eval(module_name, 0, &vec![Value::I32(0)]).unwrap(), vec![Value::I32(22)]);
+        assert_eq!(eval(module_name, 0, &vec![Value::I32(1)]).unwrap(), vec![Value::I32(33)]);
+        assert_eq!(eval(module_name, 0, &vec![Value::I32(2)]).unwrap(), vec![Value::I32(44)]);
+
+        // 超出 br_table 范围
+        assert_eq!(eval(module_name, 0, &vec![Value::I32(3)]).unwrap(), vec![Value::I32(55)]);
+        assert_eq!(eval(module_name, 0, &vec![Value::I32(4)]).unwrap(), vec![Value::I32(55)]);
+        assert_eq!(eval(module_name, 0, &vec![Value::I32(5)]).unwrap(), vec![Value::I32(55)]);
+    }
+}

@@ -51,19 +51,13 @@
 
 use anvm_ast::{
     instruction::BlockType,
-    types::{check_types, check_value_types, Value, ValueType, ValueTypeCheckError},
+    types::{check_value_types, Value, ValueTypeCheckError},
 };
 
 use crate::{
-    error::{
-        make_invalid_operand_data_type_engine_error,
-        make_invalid_operand_data_types_2_engine_error,
-        make_invalid_operand_data_types_engine_error, make_invalid_table_index_engine_error,
-        make_mismatch_function_type_engine_error, EngineError,
-    },
+    error::{make_invalid_operand_data_type_engine_error, EngineError},
     ins_control::ControlResult,
-    ins_function::pop_arguments,
-    object::{BranchTarget, FunctionItem},
+    object::BranchTarget,
     vm::VM,
     vm_stack::INFO_SEGMENT_ITEM_COUNT,
 };
@@ -83,7 +77,7 @@ pub fn block(
     // 执行完 `block/loop 指令` 之后的下一个指令应该是当前指令的下一个指令
     let next_instruction_address = vm.status.address + 1;
 
-    process_block(
+    continue_process_block(
         vm,
         block_type,
         block_index,
@@ -126,7 +120,7 @@ pub fn block_and_jump_when_eq_zero(
         }
     };
 
-    process_block(
+    continue_process_block(
         vm,
         block_type,
         block_index,
@@ -135,7 +129,7 @@ pub fn block_and_jump_when_eq_zero(
     )
 }
 
-fn process_block(
+fn continue_process_block(
     vm: &mut VM,
     block_type: &BlockType,
     block_index: usize,
@@ -174,7 +168,10 @@ fn process_block(
         )));
     }
 
-    let arguments = pop_arguments(vm, parameter_count);
+    // 从栈弹出数据，作为结构块的参数
+    // 跟普通的函数调用栈帧不同，结构块的栈帧没有自己的局部变量段，所以只能
+    // 把实参先弹出来，在创建了控制帧之后，再压入栈。
+    let arguments = vm.stack.pop_values(parameter_count);
 
     // 核对实参的数据类型和数量
     match check_value_types(&arguments, &parameter_types) {
@@ -191,7 +188,10 @@ fn process_block(
     }
 
     // 压入调用栈
-    vm.push_control_frame(parameter_count, return_address);
+    vm.push_control_frame(return_address);
+
+    // 压入实参
+    vm.stack.push_values(&arguments);
 
     // 返回新的状态信息，让调用者更新虚拟机状态
     let control_result = ControlResult::PushStackFrame {
@@ -205,7 +205,7 @@ fn process_block(
     Ok(control_result)
 }
 
-pub fn jump(vm: &mut VM, address: usize) -> Result<ControlResult, EngineError> {
+pub fn jump(_vm: &mut VM, address: usize) -> Result<ControlResult, EngineError> {
     Ok(ControlResult::JumpWithinBlock { address })
 }
 
@@ -216,7 +216,7 @@ pub fn process_break(
     address: usize,
 ) -> Result<ControlResult, EngineError> {
     if relative_depth == 0 {
-        // 本层的跳转，只需简单地改变下一个指令的地址即可
+        // 本层的跳转，只需简单地改变下一个指令的地址为结构块的 `end 指令` 位置即可
         Ok(ControlResult::JumpWithinBlock { address })
     } else {
         // 跨层跳转，需要将当前栈帧的操作数作为目标层的返回值，具体步骤：
@@ -224,9 +224,10 @@ pub fn process_break(
         // 2. 弹出 `相对深度` 数量的栈帧；
         // 3. 压入第一步所保留的操作数，作为目标结构块返回值。
 
-        let target_status = vm.get_status_by_relative_depth(relative_depth);
-
         let vm_module_index = vm.status.vm_module_index;
+        let function_index = vm.status.function_index;
+
+        let target_status = vm.get_status_by_relative_depth(relative_depth);
         let target_frame_type = &target_status.frame_type;
 
         // 获取目标帧的返回值的数量
@@ -253,52 +254,28 @@ pub fn process_break(
         };
 
         // 判断操作数是否足够当前函数或结构块用于返回
-        // let stack_size = vm.stack.get_size();
-        // let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
-        // if operands_count < result_count {
-        //     let message = if let Some(block_index) = option_block_index {
-        //         format!(
-        //         "failed to break block {} to relative depth {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
-        //         block_index, relative_depth, function_index, vm_module_index, result_count, operands_count)
-        //     } else {
-        //         format!(
-        //         "failed to return result from function {} (module {}), not enough operands, expected: {}, actual: {}",
-        //         function_index, vm_module_index, result_count, operands_count)
-        //     };
-        //     return Err(EngineError::InvalidOperation(message));
-        // }
-        //
-        //         // 判断返回值的数据类型
-        //         let results = vm.stack.peek_values(stack_size - result_count, stack_size);
-        //         match check_value_types(results, &result_types) {
-        //             Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
-        //             Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-        //                 let message = if let Some(block_index) = option_block_index {
-        //                     format!(
-        //                     "failed to return result from block {} (function {}, module {}), The data type of result {} does not match, expected: {}, actual: {}",
-        //                     block_index,
-        //                     function_index,
-        //                     vm_module_index,
-        //                     index +1,
-        //                     result_types[index],
-        //                     results[index].get_type())
-        //                 } else {
-        //                     format!(
-        //                     "failed to return result from function {} (module {}), The data type of result {} does not match, expected: {}, actual: {}",
-        //                     function_index,
-        //                     vm_module_index,
-        //                     index +1,
-        //                     result_types[index],
-        //                     results[index].get_type())
-        //                 };
-        //                 return Err(EngineError::InvalidOperation(message));
-        //             }
-        //             _ => {
-        //                 // pass
-        //             }
-        //         }
+        let stack_size = vm.stack.get_size();
+        let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
+        if operands_count < result_count {
+            let message = if let Some(block_index) = option_block_index {
+                format!(
+                "failed to break block {} to relative depth {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
+                block_index, relative_depth, function_index, vm_module_index, result_count, operands_count)
+            } else {
+                format!(
+                "failed to break function {} (module {}), not enough operands, expected: {}, actual: {}",
+                function_index, vm_module_index, result_count, operands_count)
+            };
+            return Err(EngineError::InvalidOperation(message));
+        }
 
-        todo!()
+        // 丢弃指定数量的栈帧
+        vm.pop_frames(relative_depth, result_count);
+
+        Ok(ControlResult::JumpWithinFunction {
+            frame_type: target_status.frame_type,
+            address,
+        })
     }
 }
 
@@ -308,7 +285,13 @@ pub fn process_break_when_not_eq_zero(
     relative_depth: usize,
     address: usize,
 ) -> Result<ControlResult, EngineError> {
-    todo!()
+    let testing = vm.stack.pop_bool()?;
+
+    if testing {
+        process_break(vm, option_block_index, relative_depth, address)
+    } else {
+        Ok(ControlResult::Sequence)
+    }
 }
 
 pub fn recur(
@@ -317,7 +300,80 @@ pub fn recur(
     relative_depth: usize,
     address: usize,
 ) -> Result<ControlResult, EngineError> {
-    todo!()
+    if relative_depth == 0 {
+        // 本层的跳转，只需简单地改变下一个指令的地址为结构块的 `loop 指令` 的下一个指令位置即可
+        Ok(ControlResult::JumpWithinBlock {
+            address: address + 1,
+        })
+    } else {
+        // 跨层跳转，需要将当前栈帧的操作数作为目标层的参数，具体步骤：
+        // 1. 根据目标层参数的数量，暂存当前栈帧相应数量的操作数；
+        // 2. 弹出 `相对深度` 数量的栈帧；
+        // 3. 压入第一步所保留的操作数，作为目标结构块的参数。
+
+        let vm_module_index = vm.status.vm_module_index;
+        let function_index = vm.status.function_index;
+
+        let target_status = vm.get_status_by_relative_depth(relative_depth);
+        let target_frame_type = &target_status.frame_type;
+
+        // 获取目标帧的参数信息
+        let parameter_types = {
+            match target_frame_type {
+                BlockType::ResultEmpty
+                | BlockType::ResultI32
+                | BlockType::ResultI64
+                | BlockType::ResultF32
+                | BlockType::ResultF64 => vec![],
+                BlockType::TypeIndex(type_index) => {
+                    let vm_module = &vm.resource.vm_modules[vm_module_index];
+                    let function_type = &vm_module.function_types[*type_index as usize];
+                    function_type.params.to_owned()
+                }
+            }
+        };
+
+        // 判断操作数是否足够当前函数或结构块用于返回
+        let parameter_count = parameter_types.len();
+        let stack_size = vm.stack.get_size();
+        let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
+        if operands_count < parameter_count {
+            return Err(EngineError::InvalidOperation(
+                format!(
+                    "failed to recur block {} to relative depth {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
+                    block_index, relative_depth, function_index, vm_module_index, parameter_count, operands_count)
+            ));
+        }
+
+        let arguments = vm.stack.peek_values(parameter_count);
+
+        // 核对实参的数据类型和数量
+        match check_value_types(arguments, &parameter_types) {
+            Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
+            // {
+            //     return Err(EngineError::InvalidOperation(format!(
+            //         "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
+            //         function_index, vm_module_index, parameter_count, arguments.len())));
+            // }
+            Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+                return Err(EngineError::InvalidOperation(format!(
+                "failed to recur block {} to relative depth {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                block_index,relative_depth,  function_index, vm_module_index, index + 1,
+                parameter_types[index],
+                arguments[index].get_type())));
+            }
+            _ => {
+                // pass
+            }
+        }
+
+        vm.pop_frames(relative_depth, parameter_count);
+
+        Ok(ControlResult::JumpWithinFunction {
+            frame_type: target_status.frame_type,
+            address: address + 1,
+        })
+    }
 }
 
 pub fn recur_when_not_eq_zero(
@@ -326,14 +382,44 @@ pub fn recur_when_not_eq_zero(
     relative_depth: usize,
     address: usize,
 ) -> Result<ControlResult, EngineError> {
-    todo!()
+    let testing = vm.stack.pop_bool()?;
+
+    if testing {
+        recur(vm, block_index, relative_depth, address)
+    } else {
+        Ok(ControlResult::Sequence)
+    }
 }
 
 pub fn branch(
     vm: &mut VM,
     option_block_index: Option<usize>,
     branch_targets: &[BranchTarget],
-    branch_target: &BranchTarget,
+    default_branch_target: &BranchTarget,
 ) -> Result<ControlResult, EngineError> {
-    todo!()
+    let branch_index_value = vm.stack.pop();
+
+    let branch_index = if let Value::I32(branch_index) = branch_index_value {
+        branch_index as usize
+    } else {
+        return Err(make_invalid_operand_data_type_engine_error(
+            "br_table", "i32",
+        ));
+    };
+
+    let actual_branch_target = if branch_index < branch_targets.len() {
+        branch_targets[branch_index].clone()
+    } else {
+        default_branch_target.to_owned()
+    };
+
+    match actual_branch_target {
+        BranchTarget::Break(relative_depth, address) => {
+            process_break(vm, option_block_index, relative_depth, address)
+        }
+        BranchTarget::Recur(relative_depth, address) => {
+            let block_index = option_block_index.unwrap();
+            recur(vm, block_index, relative_depth, address)
+        }
+    }
 }

@@ -248,8 +248,13 @@ impl VMStack {
         self.slots.drain(index..);
     }
 
-    pub fn peek_values(&self, start: usize, end: usize) -> &[Value] {
+    pub fn read_slots(&self, start: usize, end: usize) -> &[Value] {
         &self.slots[start..end]
+    }
+
+    pub fn peek_values(&self, count: usize) -> &[Value] {
+        let index = self.slots.len() - count;
+        &self.slots[index..]
     }
 }
 

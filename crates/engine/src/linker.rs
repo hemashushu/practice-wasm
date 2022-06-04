@@ -5,12 +5,12 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
+    decoder::decode_constant_expression,
     error::{
         make_invalid_memory_index_engine_error, make_invalid_table_index_engine_error, EngineError,
     },
     native_module::NativeModule,
     object::{BlockItem, FunctionItem, NamedAstModule},
-    decoder::decode_constant_expression,
     vm::VM,
     vm_global_variable::VMGlobalVariable,
     vm_memory::VMMemory,
@@ -388,9 +388,9 @@ pub fn get_function_block_items(
                 let last_block_item = &mut last_block_location.block_item;
 
                 if let BlockItem::If {
-                    block_type,
-                    start_address,
-                    end_address,
+                    block_type: _,
+                    start_address: _,
+                    end_address: _,
                     alternate_address,
                 } = last_block_item
                 {
@@ -409,24 +409,24 @@ pub fn get_function_block_items(
 
                     match last_block_item {
                         BlockItem::Block {
-                            block_type,
-                            start_address,
+                            block_type: _,
+                            start_address: _,
                             end_address,
                         } => {
                             *end_address = address; // 替换临时值
                         }
                         BlockItem::Loop {
-                            block_type,
-                            start_address,
+                            block_type: _,
+                            start_address: _,
                             end_address,
                         } => {
                             *end_address = address; // 替换临时值
                         }
                         BlockItem::If {
-                            block_type,
-                            start_address,
+                            block_type: _,
+                            start_address: _,
                             end_address,
-                            alternate_address,
+                            alternate_address: _,
                         } => {
                             *end_address = address; // 替换临时值
                         }

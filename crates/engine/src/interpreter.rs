@@ -24,12 +24,6 @@ pub fn exec_instruction(
     match instruction {
         object::Instruction::Sequence(instruction) => {
             let sequence_result = match instruction {
-                // 控制指令
-                Instruction::Unreachable => Err(EngineError::InvalidOperation(
-                    "unreachable instruction is executed".to_string(),
-                )),
-                Instruction::Nop => Ok(()), // 无需任何操作
-
                 // 常量指令
                 Instruction::I32Const(value) => ins_const::i32_const(vm, *value),
                 Instruction::I64Const(value) => ins_const::i64_const(vm, *value),
@@ -263,8 +257,11 @@ pub fn exec_instruction(
         object::Instruction::Control(control) => {
             let control_result = match control {
                 // 控制指令
+                Control::Unreachable => ins_control::process_unreachable(vm),
+                Control::Nop => ins_control::process_nop(vm),
                 Control::End(block_index) => ins_control::process_end(vm, block_index),
 
+                // 函数调用指令
                 Control::Call {
                     vm_module_index,
                     type_index,
@@ -361,7 +358,7 @@ pub fn exec_instruction(
                     Ok(false)
                 }
                 Ok(ControlResult::PushStackFrame {
-                    is_call_frame,
+                    is_call_frame: _,
                     vm_module_index,
                     function_index,
                     frame_type,
@@ -377,7 +374,7 @@ pub fn exec_instruction(
                     Ok(false)
                 }
                 Ok(ControlResult::PopStackFrame {
-                    is_call_frame,
+                    is_call_frame: _,
                     vm_module_index,
                     function_index,
                     frame_type,

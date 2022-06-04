@@ -146,4 +146,19 @@
         )
         ;; got $sum = 1 + 2 + .. + 10 = 55
     )
+
+    ;; 测试在结构块里访问函数的局部变量，以及返回值的类型等
+    ;; 使用 (55,66) 调用本函数，返回 77
+    (func $9 (param i32 i32) (result i32)
+        (i32.const 11)
+        (i64.const 22)
+        (block (param i64) (result i64)
+            (local.get 0)       ;; 55
+            (i64.extend_i32_s)  ;; 55
+            (i64.add)           ;; 22 + 55
+            (i32.wrap_i64)
+            (br 1)
+        )
+        (i32.const 99)
+    )
 )

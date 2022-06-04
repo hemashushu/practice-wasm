@@ -4,8 +4,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::types::ValueType;
-
 /// # WebAssembly 指令列表
 ///
 /// <https://webassembly.github.io/spec/core/syntax/instructions.html>

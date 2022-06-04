@@ -169,17 +169,16 @@ pub fn call(
         )));
     }
 
-    let arguments = vm
-        .stack
-        .peek_values(stack_size - parameter_count, stack_size);
+    let arguments = vm.stack.peek_values(parameter_count);
 
     // 核对实参的数据类型和数量
     match check_value_types(arguments, parameter_types) {
-        Err(ValueTypeCheckError::LengthMismatch) => {
-            return Err(EngineError::InvalidOperation(format!(
-                "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
-                function_index, vm_module_index, parameter_count, arguments.len())));
-        }
+        Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
+        // {
+        //     return Err(EngineError::InvalidOperation(format!(
+        //         "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
+        //         function_index, vm_module_index, parameter_count, arguments.len())));
+        // }
         Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
             return Err(EngineError::InvalidOperation(format!(
                 "failed to call function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
@@ -209,6 +208,30 @@ pub fn call(
     Ok(control_result)
 }
 
+/// 从模块内部函数调用本地函数的过程。
+///
+/// 示例：
+///
+/// |-----------------------------|
+/// |       native function       |
+/// |                             |
+/// | (a,b,c)     -->  (x,y)      |
+/// |  ^ ^ ^            | | push  |
+/// |  | | | pop        V V       |
+/// |                             |
+/// |--- 栈顶。---|   |--- 栈顶。---|
+/// | - c        |   |            |
+/// | - b        |   | - y        |
+/// | - a        |   | - x        |
+/// | - ...      |   | - ...      |
+/// |--- 栈底。---|   |--- 栈顶。---|
+/// |  ^                |         |
+/// |  |                V         |
+/// |  START            END       |
+///
+/// 注：
+/// 先弹出的参数放在参数列表的右边（大索引端），
+/// 对于返回值，左边（小索引端）的数值先压入。
 pub fn call_native(
     vm: &mut VM,
     native_module_index: usize,
@@ -234,7 +257,8 @@ pub fn call_native(
         )));
     }
 
-    let arguments = pop_arguments(vm, parameter_count);
+    // 从栈弹出数据，作为函数调用的参数
+    let arguments = vm.stack.pop_values(parameter_count);
 
     // 核对实参的数据类型和数量
     match check_value_types(&arguments, &parameter_types) {
@@ -254,7 +278,8 @@ pub fn call_native(
 
     match result {
         Ok(result_values) => {
-            push_results(vm, &result_values);
+            // 将数据压入栈，作为函数调用的返回值
+            vm.stack.push_values(&result_values);
 
             // 本地函数的调用并不会进入到函数体，所以调用完毕之后只需继续
             // 执行下一个指令即可。
@@ -262,38 +287,6 @@ pub fn call_native(
         }
         Err(e) => Err(EngineError::NativeError(e)),
     }
-}
-
-/// 从模块内部函数调用本地函数的过程。
-///
-/// 示例：
-///
-/// |-----------------------------|
-/// |       native function       |
-/// |                             |
-/// | (a,b,c)     -->  (x,y)      |
-/// |  ^ ^ ^            | | push  |
-/// |  | | | pop        V V       |
-/// |                             |
-/// |--- 栈顶。---|   |--- 栈顶。---|
-/// | - c        |   |            |
-/// | - b        |   | - y        |
-/// | - a        |   | - x        |
-/// | - ...      |   | - ...      |
-/// |--- 栈底。---|   |--- 栈顶。---|
-/// |  ^                |         |
-/// |  |                V         |
-/// |  START            END       |
-///
-/// 注：
-/// 先弹出的参数放在参数列表的右边（大索引端），
-/// 对于返回值，左边（小索引端）的数值先压入。
-pub fn pop_arguments(vm: &mut VM, argument_count: usize) -> Vec<Value> {
-    vm.stack.pop_values(argument_count)
-}
-
-pub fn push_results(vm: &mut VM, results: &[Value]) {
-    vm.stack.push_values(results)
 }
 
 pub fn call_indirect(
@@ -340,21 +333,21 @@ pub fn call_indirect(
         (
             vm_module_index,
             function_index,
-            function_item,
-            expected_function_type,
+            function_item.to_owned(),
+            expected_function_type.to_owned(),
         )
     };
 
     // 核对函数的签名
-    let actual_function_type = match function_item {
+    let actual_function_type = match &function_item {
         FunctionItem::Normal {
             vm_module_index,
             type_index,
-            function_index,
-            internal_function_index,
-            start_address,
-            end_address,
-            block_items,
+            function_index: _,
+            internal_function_index: _,
+            start_address: _,
+            end_address: _,
+            block_items: _,
         } => {
             let vm_module = &vm.resource.vm_modules[*vm_module_index];
             let function_type = &vm_module.function_types[*type_index];
@@ -363,7 +356,7 @@ pub fn call_indirect(
         FunctionItem::Native {
             native_module_index,
             type_index,
-            function_index,
+            function_index: _,
         } => {
             let native_module = &vm.resource.native_modules[*native_module_index];
             let function_type = &native_module.function_types[*type_index];
@@ -389,15 +382,15 @@ pub fn call_indirect(
     }
 
     // 调用处理函数
-    match function_item {
+    match &function_item {
         FunctionItem::Normal {
             vm_module_index,
             type_index,
             function_index,
             internal_function_index,
             start_address,
-            end_address,
-            block_items,
+            end_address: _,
+            block_items: _,
         } => call(
             vm,
             *vm_module_index,

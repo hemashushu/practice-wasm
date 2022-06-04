@@ -107,10 +107,10 @@ pub fn decode(
 
             let (block_items, function_start_address, function_end_address) = match function_item {
                 FunctionItem::Normal {
-                    vm_module_index,
-                    type_index,
-                    function_index,
-                    internal_function_index,
+                    vm_module_index: _,
+                    type_index: _,
+                    function_index: _,
+                    internal_function_index: _,
                     start_address,
                     end_address,
                     block_items,
@@ -131,8 +131,8 @@ pub fn decode(
                         // 获取 block 结构块当中的 `end 指令` 所在的位置
                         let block_item = &block_items[block_index_usize];
                         let end_address = if let BlockItem::Block {
-                            block_type,
-                            start_address,
+                            block_type: _,
+                            start_address: _,
                             end_address,
                         } = block_item
                         {
@@ -153,8 +153,8 @@ pub fn decode(
                         // 获取 loop 结构块当中的 `end 指令` 所在的位置
                         let block_item = &block_items[block_index_usize];
                         let end_address = if let BlockItem::Loop {
-                            block_type,
-                            start_address,
+                            block_type: _,
+                            start_address: _,
                             end_address,
                         } = block_item
                         {
@@ -175,8 +175,8 @@ pub fn decode(
                         // 获取 if 结构块当中的 `else 指令` 所在的位置
                         let block_item = &block_items[block_index_usize];
                         let (end_address, option_alternate_address) = if let BlockItem::If {
-                            block_type,
-                            start_address,
+                            block_type: _,
+                            start_address: _,
                             end_address,
                             alternate_address,
                         } = block_item
@@ -204,10 +204,10 @@ pub fn decode(
                         let block_item = &block_items[block_index_usize];
 
                         let end_address = if let BlockItem::If {
-                            block_type,
-                            start_address,
+                            block_type: _,
+                            start_address: _,
                             end_address,
-                            alternate_address,
+                            alternate_address: _,
                         } = block_item
                         {
                             end_address
@@ -320,8 +320,8 @@ pub fn decode(
                                 function_index,
                                 internal_function_index,
                                 start_address,
-                                end_address,
-                                block_items,
+                                end_address: _,
+                                block_items: _,
                             } => Instruction::Control(Control::Call {
                                 vm_module_index: *vm_module_index,
                                 type_index: *type_index,
@@ -352,6 +352,10 @@ pub fn decode(
                         let option_block_index = block_index_stack.pop();
                         Instruction::Control(Control::End(option_block_index))
                     }
+                    instruction::Instruction::Unreachable => {
+                        Instruction::Control(Control::Unreachable)
+                    }
+                    instruction::Instruction::Nop => Instruction::Control(Control::Nop),
                     _ => Instruction::Sequence(function_original_instruction.to_owned()), // 其他指令归类为 `顺序指令`，
                 };
 
@@ -402,26 +406,26 @@ fn get_branch_target(
 
         match block_item {
             BlockItem::Loop {
-                block_type,
+                block_type: _,
                 start_address,
-                end_address,
+                end_address: _,
             } => Ok(BranchTarget::Recur(
                 relative_depth,
                 function_start_address + *start_address,
             )),
             BlockItem::Block {
-                block_type,
-                start_address,
+                block_type: _,
+                start_address: _,
                 end_address,
             } => Ok(BranchTarget::Break(
                 relative_depth,
                 function_start_address + *end_address,
             )),
             BlockItem::If {
-                block_type,
-                start_address,
+                block_type: _,
+                start_address: _,
                 end_address,
-                alternate_address,
+                alternate_address: _,
             } => Ok(BranchTarget::Break(
                 relative_depth,
                 function_start_address + *end_address,
@@ -532,12 +536,12 @@ mod tests {
         create_test_ast_module(name, type_items, function_list, vec![], vec![], code_items)
     }
 
-    fn test_native_function_add(params: &[Value]) -> Result<Vec<Value>, NativeError> {
+    fn test_native_function_add(_params: &[Value]) -> Result<Vec<Value>, NativeError> {
         // 返回值不是单元测试的检测项目，所以随便返回一个常量
         Ok(vec![Value::I32(10)])
     }
 
-    fn test_native_function_sub(params: &[Value]) -> Result<Vec<Value>, NativeError> {
+    fn test_native_function_sub(_params: &[Value]) -> Result<Vec<Value>, NativeError> {
         // 返回值不是单元测试的检测项目，所以随便返回一个常量
         Ok(vec![Value::I32(10)])
     }
@@ -636,7 +640,8 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual =
+            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 Instruction::Sequence(instruction::Instruction::I32Const(1)),
@@ -835,7 +840,8 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual =
+            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)),
@@ -1286,7 +1292,8 @@ mod tests {
             }],
         )];
 
-        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual =
+            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1376,7 +1383,8 @@ mod tests {
             }],
         )];
 
-        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual =
+            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1467,7 +1475,8 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual =
+            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1604,7 +1613,8 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual =
+            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function 0
@@ -1734,7 +1744,8 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual =
+            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function index 2
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1954,7 +1965,8 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual =
+            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function index 0

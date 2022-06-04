@@ -107,7 +107,7 @@ pub fn process_end(
     }
 
     // 判断返回值的数据类型
-    let results = vm.stack.peek_values(stack_size - result_count, stack_size);
+    let results = vm.stack.peek_values(result_count);
     match check_value_types(results, &result_types) {
         Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
         Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
@@ -138,7 +138,7 @@ pub fn process_end(
 
     let (vm_module_index, function_index, frame_type, address) = vm.pop_frame(result_count);
 
-    // 上一句 vm.pop_frame() 调用已经更新了 vm.status。
+    // 上一句 vm.pop_frame() 调用已经更新了部分 vm.status。
     // 如果 vm.status.frame_pointer 的值等于 0，说明刚才弹出的栈帧是
     // 首个函数调用的栈帧，也就是说，当这个帧弹出之后，所有栈帧都已经弹出，
     // 意味着所有函数调用已经执行完毕，即程序已经结束。
@@ -155,4 +155,15 @@ pub fn process_end(
             address,
         })
     }
+}
+
+pub fn process_unreachable(_vm: &mut VM) -> Result<ControlResult, EngineError> {
+    Err(EngineError::InvalidOperation(
+        "instruction \"unreachable\" is executed".to_string(),
+    ))
+}
+
+pub fn process_nop(_vm: &mut VM) -> Result<ControlResult, EngineError> {
+    // 无需任何操作
+    Ok(ControlResult::Sequence)
 }
