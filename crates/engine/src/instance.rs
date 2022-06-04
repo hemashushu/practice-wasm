@@ -16,7 +16,7 @@ use crate::{
     linker::{link_functions, link_global_variables, link_memorys, link_tables},
     native_module::NativeModule,
     object::NamedAstModule,
-    transformer::{transform, transform_constant_expression},
+    decoder::{decode, decode_constant_expression},
     vm::{Resource, Status, VM},
     vm_module::VMModule,
     vm_stack::VMStack,
@@ -29,7 +29,7 @@ pub fn create_instance(
     // 获取指令列表
     // 指令列表跟 AST 模块列表是一一对应的，所以无需映射表
     let mut function_items_list = link_functions(&native_modules, named_ast_modules)?;
-    let mut instructions_list = transform(named_ast_modules, &function_items_list)?;
+    let mut instructions_list = decode(named_ast_modules, &function_items_list)?;
 
     // 获取 "表" 实例列表，以及 "AST 模块 - 表" 映射表
     let (tables, mut module_to_table_index_list) = link_tables(named_ast_modules)?;
@@ -136,7 +136,7 @@ pub fn create_instance(
             }
 
             let offset_instruction_items = &data_item.offset_instruction_items;
-            let constant_expression = transform_constant_expression(offset_instruction_items)?;
+            let constant_expression = decode_constant_expression(offset_instruction_items)?;
             let offset = vm.eval_constant_expression(&constant_expression)?;
 
             let address = match offset {
@@ -160,7 +160,7 @@ pub fn create_instance(
             }
 
             let offset_instruction_items = &element_item.offset_instruction_items;
-            let constant_expression = transform_constant_expression(offset_instruction_items)?;
+            let constant_expression = decode_constant_expression(offset_instruction_items)?;
             let offset_value = vm.eval_constant_expression(&constant_expression)?;
 
             let offset = match offset_value {

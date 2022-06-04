@@ -10,7 +10,7 @@ use crate::{
     },
     native_module::NativeModule,
     object::{BlockItem, FunctionItem, NamedAstModule},
-    transformer::transform_constant_expression,
+    decoder::decode_constant_expression,
     vm::VM,
     vm_global_variable::VMGlobalVariable,
     vm_memory::VMMemory,
@@ -844,7 +844,7 @@ pub fn link_global_variables(
 
             // 求值 global_item 的初始化常量表达式
             let constant_expression =
-                transform_constant_expression(&global_item.initialize_instruction_items)?;
+                decode_constant_expression(&global_item.initialize_instruction_items)?;
             let value = VM::get_constant_instruction_value(&constant_expression)?;
 
             // 检查数据类型是否匹配

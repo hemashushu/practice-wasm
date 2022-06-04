@@ -263,7 +263,7 @@ pub fn exec_instruction(
         object::Instruction::Control(control) => {
             let control_result = match control {
                 // 控制指令
-                Control::Return(block_index) => ins_control::process_return(vm, block_index),
+                Control::End(block_index) => ins_control::process_end(vm, block_index),
 
                 Control::Call {
                     vm_module_index,
@@ -300,43 +300,68 @@ pub fn exec_instruction(
                     block_index,
                     end_address,
                 } => ins_block::block(vm, block_type, *block_index, *end_address),
-                Control::BlockJumpEqZero {
+                Control::BlockAndJumpWhenEqZero {
                     block_type,
                     block_index,
-                    alternate_address,
+                    option_alternate_address,
                     end_address,
-                } => ins_block::block_jump_eq_zero(
+                } => ins_block::block_and_jump_when_eq_zero(
                     vm,
                     block_type,
                     *block_index,
-                    *alternate_address,
+                    *option_alternate_address,
                     *end_address,
                 ),
-                Control::Jump(relative_depth, address) => {
-                    todo!()
-                }
-                Control::JumpNotEqZero(relative_depth, address) => {
-                    todo!()
-                }
-                Control::Recur(relative_depth, address) => {
-                    todo!()
-                }
-                Control::RecurNotEqZero(relative_depth, address) => {
-                    todo!()
-                }
-                Control::Branch(branch_targets, branch_target) => {
-                    todo!()
-                }
+                Control::Jump(address) => ins_block::jump(vm, *address),
+
+                Control::Break {
+                    option_block_index,
+                    relative_depth,
+                    address,
+                } => ins_block::process_break(vm, *option_block_index, *relative_depth, *address),
+                Control::BreakWhenNotEqZero {
+                    option_block_index,
+                    relative_depth,
+                    address,
+                } => ins_block::process_break_when_not_eq_zero(
+                    vm,
+                    *option_block_index,
+                    *relative_depth,
+                    *address,
+                ),
+                Control::Recur {
+                    block_index,
+                    relative_depth,
+                    address,
+                } => ins_block::recur(vm, *block_index, *relative_depth, *address),
+                Control::RecurWhenNotEqZero {
+                    block_index,
+                    relative_depth,
+                    address,
+                } => ins_block::recur_when_not_eq_zero(vm, *block_index, *relative_depth, *address),
+                Control::Branch {
+                    option_block_index,
+                    branch_targets,
+                    default_branch_target,
+                } => ins_block::branch(
+                    vm,
+                    *option_block_index,
+                    branch_targets,
+                    default_branch_target,
+                ),
             };
 
             match control_result {
                 Ok(ControlResult::ProgramEnd) => Ok(true),
                 Ok(ControlResult::Sequence) => {
-                    vm.status.address += 1;
+                    // 更新虚拟机的 pc 值
+                    let status = &mut vm.status;
+                    status.address += 1;
+
                     Ok(false)
                 }
-                Ok(ControlResult::FunctionIn {
-                    is_function_call,
+                Ok(ControlResult::PushStackFrame {
+                    is_call_frame,
                     vm_module_index,
                     function_index,
                     frame_type,
@@ -344,7 +369,6 @@ pub fn exec_instruction(
                 }) => {
                     // 更新虚拟机的 pc 值
                     let status = &mut vm.status;
-
                     status.vm_module_index = vm_module_index;
                     status.function_index = function_index;
                     status.frame_type = frame_type;
@@ -352,8 +376,8 @@ pub fn exec_instruction(
 
                     Ok(false)
                 }
-                Ok(ControlResult::FunctionOut {
-                    is_function_call,
+                Ok(ControlResult::PopStackFrame {
+                    is_call_frame,
                     vm_module_index,
                     function_index,
                     frame_type,
@@ -361,10 +385,27 @@ pub fn exec_instruction(
                 }) => {
                     // 更新虚拟机的 pc 值
                     let status = &mut vm.status;
-
                     status.vm_module_index = vm_module_index;
                     status.function_index = function_index;
                     status.frame_type = frame_type;
+                    status.address = address;
+
+                    Ok(false)
+                }
+                Ok(ControlResult::JumpWithinFunction {
+                    frame_type,
+                    address,
+                }) => {
+                    // 更新虚拟机的 pc 值
+                    let status = &mut vm.status;
+                    status.frame_type = frame_type;
+                    status.address = address;
+
+                    Ok(false)
+                }
+                Ok(ControlResult::JumpWithinBlock { address }) => {
+                    // 更新虚拟机的 pc 值
+                    let status = &mut vm.status;
                     status.address = address;
 
                     Ok(false)

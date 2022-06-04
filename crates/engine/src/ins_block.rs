@@ -63,25 +63,27 @@ use crate::{
     },
     ins_control::ControlResult,
     ins_function::pop_arguments,
-    object::FunctionItem,
+    object::{BranchTarget, FunctionItem},
     vm::VM,
     vm_stack::INFO_SEGMENT_ITEM_COUNT,
 };
 
-/// 处理原 `block 指令` 和 `loop 指令`
+/// 处理原 `block/loop 指令`
 pub fn block(
     vm: &mut VM,
     block_type: &BlockType,
     block_index: usize,
     end_address: usize,
 ) -> Result<ControlResult, EngineError> {
-    // 返回地址应该是结构块最后一条指令 `end 指令` 的下一个指令
+    // 对于 block 结构块
+    // 默认的返回地址（即在中间没有遇到 br/return 指令的情况下，一直执行到 end 指令）应该是
+    // 结构块最后一条指令 `end 指令` 的下一个指令
     let return_address = end_address + 1;
 
-    // 下一个指令应该是 `block 指令` 的下一个指令
+    // 执行完 `block/loop 指令` 之后的下一个指令应该是当前指令的下一个指令
     let next_instruction_address = vm.status.address + 1;
 
-    call_block(
+    process_block(
         vm,
         block_type,
         block_index,
@@ -91,26 +93,40 @@ pub fn block(
 }
 
 /// 处理原 `if 指令`
-pub fn block_jump_eq_zero(
+pub fn block_and_jump_when_eq_zero(
     vm: &mut VM,
     block_type: &BlockType,
     block_index: usize,
-    alternate_address: usize,
+    option_alternate_address: Option<usize>,
     end_address: usize,
 ) -> Result<ControlResult, EngineError> {
+    // 对于 if 结构块
+    // 默认的返回地址（即在中间没有遇到 else/br/return 指令的情况下，一直执行到 end 指令）应该是
     // 返回地址应该是结构块最后一条指令 `end 指令` 的下一个指令
     let return_address = end_address + 1;
 
     let testing = vm.stack.pop_bool()?;
 
-    // 下一个指令应该是 `block 指令` 的下一个指令
+    // 执行完 `if 指令` 之后，如果刚才栈顶的数值是：
+    //
+    // - true，则下一个指令应该是 `if 指令` 的下一个指令；
+    // - false，则下一个指令应该是：
+    //   - 存在 `else 指令` 的话，则跳到 `else 指令` 的下一个指令
+    //     注意不要跳到 `else 指令` 本身，因为 `else 指令` 已经被
+    //     转换为 `jump 控制指令`，该指令的效果是直接跳到 if 结构块的结束位置
+    //   - 不存在 `else 指令` 的话，则跳到结构块之外，即跳到if 结构块的
+    //     最后一条 `end 指令` 的下一个指令
     let next_instruction_address = if testing {
         vm.status.address + 1
     } else {
-        alternate_address
+        if let Some(alternate_address) = option_alternate_address {
+            alternate_address + 1
+        } else {
+            end_address + 1
+        }
     };
 
-    call_block(
+    process_block(
         vm,
         block_type,
         block_index,
@@ -119,7 +135,7 @@ pub fn block_jump_eq_zero(
     )
 }
 
-fn call_block(
+fn process_block(
     vm: &mut VM,
     block_type: &BlockType,
     block_index: usize,
@@ -178,8 +194,8 @@ fn call_block(
     vm.push_control_frame(parameter_count, return_address);
 
     // 返回新的状态信息，让调用者更新虚拟机状态
-    let control_result = ControlResult::FunctionIn {
-        is_function_call: false,
+    let control_result = ControlResult::PushStackFrame {
+        is_call_frame: false,
         vm_module_index,
         function_index,
         frame_type: block_type.to_owned(),
@@ -187,4 +203,137 @@ fn call_block(
     };
 
     Ok(control_result)
+}
+
+pub fn jump(vm: &mut VM, address: usize) -> Result<ControlResult, EngineError> {
+    Ok(ControlResult::JumpWithinBlock { address })
+}
+
+pub fn process_break(
+    vm: &mut VM,
+    option_block_index: Option<usize>,
+    relative_depth: usize,
+    address: usize,
+) -> Result<ControlResult, EngineError> {
+    if relative_depth == 0 {
+        // 本层的跳转，只需简单地改变下一个指令的地址即可
+        Ok(ControlResult::JumpWithinBlock { address })
+    } else {
+        // 跨层跳转，需要将当前栈帧的操作数作为目标层的返回值，具体步骤：
+        // 1. 根据目标层返回值的数量，暂存当前栈帧相应数量的操作数；
+        // 2. 弹出 `相对深度` 数量的栈帧；
+        // 3. 压入第一步所保留的操作数，作为目标结构块返回值。
+
+        let target_status = vm.get_status_by_relative_depth(relative_depth);
+
+        let vm_module_index = vm.status.vm_module_index;
+        let target_frame_type = &target_status.frame_type;
+
+        // 获取目标帧的返回值的数量
+        //
+        // 注意
+        // - 这里不检查目标帧返回值的数据类型，因为当执行到目标结构块的 `end 指令` 时，
+        //   解析器还会进一步检查，所以这里只需获取返回值的数量即可。
+        // - 实际上当执行到结构块的 `end 指令` 时，解析器不单会检查返回值的数据类型，
+        //   还会再次检查作为返回值的操作数的数量，这个检查跟现在的检查是重复的，
+        //   目前这种处理方式主要是为了简化程序的实现。
+        let result_count = {
+            match target_frame_type {
+                BlockType::ResultEmpty => 0,
+                BlockType::ResultI32
+                | BlockType::ResultI64
+                | BlockType::ResultF32
+                | BlockType::ResultF64 => 1,
+                BlockType::TypeIndex(type_index) => {
+                    let vm_module = &vm.resource.vm_modules[vm_module_index];
+                    let function_type = &vm_module.function_types[*type_index as usize];
+                    function_type.results.len()
+                }
+            }
+        };
+
+        // 判断操作数是否足够当前函数或结构块用于返回
+        // let stack_size = vm.stack.get_size();
+        // let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
+        // if operands_count < result_count {
+        //     let message = if let Some(block_index) = option_block_index {
+        //         format!(
+        //         "failed to break block {} to relative depth {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
+        //         block_index, relative_depth, function_index, vm_module_index, result_count, operands_count)
+        //     } else {
+        //         format!(
+        //         "failed to return result from function {} (module {}), not enough operands, expected: {}, actual: {}",
+        //         function_index, vm_module_index, result_count, operands_count)
+        //     };
+        //     return Err(EngineError::InvalidOperation(message));
+        // }
+        //
+        //         // 判断返回值的数据类型
+        //         let results = vm.stack.peek_values(stack_size - result_count, stack_size);
+        //         match check_value_types(results, &result_types) {
+        //             Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
+        //             Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+        //                 let message = if let Some(block_index) = option_block_index {
+        //                     format!(
+        //                     "failed to return result from block {} (function {}, module {}), The data type of result {} does not match, expected: {}, actual: {}",
+        //                     block_index,
+        //                     function_index,
+        //                     vm_module_index,
+        //                     index +1,
+        //                     result_types[index],
+        //                     results[index].get_type())
+        //                 } else {
+        //                     format!(
+        //                     "failed to return result from function {} (module {}), The data type of result {} does not match, expected: {}, actual: {}",
+        //                     function_index,
+        //                     vm_module_index,
+        //                     index +1,
+        //                     result_types[index],
+        //                     results[index].get_type())
+        //                 };
+        //                 return Err(EngineError::InvalidOperation(message));
+        //             }
+        //             _ => {
+        //                 // pass
+        //             }
+        //         }
+
+        todo!()
+    }
+}
+
+pub fn process_break_when_not_eq_zero(
+    vm: &mut VM,
+    option_block_index: Option<usize>,
+    relative_depth: usize,
+    address: usize,
+) -> Result<ControlResult, EngineError> {
+    todo!()
+}
+
+pub fn recur(
+    vm: &mut VM,
+    block_index: usize,
+    relative_depth: usize,
+    address: usize,
+) -> Result<ControlResult, EngineError> {
+    todo!()
+}
+
+pub fn recur_when_not_eq_zero(
+    vm: &mut VM,
+    block_index: usize,
+    relative_depth: usize,
+    address: usize,
+) -> Result<ControlResult, EngineError> {
+    todo!()
+}
+
+pub fn branch(
+    vm: &mut VM,
+    option_block_index: Option<usize>,
+    branch_targets: &[BranchTarget],
+    branch_target: &BranchTarget,
+) -> Result<ControlResult, EngineError> {
+    todo!()
 }

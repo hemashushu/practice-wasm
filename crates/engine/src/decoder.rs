@@ -4,9 +4,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! # 函数指令 "转换器"
+//! # 指令 "解码器"
 //!
-//! 将一个模块的所有函数的指令序列合并成一个序列，并且将诸如 `call`、`br`、`if`、`else` 等
+//! 诸如 `call`、`br`、`if`、`else` 等
 //! 流程控制类指令转换为当前的 VM 引擎可以直接解析执行的指令。
 //!
 //! ## 指令转换规则
@@ -70,8 +70,7 @@ use crate::{
 /// 而不会合并所有模块。
 ///
 /// function_items_list 来自 linker 对所有函数进行链接之后的结果
-pub fn transform(
-    // native_modules: &[NativeModule],
+pub fn decode(
     named_ast_modules: &[NamedAstModule],
     function_items_list: &Vec<Vec<FunctionItem>>,
 ) -> Result<Vec<Vec<Instruction>>, EngineError> {
@@ -187,17 +186,13 @@ pub fn transform(
                             unreachable!()
                         };
 
-                        // 如果 if 结构块当中的缺少了 `else 指令`，则跳转目标为 `end 指令` 所在的位置
-                        let alternate_address =
-                            if let Some(alternate_address) = option_alternate_address {
-                                alternate_address
-                            } else {
-                                end_address
-                            };
-                        Instruction::Control(Control::BlockJumpEqZero {
+                        let map_alternate_address = option_alternate_address
+                            .map(|address| function_start_address + address);
+
+                        Instruction::Control(Control::BlockAndJumpWhenEqZero {
                             block_type: block_type.to_owned(),
                             block_index: block_index_usize,
-                            alternate_address: function_start_address + alternate_address,
+                            option_alternate_address: map_alternate_address,
                             end_address: function_start_address + end_address,
                         })
                     }
@@ -219,7 +214,7 @@ pub fn transform(
                         } else {
                             unreachable!()
                         };
-                        Instruction::Control(Control::Jump(0, function_start_address + end_address))
+                        Instruction::Control(Control::Jump(function_start_address + end_address))
                     }
                     instruction::Instruction::Br(relative_depth) => {
                         let result = get_branch_target(
@@ -231,11 +226,21 @@ pub fn transform(
                         )?;
 
                         match result {
-                            BranchTarget::Jump(relative_depth, address) => {
-                                Instruction::Control(Control::Jump(relative_depth, address))
+                            BranchTarget::Break(relative_depth, address) => {
+                                let option_block_index = block_index_stack.last().map(|v| *v);
+                                Instruction::Control(Control::Break {
+                                    option_block_index,
+                                    relative_depth,
+                                    address,
+                                })
                             }
                             BranchTarget::Recur(relative_depth, address) => {
-                                Instruction::Control(Control::Recur(relative_depth, address))
+                                let block_index = block_index_stack.last().map(|v| *v).unwrap();
+                                Instruction::Control(Control::Recur {
+                                    block_index,
+                                    relative_depth,
+                                    address,
+                                })
                             }
                         }
                     }
@@ -249,12 +254,22 @@ pub fn transform(
                         )?;
 
                         match result {
-                            BranchTarget::Jump(relative_depth, address) => Instruction::Control(
-                                Control::JumpNotEqZero(relative_depth, address),
-                            ),
-                            BranchTarget::Recur(relative_depth, address) => Instruction::Control(
-                                Control::RecurNotEqZero(relative_depth, address),
-                            ),
+                            BranchTarget::Break(relative_depth, address) => {
+                                let option_block_index = block_index_stack.last().map(|v| *v);
+                                Instruction::Control(Control::BreakWhenNotEqZero {
+                                    option_block_index,
+                                    relative_depth,
+                                    address,
+                                })
+                            }
+                            BranchTarget::Recur(relative_depth, address) => {
+                                let block_index = block_index_stack.last().map(|v| *v).unwrap();
+                                Instruction::Control(Control::RecurWhenNotEqZero {
+                                    block_index,
+                                    relative_depth,
+                                    address,
+                                })
+                            }
                         }
                     }
                     instruction::Instruction::BrTable(relative_depths, default_relative_depth) => {
@@ -273,21 +288,25 @@ pub fn transform(
                             targets.push(target)
                         }
 
+                        let option_block_index = block_index_stack.last().map(|v| *v);
                         let default_branch_target = targets.last().unwrap();
                         let branch_targets = &targets[0..targets.len() - 1];
 
-                        Instruction::Control(Control::Branch(
-                            branch_targets.to_owned(),
-                            default_branch_target.to_owned(),
-                        ))
+                        Instruction::Control(Control::Branch {
+                            option_block_index,
+                            branch_targets: branch_targets.to_owned(),
+                            default_branch_target: default_branch_target.to_owned(),
+                        })
                     }
                     instruction::Instruction::Return => {
+                        let option_block_index = block_index_stack.last().map(|v| *v);
                         let relative_depth = block_index_stack.len();
                         let end_address = function_original_instructions.len() - 1;
-                        Instruction::Control(Control::Jump(
+                        Instruction::Control(Control::Break {
+                            option_block_index,
                             relative_depth,
-                            function_start_address + end_address,
-                        ))
+                            address: function_start_address + end_address,
+                        })
                     }
                     instruction::Instruction::Call(function_index) => {
                         // 获取函数的位置信息
@@ -330,12 +349,8 @@ pub fn transform(
                     instruction::Instruction::End => {
                         // 函数的指令序列最后一个指令，即 `end 指令` 不属于结构块，所以需要排除
                         // 结构块栈已经弹空的情况
-                        // if block_index_stack.len() > 0 {
                         let option_block_index = block_index_stack.pop();
-                        Instruction::Control(Control::Return(option_block_index))
-                        // } else {
-                        //     Instruction::Control(Control::Return(None))
-                        // }
+                        Instruction::Control(Control::End(option_block_index))
                     }
                     _ => Instruction::Sequence(function_original_instruction.to_owned()), // 其他指令归类为 `顺序指令`，
                 };
@@ -351,10 +366,8 @@ pub fn transform(
 }
 
 fn get_branch_target(
-    // function_original_instructions: &[instruction::Instruction],
     function_start_address: usize,
     function_end_address: usize,
-    // function_address_offset: usize,
     block_items: &[BlockItem],
     block_index_stack: &[usize],
     relative_depth: usize,
@@ -380,13 +393,7 @@ fn get_branch_target(
         // 跳到函数本层了
         // 目标位置应该是函数的最后一个指令，即 `end 指令` 所在的位置
 
-        // let function_end_offset = function_original_instructions.len() - 1;
-
-        Ok(BranchTarget::Jump(
-            relative_depth,
-            // function_address_offset + function_end_offset,
-            function_end_address,
-        ))
+        Ok(BranchTarget::Break(relative_depth, function_end_address))
     } else {
         let target_block_index = block_index_stack[target_level - 1];
 
@@ -406,7 +413,7 @@ fn get_branch_target(
                 block_type,
                 start_address,
                 end_address,
-            } => Ok(BranchTarget::Jump(
+            } => Ok(BranchTarget::Break(
                 relative_depth,
                 function_start_address + *end_address,
             )),
@@ -414,8 +421,8 @@ fn get_branch_target(
                 block_type,
                 start_address,
                 end_address,
-                alternate_address: middle_address,
-            } => Ok(BranchTarget::Jump(
+                alternate_address,
+            } => Ok(BranchTarget::Break(
                 relative_depth,
                 function_start_address + *end_address,
             )),
@@ -443,7 +450,7 @@ fn get_branch_target(
 /// https://webassembly.github.io/spec/core/valid/instructions.html#constant-expressions
 ///
 /// 目前这里只支持 `t.const 指令`
-pub fn transform_constant_expression(
+pub fn decode_constant_expression(
     original_instructions: &[instruction::Instruction],
 ) -> Result<Vec<Instruction>, EngineError> {
     let mut instructions = Vec::<Instruction>::with_capacity(original_instructions.len());
@@ -454,7 +461,7 @@ pub fn transform_constant_expression(
             | instruction::Instruction::I64Const(_)
             | instruction::Instruction::F32Const(_)
             | instruction::Instruction::F64Const(_) => Instruction::Sequence(inst.to_owned()),
-            instruction::Instruction::End => Instruction::Control(Control::Return(None)),
+            instruction::Instruction::End => Instruction::Control(Control::End(None)),
             _ => {
                 return Err(EngineError::InvalidOperation(format!(
                     "does not support instruction \"{:?}\" in constant expression",
@@ -471,7 +478,7 @@ pub fn transform_constant_expression(
 
 #[cfg(test)]
 mod tests {
-    use super::{transform, NamedAstModule};
+    use super::{decode, NamedAstModule};
     use crate::{
         error::{EngineError, NativeError},
         linker,
@@ -557,13 +564,13 @@ mod tests {
         module
     }
 
-    fn link_and_transform_functions(
+    fn link_and_decode_function_instructions(
         native_modules: &[NativeModule],
         named_ast_modules: &[NamedAstModule],
     ) -> Result<Vec<Vec<Instruction>>, EngineError> {
         let function_items_list: Vec<Vec<FunctionItem>> =
             linker::link_functions(native_modules, named_ast_modules)?;
-        transform(named_ast_modules, &function_items_list)
+        decode(named_ast_modules, &function_items_list)
     }
 
     #[test]
@@ -629,23 +636,23 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 Instruction::Sequence(instruction::Instruction::I32Const(1)),
-                Instruction::Control(Control::Return(None)),
+                Instruction::Control(Control::End(None)),
                 Instruction::Sequence(instruction::Instruction::I32Const(2)),
-                Instruction::Control(Control::Return(None)),
+                Instruction::Control(Control::End(None)),
                 Instruction::Sequence(instruction::Instruction::I32Const(3)),
-                Instruction::Control(Control::Return(None)),
+                Instruction::Control(Control::End(None)),
             ],
             vec![
                 Instruction::Sequence(instruction::Instruction::I32Const(1)),
-                Instruction::Control(Control::Return(None)),
+                Instruction::Control(Control::End(None)),
                 Instruction::Sequence(instruction::Instruction::I32Const(2)),
                 Instruction::Sequence(instruction::Instruction::I32Const(3)),
                 Instruction::Sequence(instruction::Instruction::I32Add),
-                Instruction::Control(Control::Return(None)),
+                Instruction::Control(Control::End(None)),
             ],
         ];
 
@@ -828,11 +835,11 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)),
-            Instruction::Control(Control::Return(None)),
+            Instruction::Control(Control::End(None)),
             // function 1
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #02
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #03
@@ -841,45 +848,129 @@ mod tests {
                 block_index: 0,
                 end_address: 28,
             }), // #04 - block 0
-            Instruction::Control(Control::Jump(0, 28)),                   // #05
-            Instruction::Control(Control::Jump(1, 35)),                   // #06
-            Instruction::Control(Control::Jump(1, 35)),                   // #07
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 0,
+                address: 28,
+            }), // #05
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 35,
+            }), // #06
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 35,
+            }), // #07
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
                 block_index: 1,
                 end_address: 24,
             }), // #08 - block 1 - loop
-            Instruction::Control(Control::Recur(0, 8)),                   // #09
-            Instruction::Control(Control::Jump(1, 28)),                   // #10
-            Instruction::Control(Control::Jump(2, 35)),                   // #11
-            Instruction::Control(Control::Jump(2, 35)),                   // #12
+            Instruction::Control(Control::Recur {
+                block_index: 1,
+                relative_depth: 0,
+                address: 8,
+            }), // #09
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 1,
+                address: 28,
+            }), // #10
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 2,
+                address: 35,
+            }), // #11
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 2,
+                address: 35,
+            }), // #12
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
                 block_index: 2,
                 end_address: 19,
             }), // #13 - block 2
-            Instruction::Control(Control::Jump(0, 19)),                   // #14
-            Instruction::Control(Control::Recur(1, 8)),                   // #15
-            Instruction::Control(Control::Jump(2, 28)),                   // #16
-            Instruction::Control(Control::Jump(3, 35)),                   // #17
-            Instruction::Control(Control::Jump(3, 35)),                   // #18
-            Instruction::Control(Control::Return(Some(2))),               // #19 - block 2 end
-            Instruction::Control(Control::Recur(0, 8)),                   // #20
-            Instruction::Control(Control::Jump(1, 28)),                   // #21
-            Instruction::Control(Control::Jump(2, 35)),                   // #22
-            Instruction::Control(Control::Jump(2, 35)),                   // #23
-            Instruction::Control(Control::Return(Some(1))),               // #24 - block 1 end
-            Instruction::Control(Control::Jump(0, 28)),                   // #25
-            Instruction::Control(Control::Jump(1, 35)),                   // #26
-            Instruction::Control(Control::Jump(1, 35)),                   // #27
-            Instruction::Control(Control::Return(Some(0))),               // #28 - block 0 end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(2),
+                relative_depth: 0,
+                address: 19,
+            }), // #14
+            Instruction::Control(Control::Recur {
+                block_index: 2,
+                relative_depth: 1,
+                address: 8,
+            }), // #15
+            Instruction::Control(Control::Break {
+                option_block_index: Some(2),
+                relative_depth: 2,
+                address: 28,
+            }), // #16
+            Instruction::Control(Control::Break {
+                option_block_index: Some(2),
+                relative_depth: 3,
+                address: 35,
+            }), // #17
+            Instruction::Control(Control::Break {
+                option_block_index: Some(2),
+                relative_depth: 3,
+                address: 35,
+            }), // #18
+            Instruction::Control(Control::End(Some(2))),                  // #19 - block 2 end
+            Instruction::Control(Control::Recur {
+                block_index: 1,
+                relative_depth: 0,
+                address: 8,
+            }), // #20
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 1,
+                address: 28,
+            }), // #21
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 2,
+                address: 35,
+            }), // #22
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 2,
+                address: 35,
+            }), // #23
+            Instruction::Control(Control::End(Some(1))),                  // #24 - block 1 end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 0,
+                address: 28,
+            }), // #25
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 35,
+            }), // #26
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 35,
+            }), // #27
+            Instruction::Control(Control::End(Some(0))),                  // #28 - block 0 end
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #29
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #30
-            Instruction::Control(Control::Jump(0, 35)),                   // #31
-            Instruction::Control(Control::Jump(0, 35)),                   // #32
+            Instruction::Control(Control::Break {
+                option_block_index: None,
+                relative_depth: 0,
+                address: 35,
+            }), // #31
+            Instruction::Control(Control::Break {
+                option_block_index: None,
+                relative_depth: 0,
+                address: 35,
+            }), // #32
             Instruction::Sequence(instruction::Instruction::I32Const(4)), // #33
             Instruction::Sequence(instruction::Instruction::I32Const(5)), // #34
-            Instruction::Control(Control::Return(None)),                  // #35
+            Instruction::Control(Control::End(None)),                     // #35
             // function 3
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #36
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #37
@@ -898,97 +989,257 @@ mod tests {
                 block_index: 2,
                 end_address: 41,
             }), // #40 - block 2
-            Instruction::Control(Control::Return(Some(2))),               // #41 - block 2 end
-            Instruction::Control(Control::Return(Some(1))),               // #42 - block 1 end
+            Instruction::Control(Control::End(Some(2))),                  // #41 - block 2 end
+            Instruction::Control(Control::End(Some(1))),                  // #42 - block 1 end
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
                 block_index: 3,
                 end_address: 77,
             }), // #43 - block 3
-            Instruction::Control(Control::Jump(0, 77)),                   // #44
-            Instruction::Control(Control::Jump(1, 80)),                   // #45
-            Instruction::Control(Control::Jump(2, 85)),                   // #46
-            Instruction::Control(Control::BlockJumpEqZero {
+            Instruction::Control(Control::Break {
+                option_block_index: Some(3),
+                relative_depth: 0,
+                address: 77,
+            }), // #44
+            Instruction::Control(Control::Break {
+                option_block_index: Some(3),
+                relative_depth: 1,
+                address: 80,
+            }), // #45
+            Instruction::Control(Control::Break {
+                option_block_index: Some(3),
+                relative_depth: 2,
+                address: 85,
+            }), // #46
+            Instruction::Control(Control::BlockAndJumpWhenEqZero {
                 block_type: BlockType::ResultEmpty,
                 block_index: 4,
-                alternate_address: 60,
+                option_alternate_address: Some(60),
                 end_address: 73,
             }), // #47 - block 4 if
-            Instruction::Control(Control::Jump(0, 73)),                   // #48
-            Instruction::Control(Control::Jump(1, 77)),                   // #49
-            Instruction::Control(Control::Jump(2, 80)),                   // #50
-            Instruction::Control(Control::Jump(3, 85)),                   // #51
+            Instruction::Control(Control::Break {
+                option_block_index: Some(4),
+                relative_depth: 0,
+                address: 73,
+            }), // #48
+            Instruction::Control(Control::Break {
+                option_block_index: Some(4),
+                relative_depth: 1,
+                address: 77,
+            }), // #49
+            Instruction::Control(Control::Break {
+                option_block_index: Some(4),
+                relative_depth: 2,
+                address: 80,
+            }), // #50
+            Instruction::Control(Control::Break {
+                option_block_index: Some(4),
+                relative_depth: 3,
+                address: 85,
+            }), // #51
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
                 block_index: 5,
                 end_address: 59,
             }), // #52 - block 5
-            Instruction::Control(Control::Jump(0, 59)),                   // #53
-            Instruction::Control(Control::Jump(1, 73)),                   // #54
-            Instruction::Control(Control::Jump(2, 77)),                   // #55
-            Instruction::Control(Control::Jump(3, 80)),                   // #56
-            Instruction::Control(Control::Jump(4, 85)), // #57 - jump to function end
-            Instruction::Control(Control::Jump(4, 85)), // #58
-            Instruction::Control(Control::Return(Some(5))), // #59 - block 5 end
-            Instruction::Control(Control::Jump(0, 73)), // #60 - else
-            Instruction::Control(Control::Jump(0, 73)), // #61
-            Instruction::Control(Control::Jump(1, 77)), // #62
-            Instruction::Control(Control::Jump(2, 80)), // #63
-            Instruction::Control(Control::Jump(3, 85)), // #64
+            Instruction::Control(Control::Break {
+                option_block_index: Some(5),
+                relative_depth: 0,
+                address: 59,
+            }), // #53
+            Instruction::Control(Control::Break {
+                option_block_index: Some(5),
+                relative_depth: 1,
+                address: 73,
+            }), // #54
+            Instruction::Control(Control::Break {
+                option_block_index: Some(5),
+                relative_depth: 2,
+                address: 77,
+            }), // #55
+            Instruction::Control(Control::Break {
+                option_block_index: Some(5),
+                relative_depth: 3,
+                address: 80,
+            }), // #56
+            Instruction::Control(Control::Break {
+                option_block_index: Some(5),
+                relative_depth: 4,
+                address: 85,
+            }), // #57 - jump to function end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(5),
+                relative_depth: 4,
+                address: 85,
+            }), // #58
+            Instruction::Control(Control::End(Some(5))),                  // #59 - block 5 end
+            Instruction::Control(Control::Jump(73)),                      // #60 - else
+            Instruction::Control(Control::Break {
+                option_block_index: Some(4),
+                relative_depth: 0,
+                address: 73,
+            }), // #61
+            Instruction::Control(Control::Break {
+                option_block_index: Some(4),
+                relative_depth: 1,
+                address: 77,
+            }), // #62
+            Instruction::Control(Control::Break {
+                option_block_index: Some(4),
+                relative_depth: 2,
+                address: 80,
+            }), // #63
+            Instruction::Control(Control::Break {
+                option_block_index: Some(4),
+                relative_depth: 3,
+                address: 85,
+            }), // #64
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
                 block_index: 6,
                 end_address: 72,
             }), // #65 - block 6
-            Instruction::Control(Control::Jump(0, 72)), // #66
-            Instruction::Control(Control::Jump(1, 73)), // #67
-            Instruction::Control(Control::Jump(2, 77)), // #68
-            Instruction::Control(Control::Jump(3, 80)), // #69
-            Instruction::Control(Control::Jump(4, 85)), // #70 - jump to function end
-            Instruction::Control(Control::Jump(4, 85)), // #71
-            Instruction::Control(Control::Return(Some(6))), // #72 - block 6 end
-            Instruction::Control(Control::Return(Some(4))), // #73 // block 4 end
-            Instruction::Control(Control::Jump(0, 77)), // #74
-            Instruction::Control(Control::Jump(1, 80)), // #75
-            Instruction::Control(Control::Jump(2, 85)), // #76
-            Instruction::Control(Control::Return(Some(3))), // #77 // block 3 end
-            Instruction::Control(Control::Jump(0, 80)), // #78
-            Instruction::Control(Control::Jump(1, 85)), // #79
-            Instruction::Control(Control::Return(Some(0))), // #80 // block 0 end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(6),
+                relative_depth: 0,
+                address: 72,
+            }), // #66
+            Instruction::Control(Control::Break {
+                option_block_index: Some(6),
+                relative_depth: 1,
+                address: 73,
+            }), // #67
+            Instruction::Control(Control::Break {
+                option_block_index: Some(6),
+                relative_depth: 2,
+                address: 77,
+            }), // #68
+            Instruction::Control(Control::Break {
+                option_block_index: Some(6),
+                relative_depth: 3,
+                address: 80,
+            }), // #69
+            Instruction::Control(Control::Break {
+                option_block_index: Some(6),
+                relative_depth: 4,
+                address: 85,
+            }), // #70 - jump to function end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(6),
+                relative_depth: 4,
+                address: 85,
+            }), // #71
+            Instruction::Control(Control::End(Some(6))),                  // #72 - block 6 end
+            Instruction::Control(Control::End(Some(4))),                  // #73 // block 4 end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(3),
+                relative_depth: 0,
+                address: 77,
+            }), // #74
+            Instruction::Control(Control::Break {
+                option_block_index: Some(3),
+                relative_depth: 1,
+                address: 80,
+            }), // #75
+            Instruction::Control(Control::Break {
+                option_block_index: Some(3),
+                relative_depth: 2,
+                address: 85,
+            }), // #76
+            Instruction::Control(Control::End(Some(3))),                  // #77 // block 3 end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 0,
+                address: 80,
+            }), // #78
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 85,
+            }), // #79
+            Instruction::Control(Control::End(Some(0))),                  // #80 // block 0 end
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #81
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #82
-            Instruction::Control(Control::Jump(0, 85)), // #83
-            Instruction::Control(Control::Jump(0, 85)), // #84
-            Instruction::Control(Control::Return(None)), // #85
+            Instruction::Control(Control::Break {
+                option_block_index: None,
+                relative_depth: 0,
+                address: 85,
+            }), // #83
+            Instruction::Control(Control::Break {
+                option_block_index: None,
+                relative_depth: 0,
+                address: 85,
+            }), // #84
+            Instruction::Control(Control::End(None)),                     // #85
             // function 4
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #86
             Instruction::Sequence(instruction::Instruction::I32Const(1)), // #87
-            Instruction::Control(Control::BlockJumpEqZero {
+            Instruction::Control(Control::BlockAndJumpWhenEqZero {
                 block_type: BlockType::ResultEmpty,
                 block_index: 0,
-                alternate_address: 101,
+                option_alternate_address: None,
                 end_address: 101,
             }), // #88 - block 0
-            Instruction::Control(Control::Jump(0, 101)),                  // #89
-            Instruction::Control(Control::Jump(1, 104)),                  // #90
-            Instruction::Control(Control::Jump(1, 104)),                  // #91
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 0,
+                address: 101,
+            }), // #89
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 104,
+            }), // #90
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 104,
+            }), // #91
             Instruction::Control(Control::Block {
                 block_type: BlockType::ResultEmpty,
                 block_index: 1,
                 end_address: 97,
             }), // #92 - block 1
-            Instruction::Control(Control::Jump(0, 97)),                   // #93
-            Instruction::Control(Control::Jump(1, 101)),                  // #94
-            Instruction::Control(Control::Jump(2, 104)),                  // #95
-            Instruction::Control(Control::Jump(2, 104)),                  // #96
-            Instruction::Control(Control::Return(Some(1))),               // #97 - block 1 end
-            Instruction::Control(Control::Jump(0, 101)),                  // #98
-            Instruction::Control(Control::Jump(1, 104)),                  // #99
-            Instruction::Control(Control::Jump(1, 104)),                  // #100
-            Instruction::Control(Control::Return(Some(0))),               // #101 - block 0 end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 0,
+                address: 97,
+            }), // #93
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 1,
+                address: 101,
+            }), // #94
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 2,
+                address: 104,
+            }), // #95
+            Instruction::Control(Control::Break {
+                option_block_index: Some(1),
+                relative_depth: 2,
+                address: 104,
+            }), // #96
+            Instruction::Control(Control::End(Some(1))),                  // #97 - block 1 end
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 0,
+                address: 101,
+            }), // #98
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 104,
+            }), // #99
+            Instruction::Control(Control::Break {
+                option_block_index: Some(0),
+                relative_depth: 1,
+                address: 104,
+            }), // #100
+            Instruction::Control(Control::End(Some(0))),                  // #101 - block 0 end
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #102
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #103
-            Instruction::Control(Control::Return(None)),                  // #104
+            Instruction::Control(Control::End(None)),                     // #104
         ]];
 
         assert_eq!(actual, expected);
@@ -1035,7 +1286,7 @@ mod tests {
             }],
         )];
 
-        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1057,14 +1308,30 @@ mod tests {
                 end_address: 11,
             }), // #05 - block 2
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #06
-            Instruction::Control(Control::JumpNotEqZero(0, 11)), // #07 jump to `block 2 end`
-            Instruction::Control(Control::RecurNotEqZero(1, 3)), // #08 jump to `block 1 loop`
-            Instruction::Control(Control::JumpNotEqZero(2, 13)), // #09 jump to `block 0 end`
-            Instruction::Control(Control::JumpNotEqZero(3, 14)), // #10 jump to `function end`
-            Instruction::Control(Control::Return(Some(2))),      // #11 - block 2 end
-            Instruction::Control(Control::Return(Some(1))),      // #12 - block 1 end
-            Instruction::Control(Control::Return(Some(0))),      // #13 - block 0 end
-            Instruction::Control(Control::Return(None)),         // #14
+            Instruction::Control(Control::BreakWhenNotEqZero {
+                option_block_index: Some(2),
+                relative_depth: 0,
+                address: 11,
+            }), // #07 jump to `block 2 end`
+            Instruction::Control(Control::RecurWhenNotEqZero {
+                block_index: 2,
+                relative_depth: 1,
+                address: 3,
+            }), // #08 jump to `block 1 loop`
+            Instruction::Control(Control::BreakWhenNotEqZero {
+                option_block_index: Some(2),
+                relative_depth: 2,
+                address: 13,
+            }), // #09 jump to `block 0 end`
+            Instruction::Control(Control::BreakWhenNotEqZero {
+                option_block_index: Some(2),
+                relative_depth: 3,
+                address: 14,
+            }), // #10 jump to `function end`
+            Instruction::Control(Control::End(Some(2))),                  // #11 - block 2 end
+            Instruction::Control(Control::End(Some(1))),                  // #12 - block 1 end
+            Instruction::Control(Control::End(Some(0))),                  // #13 - block 0 end
+            Instruction::Control(Control::End(None)),                     // #14
         ]];
 
         assert_eq!(actual, expected);
@@ -1109,7 +1376,7 @@ mod tests {
             }],
         )];
 
-        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1132,18 +1399,19 @@ mod tests {
             }), // #05 - block 2
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #06
             // jump to [`block 0 end`, `block 2 end`, `loop 1 start`], `function end`
-            Instruction::Control(Control::Branch(
-                vec![
-                    BranchTarget::Jump(2, 10),
-                    BranchTarget::Jump(0, 8),
+            Instruction::Control(Control::Branch {
+                option_block_index: Some(2),
+                branch_targets: vec![
+                    BranchTarget::Break(2, 10),
+                    BranchTarget::Break(0, 8),
                     BranchTarget::Recur(1, 3),
                 ],
-                BranchTarget::Jump(3, 11),
-            )), // #07
-            Instruction::Control(Control::Return(Some(2))), // #08 - block 2 end
-            Instruction::Control(Control::Return(Some(1))), // #09 - block 1 end
-            Instruction::Control(Control::Return(Some(0))), // #10 - block 0 end
-            Instruction::Control(Control::Return(None)),    // #11
+                default_branch_target: BranchTarget::Break(3, 11),
+            }), // #07
+            Instruction::Control(Control::End(Some(2))), // #08 - block 2 end
+            Instruction::Control(Control::End(Some(1))), // #09 - block 1 end
+            Instruction::Control(Control::End(Some(0))), // #10 - block 0 end
+            Instruction::Control(Control::End(None)),    // #11
         ]];
 
         assert_eq!(actual, expected);
@@ -1199,7 +1467,7 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1220,22 +1488,22 @@ mod tests {
                 address: 10,
             }), // #04
             Instruction::Sequence(instruction::Instruction::I32Const(11)), // #05
-            Instruction::Control(Control::Return(None)),                  // #06
+            Instruction::Control(Control::End(None)),                     // #06
             // function 1
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #07
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #08
-            Instruction::Control(Control::Return(None)),                  // #09
+            Instruction::Control(Control::End(None)),                     // #09
             // function 2
             Instruction::Sequence(instruction::Instruction::I32Const(4)), // #10
             Instruction::Sequence(instruction::Instruction::I32Const(5)), // #11
-            Instruction::Control(Control::Return(None)),                  // #12
+            Instruction::Control(Control::End(None)),                     // #12
             // function 3
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #13
             Instruction::Control(Control::CallIndirect {
                 type_index: 1,
                 table_index: 0,
             }), // #14
-            Instruction::Control(Control::Return(None)),                  // #15
+            Instruction::Control(Control::End(None)),                     // #15
         ]];
 
         assert_eq!(actual, expected);
@@ -1336,13 +1604,13 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function 0
                 Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
                 Instruction::Sequence(instruction::Instruction::I32Const(1)), // #01
-                Instruction::Control(Control::Return(None)),                  // #02
+                Instruction::Control(Control::End(None)),                     // #02
                 // function 1
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #03
                 Instruction::Sequence(instruction::Instruction::I32Const(3)), // #04
@@ -1353,7 +1621,7 @@ mod tests {
                     internal_function_index: 0,
                     address: 0,
                 }), // #05
-                Instruction::Control(Control::Return(None)),                  // #06
+                Instruction::Control(Control::End(None)),                     // #06
             ],
             vec![
                 // function index 2
@@ -1383,7 +1651,7 @@ mod tests {
                     address: 9,
                 }), // #06
                 Instruction::Sequence(instruction::Instruction::I32Const(12)), // #07
-                Instruction::Control(Control::Return(None)),                  // #08
+                Instruction::Control(Control::End(None)),                     // #08
                 // function index 3
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #09
                 Instruction::Sequence(instruction::Instruction::I32Const(3)), // #10
@@ -1403,7 +1671,7 @@ mod tests {
                     address: 3,
                 }), // #13
                 Instruction::Sequence(instruction::Instruction::I32Const(21)), // #14
-                Instruction::Control(Control::Return(None)),                  // #15
+                Instruction::Control(Control::End(None)),                     // #15
             ],
         ];
 
@@ -1466,7 +1734,7 @@ mod tests {
             ],
         )];
 
-        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function index 2
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1491,7 +1759,7 @@ mod tests {
                 address: 9,
             }), // #06
             Instruction::Sequence(instruction::Instruction::I32Const(12)), // #07
-            Instruction::Control(Control::Return(None)),                  // #08
+            Instruction::Control(Control::End(None)),                     // #08
             // function index 3
             Instruction::Sequence(instruction::Instruction::I32Const(2)), // #09
             Instruction::Sequence(instruction::Instruction::I32Const(3)), // #10
@@ -1507,7 +1775,7 @@ mod tests {
                 function_index: 1,
             }), // #13
             Instruction::Sequence(instruction::Instruction::I32Const(21)), // #14
-            Instruction::Control(Control::Return(None)),                  // #15
+            Instruction::Control(Control::End(None)),                     // #15
         ]];
 
         assert_eq!(actual, expected);
@@ -1686,24 +1954,24 @@ mod tests {
             ),
         ];
 
-        let actual = link_and_transform_functions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function index 0
                 Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
-                Instruction::Control(Control::Return(None)),                  // #01
+                Instruction::Control(Control::End(None)),                     // #01
                 // function index 1
                 Instruction::Sequence(instruction::Instruction::I32Const(1)), // #02
-                Instruction::Control(Control::Return(None)),                  // #03
+                Instruction::Control(Control::End(None)),                     // #03
             ],
             vec![
                 // function index 2
                 Instruction::Sequence(instruction::Instruction::I32Const(2)), // #00
                 Instruction::Sequence(instruction::Instruction::Drop),        // #01
-                Instruction::Control(Control::Return(None)),                  // #02
+                Instruction::Control(Control::End(None)),                     // #02
                 // function index 3
                 Instruction::Sequence(instruction::Instruction::I32Const(3)), // #03
-                Instruction::Control(Control::Return(None)),                  // #04
+                Instruction::Control(Control::End(None)),                     // #04
             ],
             vec![
                 // function index 3
@@ -1729,7 +1997,7 @@ mod tests {
                     internal_function_index: 1,
                     address: 3,
                 }), // #05
-                Instruction::Control(Control::Return(None)),                  // #06
+                Instruction::Control(Control::End(None)),                     // #06
                 Instruction::Control(Control::Call {
                     vm_module_index: 2,
                     type_index: 3,
@@ -1737,7 +2005,7 @@ mod tests {
                     internal_function_index: 0,
                     address: 0,
                 }), // #07
-                Instruction::Control(Control::Return(None)),                  // #08
+                Instruction::Control(Control::End(None)),                     // #08
             ],
         ];
 

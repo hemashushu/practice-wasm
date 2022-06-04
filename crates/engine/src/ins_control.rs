@@ -4,19 +4,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! # 指令转换
+//! # 控制指令
 //!
-//! - block -> Block
-//! - loop -> Block
-//! - if -> BlockJumpEqZero
-//! - br/else/return -> Jump
-//! - br -> Recur
-//! - br_if -> JumpNotEqZero
-//! - br_if -> RecurNotEqZero
-//! - br_table -> Branch ([BranchTarget::Jump(relative_depth, address)], BranchTarget::Recur(relative_depth, address))
-//! - call -> CallInternal/CallExternal/CallNative
-//! - call_indirect -> DynamicCall
-//! - end -> Return
+//! ## end 指令
 
 use anvm_ast::{
     instruction::BlockType,
@@ -30,13 +20,14 @@ use crate::{
 };
 
 pub enum ControlResult {
+    /// 执行下一句
     Sequence,
 
     /// 进入一个函数或者一个结构块
     ///
     /// 参数用于更新虚拟机的 pc 值
-    FunctionIn {
-        is_function_call: bool,
+    PushStackFrame {
+        is_call_frame: bool,
         vm_module_index: usize,
         function_index: usize,
         frame_type: BlockType,
@@ -46,18 +37,30 @@ pub enum ControlResult {
     /// 从一个函数或者一个结构块跳出
     ///
     /// 参数用于更新虚拟机的 pc 值
-    FunctionOut {
-        is_function_call: bool,
+    PopStackFrame {
+        is_call_frame: bool,
         vm_module_index: usize,
         function_index: usize,
         frame_type: BlockType,
         address: usize,
     },
 
+    /// 函数内跳转
+    ///
+    /// 即结构块间的跳转
+    JumpWithinFunction {
+        frame_type: BlockType,
+        address: usize,
+    },
+
+    /// 结构块内跳转
+    JumpWithinBlock { address: usize },
+
+    /// 程序已结束
     ProgramEnd,
 }
 
-pub fn process_return(
+pub fn process_end(
     vm: &mut VM,
     option_block_index: &Option<usize>,
 ) -> Result<ControlResult, EngineError> {
@@ -144,8 +147,8 @@ pub fn process_return(
     if is_program_end {
         Ok(ControlResult::ProgramEnd)
     } else {
-        Ok(ControlResult::FunctionOut {
-            is_function_call: is_call_frame,
+        Ok(ControlResult::PopStackFrame {
+            is_call_frame: is_call_frame,
             vm_module_index,
             function_index,
             frame_type,

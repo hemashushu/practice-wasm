@@ -70,7 +70,10 @@ pub enum BlockItem {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum BranchTarget {
-    Jump(/* relative_depth */ usize, /* address */ usize),
+    /// 参数 address 是结构块的 `end 指令` 所在的位置。
+    Break(/* relative_depth */ usize, /* address */ usize),
+
+    /// 参数 address 是 `loop 指令` 所在的位置。
     Recur(/* relative_depth */ usize, /* address */ usize),
 }
 
@@ -80,6 +83,10 @@ pub enum Control {
     /// 进入一个新的栈帧
     ///
     /// 原 `block/loop 指令`
+    ///
+    /// block 和 loop 结构块是相似的，仅当执行到结构块当中的
+    /// br 指令时，br 指令的行为有所不同，但两种结构块本身的行为是一样的，
+    /// 所以可以使用相同的方法来解析。
     Block {
         block_type: BlockType,
         block_index: usize,
@@ -89,48 +96,106 @@ pub enum Control {
     /// 进入一个新的栈帧，并当原栈顶的数值等于 0 时，跳转到指定的地址 alternate_address,
     ///
     /// 原 `if 指令`
-    /// 有时 if 指令结构缺少 else 结构，这时 alternate_address 的值跟 end_address 的值相同。
-    BlockJumpEqZero {
+    ///
+    /// 有时 if 指令结构缺少 else 结构，所以 alternate_address 的值是 Option<usize> 类型。
+    BlockAndJumpWhenEqZero {
         block_type: BlockType,
         block_index: usize,
-        alternate_address: usize,
+        option_alternate_address: Option<usize>,
         end_address: usize,
     },
+
+    /// 无条件跳到指定位置
+    ///
+    /// 原 `else 指令`
+    Jump(/* address */ usize),
 
     /// 跳转到指定的地址
     /// 其中 relative_depth 为当前栈帧距离目标栈帧的层次数量，当数量为 0 时，表示
     /// 跳转到当前栈帧层的其他地址，当数量 >0 时，表示需要弹出相应的栈帧数量。
     ///
-    /// 原 `else/br/return 指令`
-    /// 对于 else 指令，relative_depth 的值为 0。
-    Jump(/* relative_depth */ usize, /* address */ usize),
+    /// 跳转可以理解为提前结束当前函数或者当前一系列的结构块，即类似 Rust 语言的
+    /// `break 参数` 或者 `return 参数` 语句，它能将指定的数据带出结构块。
+    ///
+    /// 例如：
+    /// 当前栈帧处于一系列结构块的内部，当遇到 br 跳到函数本层（相当于 `return 指令`），则
+    /// 需要把当前栈帧的操作数作为函数的返回值。
+    ///
+    /// 原 `br/return 指令`
+    ///
+    /// 参数 address 是结构块的 `end 指令` 所在的位置。
+    /// 参数 option_block_index 指令所在的结构块索引。
+    ///
+    /// 结构块索引主要用于调式程序时方便定位出错的结构位置信息，即供用户看的，
+    /// 索引本身不参与指令的解析和执行。
+    Break {
+        option_block_index: Option<usize>,
+        relative_depth: usize,
+        address: usize,
+    },
 
     /// 跳转到指定的地址
     /// 跟 Jump 指令类似，但仅当原栈顶的数值不等于 0 时才跳转，否则什么事都不做
     ///
     /// 原 `br_if 指令`
-    JumpNotEqZero(/* relative_depth */ usize, /* address */ usize),
+    ///
+    /// 参数 address 是结构块的 `end 指令` 所在的位置。
+    /// 参数 option_block_index 指令所在的结构块索引。
+    ///
+    /// 结构块索引主要用于调式程序时方便定位出错的结构位置信息，即供用户看的，
+    /// 索引本身不参与指令的解析和执行。
+    BreakWhenNotEqZero {
+        option_block_index: Option<usize>,
+        relative_depth: usize,
+        address: usize,
+    },
 
     /// 重复执行当前结构块
     ///
-    /// 原 `br 指令` 跳转到 loop 结构块的情况
+    /// 原 `br 指令`，对应于跳转到 loop 结构块的情况
     /// - 如果 relative_depth 为 0，只需简单地跳到 loop 指令所在地位置即可，
     ///   不需要弹出/压入参数，也不需要弹出/压入栈帧
     /// - 如果 relative_depth 大于 0，则需要弹出目标 loop 结构块所需要的参数，
     ///   然后弹出跟 relative_depth 的值一样数量的栈帧，再压入实参，然而还是不需要创建新的栈帧
-    Recur(/* relative_depth */ usize, /* address */ usize),
+    ///
+    /// 参数 address 是 `loop 指令` 所在的位置。
+    /// 参数 block_index 指令所在的结构块索引。
+    ///
+    /// 结构块索引主要用于调式程序时方便定位出错的结构位置信息，即供用户看的，
+    /// 索引本身不参与指令的解析和执行。
+    Recur {
+        block_index: usize,
+        relative_depth: usize,
+        address: usize,
+    },
 
     /// 重复执行当前结构块
     ///
-    /// 原 `br_if 指令` 跳转到 loop 结构块的情况
-    RecurNotEqZero(/* relative_depth */ usize, /* address */ usize),
+    /// 原 `br_if 指令`，对应于跳转到 loop 结构块的情况
+    ///
+    /// 参数 address 是 `loop 指令` 所在的位置。
+    /// 参数 block_index 指令所在的结构块索引。
+    ///
+    /// 结构块索引主要用于调式程序时方便定位出错的结构位置信息，即供用户看的，
+    /// 索引本身不参与指令的解析和执行。
+    RecurWhenNotEqZero {
+        block_index: usize,
+        relative_depth: usize,
+        address: usize,
+    },
 
     /// 原 `br_table 指令`
-    Branch(Vec<BranchTarget>, BranchTarget),
+    ///
+    /// 参数 option_block_index 指令所在的结构块索引。
+    Branch {
+        option_block_index: Option<usize>,
+        branch_targets: Vec<BranchTarget>,
+        default_branch_target: BranchTarget,
+    },
 
     /// 调用（普通）函数
     ///
-    /// 原 `call 指令`
+    /// 原 `call 指令`，对应于调用普通函数（非本地函数）的情况
     Call {
         /// 目标模块的索引
         vm_module_index: usize,
@@ -153,7 +218,7 @@ pub enum Control {
 
     /// 调用本地函数（native function）模块的本地函数
     ///
-    /// 原 `call 指令`
+    /// 原 `call 指令`，对应于调用本地函数的情况
     CallNative {
         native_module_index: usize,
 
@@ -177,9 +242,13 @@ pub enum Control {
     /// 函数或者结构块结束
     ///
     /// 原 `end 指令`
+    ///
     /// 参数是流程控制结构块的索引，对于函数的结束指令（即函数最后一条指令，`end 指令`）
-    /// 它的参数值是 None。结构块索引主要用于调式程序时方便定位出错的结构位置信息。
-    Return(Option<usize>),
+    /// 它的参数值是 None。
+    ///
+    /// 结构块索引主要用于调式程序时方便定位出错的结构位置信息，即供用户看的，
+    /// 索引本身不参与指令的解析和执行。
+    End(Option<usize>),
 }
 
 /// 转换后的指令

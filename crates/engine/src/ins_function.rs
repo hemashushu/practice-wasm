@@ -45,20 +45,6 @@
 //! return 指令相当于 br 指令跳到函数本身一层，比如当 return 出现在一层 block 里，
 //! 作用相当于 `br 1`。
 
-//! # 指令转换
-//!
-//! - block -> Block
-//! - loop -> Block
-//! - if -> BlockJumpEqZero
-//! - br/else/return -> Jump
-//! - br -> Recur
-//! - br_if -> JumpNotEqZero
-//! - br_if -> RecurNotEqZero
-//! - br_table -> Branch ([BranchTarget::Jump(relative_depth, address)], BranchTarget::Recur(relative_depth, address))
-//! - call -> CallInternal/CallExternal/CallNative
-//! - call_indirect -> DynamicCall
-//! - end -> Return
-
 //! # 调用函数的过程
 //!
 //! 1. 调用函数之前的栈内容如下：
@@ -212,8 +198,8 @@ pub fn call(
     vm.push_call_frame(parameter_count, &local_variable_types, return_address);
 
     // 返回新的状态信息，让调用者更新虚拟机状态
-    let control_result = ControlResult::FunctionIn {
-        is_function_call: true,
+    let control_result = ControlResult::PushStackFrame {
+        is_call_frame: true,
         vm_module_index,
         function_index,
         frame_type: BlockType::TypeIndex(type_index as u32),

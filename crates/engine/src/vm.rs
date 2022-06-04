@@ -30,6 +30,7 @@ use crate::{
 ///
 /// 当创建一个新的栈帧时，VM 的状态会保存到栈帧的信息段里。
 /// 当弹出一个栈帧时，栈帧的信息段里的数据会恢复到 VM 的状态。
+#[derive(Debug, PartialEq, Clone)]
 pub struct Status {
     /// 当前栈帧的开始地址
     ///
@@ -126,7 +127,6 @@ pub struct Resource {
 
 impl Resource {
     pub fn new(
-        // stack: VMStack,
         memory_blocks: Vec<VMMemory>,
         tables: Vec<VMTable>,
         global_variables: Vec<VMGlobalVariable>,
@@ -630,6 +630,50 @@ impl VM {
             Err(EngineError::InvalidOperation(
                 "the constant expression is empty".to_string(),
             ))
+        }
+    }
+
+    pub fn get_status_by_relative_depth(&self, relative_depth: usize) -> Status {
+        if relative_depth == 0 {
+            // 当相对层级为 0 时，
+            // 克隆一份当前的虚拟机状态即可。
+            self.status.clone()
+
+        } else {
+            let status = &self.status;
+            let stack = &self.stack;
+
+            let mut base_pointer: usize = status.base_pointer;
+
+            // 从栈回溯，找到指定层级的状态
+            for _ in 0..relative_depth {
+                let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
+                base_pointer = previous_base_pointer;
+            }
+
+            // 读取信息段
+            let previous_frame_pointer: usize = stack.get_value(base_pointer).into();
+            let previous_local_pointer: usize = stack.get_value(base_pointer + 1).into();
+            let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
+            let return_vm_module_index: usize = stack.get_value(base_pointer + 3).into();
+            let return_function_index: usize = stack.get_value(base_pointer + 4).into();
+            // 使用两个 Value::I64 来还原 frame_type
+            let frame_type_class: usize = stack.get_value(base_pointer + 5).into();
+            let frame_type_value: usize = stack.get_value(base_pointer + 6).into();
+            let return_address: usize = stack.get_value(base_pointer + 7).into();
+
+            let frame_type = convert_to_frame_type(frame_type_class, frame_type_value);
+
+            Status {
+                frame_pointer: previous_frame_pointer,
+                local_pointer: previous_local_pointer,
+                base_pointer: previous_base_pointer,
+
+                vm_module_index: return_vm_module_index,
+                function_index: return_function_index,
+                frame_type: frame_type,
+                address: return_address,
+            }
         }
     }
 }
