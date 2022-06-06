@@ -335,6 +335,14 @@ fn continue_parse_name_collection_items(source: &[u8]) -> Result<Vec<NameCollect
                 let block_labels_pairs = continue_parse_block_labels_pairs(item_data)?;
                 NameCollection::BlockLabelsPairList(block_labels_pairs)
             }
+            NAME_COLLECTION_KIND_ELEMENT_NAMES => {
+                let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
+                NameCollection::ElementNames(index_name_pairs)
+            }
+            NAME_COLLECTION_KIND_DATA_NAMES => {
+                let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
+                NameCollection::DataNames(index_name_pairs)
+            }
             _ => {
                 return Err(ParseError::Unsupported(format!(
                     "unsupported custom name collection kind: {}",
@@ -2191,6 +2199,26 @@ mod tests {
                     index: 0,
                     name: "mem0".to_string(),
                 }]),
+                NameCollection::ElementNames(vec![
+                    IndexNamePair {
+                        index: 0,
+                        name: "elem_one".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 1,
+                        name: "elem_two".to_string(),
+                    },
+                ]),
+                NameCollection::DataNames(vec![
+                    IndexNamePair {
+                        index: 0,
+                        name: "data_foo".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 1,
+                        name: "data_bar".to_string(),
+                    },
+                ]),
             ])],
 
             type_items: vec![
@@ -2214,7 +2242,18 @@ mod tests {
             global_items: vec![],
             export_items: vec![],
             start_function_index: None,
-            element_items: vec![],
+            element_items: vec![
+                ElementItem {
+                    table_index: 0,
+                    offset_instruction_items: vec![Instruction::I32Const(1), Instruction::End],
+                    function_indices: vec![0],
+                },
+                ElementItem {
+                    table_index: 0,
+                    offset_instruction_items: vec![Instruction::I32Const(3), Instruction::End],
+                    function_indices: vec![1],
+                },
+            ],
             code_items: vec![
                 CodeItem {
                     local_groups: vec![LocalGroup {
@@ -2264,7 +2303,18 @@ mod tests {
                     ],
                 },
             ],
-            data_items: vec![],
+            data_items: vec![
+                DataItem {
+                    memory_block_index: 0,
+                    offset_instruction_items: vec![Instruction::I32Const(10), Instruction::End],
+                    data: vec![102, 111, 111],
+                },
+                DataItem {
+                    memory_block_index: 0,
+                    offset_instruction_items: vec![Instruction::I32Const(20), Instruction::End],
+                    data: vec![98, 97, 114],
+                },
+            ],
         };
         assert_eq!(expected, remove_unsupported_custom_section(module));
     }

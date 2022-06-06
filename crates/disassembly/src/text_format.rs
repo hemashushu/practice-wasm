@@ -4,38 +4,41 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use anvm_ast::{
-    ast::Module,
-    instruction::{BlockType, Instruction, MemoryArgument},
-};
+use crate::name_package::NamePackage;
+use anvm_ast::instruction::{BlockType, Instruction, MemoryArgument};
 use std::fmt::Write;
 
-use crate::namecollection::{
-    get_block_lable, get_function_name, get_global_variable_name, get_local_variable_name,
-    get_type_name,
-};
-
 /// 转换指令到文本格式
-pub trait InstructionConvert {
-    /// block/loop/if 等流程控制结构块指令允许有 `标签`（即名称），而名称是按照函数项分组存储于
-    /// 自定义项当中，所以再反汇编这 3 个指令时，需要直到所在的函数的索引，
-    /// 参数 function_index 用于提供函数的索引。
+pub trait TextFormat {
+    /// 参数 function_index 为指令所在的函数的索引
     ///
-    /// 又因为指令除了存在于函数主体，还存在于全局变量的初始值、元素项和数据项的偏移值等表达式之中，
-    /// 除了在函数主体里的结构块指令在反汇编时需要名称，在其他地方并不需要，所以参数 function_index 的
-    /// 类型定义为 Option<u32>，即仅当在反汇编函数主体的指令时，才需要提供函数索引。
+    /// - block/loop/if 等流程控制结构块指令允许有 `标签`（即名称），而名称是按照函数分组存储于
+    ///   模块的自定义项当中，所以在反汇编这 3 个指令时，需要函数的索引值
+    /// - 全局变量的初始值、元素项和数据项的偏移值等常量表达式之中的指令则不需要 function_index。
     fn text(
         &self,
-        module: &Module,
+        name_package: &NamePackage,
         option_function_index: Option<u32>,
         f: &mut String,
     ) -> std::fmt::Result;
+
+    fn to_text(
+        // instruction_convert: &dyn TextFormat,
+        &self,
+        name_package: &NamePackage,
+        option_function_index: Option<u32>,
+    ) -> String {
+        let mut s = String::new();
+        self.text(name_package, option_function_index, &mut s)
+            .unwrap();
+        s
+    }
 }
 
-impl InstructionConvert for BlockType {
+impl TextFormat for BlockType {
     fn text(
         &self,
-        module: &Module,
+        name_package: &NamePackage,
         _option_function_index: Option<u32>,
         f: &mut String,
     ) -> std::fmt::Result {
@@ -46,11 +49,11 @@ impl InstructionConvert for BlockType {
             Self::ResultF32 => write!(f, "(result f32)"),
             Self::ResultF64 => write!(f, "(result f64)"),
             Self::ResultEmpty => write!(f, ""),
+
+            // 来自类型表的类型
             Self::TypeIndex(type_index) => {
-                // 结构块的类型来自类型表
-                // 先尝试获取类型的名称
-                if let Some(type_name) = get_type_name(module, *type_index) {
-                    write!(f, "(type {})", type_name)
+                if let Some(type_name) = name_package.get_type_name(type_index) {
+                    write!(f, "(type ${})", type_name)
                 } else {
                     write!(f, "(type {})", type_index)
                 }
@@ -59,10 +62,10 @@ impl InstructionConvert for BlockType {
     }
 }
 
-impl InstructionConvert for MemoryArgument {
+impl TextFormat for MemoryArgument {
     fn text(
         &self,
-        _module: &Module,
+        _name_package: &NamePackage,
         _option_function_index: Option<u32>,
         f: &mut String,
     ) -> std::fmt::Result {
@@ -70,10 +73,10 @@ impl InstructionConvert for MemoryArgument {
     }
 }
 
-impl InstructionConvert for Instruction {
+impl TextFormat for Instruction {
     fn text(
         &self,
-        module: &Module,
+        name_package: &NamePackage,
         option_function_index: Option<u32>,
         f: &mut String,
     ) -> std::fmt::Result {
@@ -85,15 +88,16 @@ impl InstructionConvert for Instruction {
                 fragments.push("block".to_string());
 
                 if let Some(function_index) = option_function_index {
-                    let option_block_label = get_block_lable(module, function_index, *block_index);
+                    let option_block_label =
+                        name_package.get_block_lable(&function_index, block_index);
                     if let Some(block_label) = option_block_label {
-                        fragments.push(block_label);
+                        fragments.push(format!("${}", block_label));
                     }
                 }
 
-                let block_type_string = instruction_to_string(block_type, module, None);
-                if block_type_string != "" {
-                    fragments.push(block_type_string);
+                let block_type_text = block_type.to_text(name_package, None);
+                if block_type_text != "" {
+                    fragments.push(block_type_text);
                 }
 
                 write!(f, "{}", fragments.join(" "))
@@ -103,15 +107,16 @@ impl InstructionConvert for Instruction {
                 fragments.push("loop".to_string());
 
                 if let Some(function_index) = option_function_index {
-                    let option_block_label = get_block_lable(module, function_index, *block_index);
+                    let option_block_label =
+                        name_package.get_block_lable(&function_index, block_index);
                     if let Some(block_label) = option_block_label {
-                        fragments.push(block_label);
+                        fragments.push(format!("${}", block_label));
                     }
                 }
 
-                let block_type_string = instruction_to_string(block_type, module, None);
-                if block_type_string != "" {
-                    fragments.push(block_type_string);
+                let block_type_text = block_type.to_text(name_package, None);
+                if block_type_text != "" {
+                    fragments.push(block_type_text);
                 }
 
                 write!(f, "{}", fragments.join(" "))
@@ -121,15 +126,16 @@ impl InstructionConvert for Instruction {
                 fragments.push("if".to_string());
 
                 if let Some(function_index) = option_function_index {
-                    let option_block_label = get_block_lable(module, function_index, *block_index);
+                    let option_block_label =
+                        name_package.get_block_lable(&function_index, block_index);
                     if let Some(block_label) = option_block_label {
-                        fragments.push(block_label);
+                        fragments.push(format!("${}", block_label));
                     }
                 }
 
-                let block_type_string = instruction_to_string(block_type, module, None);
-                if block_type_string != "" {
-                    fragments.push(block_type_string);
+                let block_type_text = block_type.to_text(name_package, None);
+                if block_type_text != "" {
+                    fragments.push(block_type_text);
                 }
 
                 write!(f, "{}", fragments.join(" "))
@@ -152,16 +158,16 @@ impl InstructionConvert for Instruction {
             }
             Self::Return => write!(f, "return"),
             Self::Call(function_index) => {
-                if let Some(function_name) = get_function_name(module, *function_index) {
-                    write!(f, "call {}", function_name)
+                if let Some(function_name) = name_package.get_function_name(function_index) {
+                    write!(f, "call ${}", function_name)
                 } else {
                     write!(f, "call {}", function_index)
                 }
             }
             Self::CallIndirect(type_index, _table_index) => {
                 // table_index 暂时用不上
-                if let Some(type_name) = get_type_name(module, *type_index) {
-                    write!(f, "call_indirect (type {})", type_name)
+                if let Some(type_name) = name_package.get_type_name(type_index) {
+                    write!(f, "call_indirect (type ${})", type_name)
                 } else {
                     write!(f, "call_indirect (type {})", type_index)
                 }
@@ -173,14 +179,14 @@ impl InstructionConvert for Instruction {
             Self::LocalGet(local_variable_index) => {
                 let option_variable_name = {
                     if let Some(function_index) = option_function_index {
-                        get_local_variable_name(module, function_index, *local_variable_index)
+                        name_package.get_local_variable_name(&function_index, local_variable_index)
                     } else {
                         None
                     }
                 };
 
                 if let Some(variable_name) = option_variable_name {
-                    write!(f, "local.get {}", variable_name)
+                    write!(f, "local.get ${}", variable_name)
                 } else {
                     write!(f, "local.get {}", local_variable_index)
                 }
@@ -188,14 +194,14 @@ impl InstructionConvert for Instruction {
             Self::LocalSet(local_variable_index) => {
                 let option_variable_name = {
                     if let Some(function_index) = option_function_index {
-                        get_local_variable_name(module, function_index, *local_variable_index)
+                        name_package.get_local_variable_name(&function_index, local_variable_index)
                     } else {
                         None
                     }
                 };
 
                 if let Some(variable_name) = option_variable_name {
-                    write!(f, "local.set {}", variable_name)
+                    write!(f, "local.set ${}", variable_name)
                 } else {
                     write!(f, "local.set {}", local_variable_index)
                 }
@@ -203,32 +209,32 @@ impl InstructionConvert for Instruction {
             Self::LocalTee(local_variable_index) => {
                 let option_variable_name = {
                     if let Some(function_index) = option_function_index {
-                        get_local_variable_name(module, function_index, *local_variable_index)
+                        name_package.get_local_variable_name(&function_index, local_variable_index)
                     } else {
                         None
                     }
                 };
 
                 if let Some(variable_name) = option_variable_name {
-                    write!(f, "local.tee {}", variable_name)
+                    write!(f, "local.tee ${}", variable_name)
                 } else {
                     write!(f, "local.tee {}", local_variable_index)
                 }
             }
             Self::GlobalGet(global_variable_index) => {
                 if let Some(variable_name) =
-                    get_global_variable_name(module, *global_variable_index)
+                    name_package.get_global_variable_name(global_variable_index)
                 {
-                    write!(f, "global.get {}", variable_name)
+                    write!(f, "global.get ${}", variable_name)
                 } else {
                     write!(f, "global.get {}", global_variable_index)
                 }
             }
             Self::GlobalSet(global_variable_index) => {
                 if let Some(variable_name) =
-                    get_global_variable_name(module, *global_variable_index)
+                    name_package.get_global_variable_name(global_variable_index)
                 {
-                    write!(f, "global.set {}", variable_name)
+                    write!(f, "global.set ${}", variable_name)
                 } else {
                     write!(f, "global.set {}", global_variable_index)
                 }
@@ -237,117 +243,117 @@ impl InstructionConvert for Instruction {
             Self::I32Load(memory_argument) => write!(
                 f,
                 "i32.load {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Load(memory_argument) => write!(
                 f,
                 "i64.load {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::F32Load(memory_argument) => write!(
                 f,
                 "f32.load {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::F64Load(memory_argument) => write!(
                 f,
                 "f64.load {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I32Load8S(memory_argument) => write!(
                 f,
                 "i32.load8_s {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I32Load8U(memory_argument) => write!(
                 f,
                 "i32.load8_u {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I32Load16S(memory_argument) => write!(
                 f,
                 "i32.load16_s {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I32Load16U(memory_argument) => write!(
                 f,
                 "i32.load16_u {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Load8S(memory_argument) => write!(
                 f,
                 "i64.load8_s {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Load8U(memory_argument) => write!(
                 f,
                 "i64.load8_u {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Load16S(memory_argument) => write!(
                 f,
                 "i64.load16_s {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Load16U(memory_argument) => write!(
                 f,
                 "i64.load16_u {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Load32S(memory_argument) => write!(
                 f,
                 "i64.load32_s {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Load32U(memory_argument) => write!(
                 f,
                 "i64.load32_u {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I32Store(memory_argument) => write!(
                 f,
                 "i32.store {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Store(memory_argument) => write!(
                 f,
                 "i64.store {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::F32Store(memory_argument) => write!(
                 f,
                 "f32.store {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::F64Store(memory_argument) => write!(
                 f,
                 "f64.store {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I32Store8(memory_argument) => write!(
                 f,
                 "i32.store8 {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I32Store16(memory_argument) => write!(
                 f,
                 "i32.store16 {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Store8(memory_argument) => write!(
                 f,
                 "i64.store8 {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Store16(memory_argument) => write!(
                 f,
                 "i64.store16 {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::I64Store32(memory_argument) => write!(
                 f,
                 "i64.store32 {}",
-                instruction_to_string(memory_argument, module, option_function_index)
+                memory_argument.to_text(name_package, option_function_index)
             ),
             Self::MemorySize(_memory_block_index) => write!(f, "memory.size"), // memory_block_index 暂时用不上
             Self::MemoryGrow(_memory_block_index) => write!(f, "memory.grow"), // memory_block_index 暂时用不上
@@ -509,18 +515,6 @@ impl InstructionConvert for Instruction {
     }
 }
 
-pub fn instruction_to_string(
-    instruction_convert: &dyn InstructionConvert,
-    module: &Module,
-    function_index: Option<u32>,
-) -> String {
-    let mut s = String::new();
-    instruction_convert
-        .text(module, function_index, &mut s)
-        .unwrap();
-    s
-}
-
 #[cfg(test)]
 mod tests {
     use anvm_ast::{
@@ -532,10 +526,10 @@ mod tests {
     };
     use pretty_assertions::assert_eq;
 
-    use crate::instruction::instruction_to_string;
+    use crate::{name_package::NamePackage, text_format::TextFormat};
 
     #[test]
-    fn test_instruction_display() {
+    fn test_instruction_to_text() {
         let module = Module {
             custom_items: vec![CustomItem::NameCollections(vec![
                 NameCollection::TypeNames(vec![IndexNamePair {
@@ -585,6 +579,8 @@ mod tests {
             code_items: vec![],
             data_items: vec![],
         };
+
+        let name_package = NamePackage::new(&module);
 
         // 这里只测试部分带有直接操作数的指令
         let instructions: Vec<Instruction> = vec![
@@ -667,7 +663,7 @@ mod tests {
 
         let actual = instructions
             .iter()
-            .map(|i| instruction_to_string(i, &module, Some(2)))
+            .map(|instruction| instruction.to_text(&name_package, Some(2)))
             .collect::<Vec<String>>();
 
         assert_eq!(actual, expected);

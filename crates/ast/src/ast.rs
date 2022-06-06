@@ -133,6 +133,8 @@ pub enum NameCollection {
     GlobalVariableNames(Vec<IndexNamePair>),
     MemoryBlockNames(Vec<IndexNamePair>),
     TableNames(Vec<IndexNamePair>),
+    ElementNames(Vec<IndexNamePair>),
+    DataNames(Vec<IndexNamePair>),
 }
 
 #[derive(Debug, PartialEq, Clone)]

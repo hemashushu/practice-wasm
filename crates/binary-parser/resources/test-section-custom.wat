@@ -32,4 +32,9 @@
             br 0
         )
     )
+
+    (elem $elem_one (offset (i32.const 1)) $fun0)
+    (elem $elem_two (offset (i32.const 3)) $fun1)
+    (data $data_foo 0 (offset (i32.const 10)) "foo")
+    (data $data_bar 0 (offset (i32.const 20)) "bar")
 )
