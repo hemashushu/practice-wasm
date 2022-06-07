@@ -52,7 +52,7 @@ impl NamePackage {
 
     pub fn get_local_variable_name(
         &self,
-        function_index: &u32,
+        function_index: &u32, // 这个函数索引的值是 "包括导入和内部函数范围之内" 的索引值
         local_variable_index: &u32,
     ) -> Option<&String> {
         self.local_variable_names_map
@@ -60,7 +60,11 @@ impl NamePackage {
             .and_then(|names| names.get(local_variable_index))
     }
 
-    pub fn get_block_lable(&self, function_index: &u32, block_index: &u32) -> Option<&String> {
+    pub fn get_block_lable(
+        &self,
+        function_index: &u32, // 这个函数索引的值是 "包括导入和内部函数范围之内" 的索引值
+        block_index: &u32,
+    ) -> Option<&String> {
         self.block_labels_map
             .get(function_index)
             .and_then(|names| names.get(block_index))

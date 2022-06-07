@@ -236,6 +236,8 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
 ///
 /// function_name_item = function_index:u32 + name:string
 ///
+/// 注意这里的 function_index 的值是 "包括了导入函数和内部函数的所有函数范围之内" 的索引
+///
 /// ```code
 /// 0x011e | 01 23       | function names ;; kind == 0x01, content length = 0x23
 /// 0x0120 | 0b          | 11 count
@@ -2114,16 +2116,20 @@ mod tests {
                 NameCollection::FunctionNames(vec![
                     IndexNamePair {
                         index: 0,
-                        name: "fun0".to_string(),
+                        name: "fputc".to_string(),
                     },
                     IndexNamePair {
                         index: 1,
+                        name: "fun0".to_string(),
+                    },
+                    IndexNamePair {
+                        index: 2,
                         name: "fun1".to_string(),
                     },
                 ]),
                 NameCollection::LocalVariableNamesPairList(vec![
                     FunctionIndexAndLocalVariableNamesPair {
-                        function_index: 0,
+                        function_index: 1,
                         local_variable_names: vec![
                             IndexNamePair {
                                 index: 0,
@@ -2140,7 +2146,7 @@ mod tests {
                         ],
                     },
                     FunctionIndexAndLocalVariableNamesPair {
-                        function_index: 1,
+                        function_index: 2,
                         local_variable_names: vec![
                             IndexNamePair {
                                 index: 0,
@@ -2155,7 +2161,7 @@ mod tests {
                 ]),
                 NameCollection::BlockLabelsPairList(vec![
                     FunctionIndexAndBlockLabelsPair {
-                        function_index: 0,
+                        function_index: 1,
                         block_labels: vec![
                             IndexNamePair {
                                 index: 0,
@@ -2180,7 +2186,7 @@ mod tests {
                         ],
                     },
                     FunctionIndexAndBlockLabelsPair {
-                        function_index: 1,
+                        function_index: 2,
                         block_labels: vec![IndexNamePair {
                             index: 0,
                             name: "l0".to_string(),
@@ -2189,7 +2195,7 @@ mod tests {
                 ]),
                 NameCollection::TypeNames(vec![IndexNamePair {
                     index: 0,
-                    name: "type0".to_string(),
+                    name: "typ0".to_string(),
                 }]),
                 NameCollection::TableNames(vec![IndexNamePair {
                     index: 0,
@@ -2222,17 +2228,28 @@ mod tests {
             ])],
 
             type_items: vec![
+                // 在 type 段里定义的类型
                 TypeItem::FunctionType(FunctionType {
                     params: vec![ValueType::I32, ValueType::I32],
                     results: vec![ValueType::I32, ValueType::I64],
                 }),
+                // 导入函数时产生的类型
+                TypeItem::FunctionType(FunctionType {
+                    params: vec![ValueType::I32],
+                    results: vec![],
+                }),
+                // 定义函数时产生的类型
                 TypeItem::FunctionType(FunctionType {
                     params: vec![ValueType::I32, ValueType::I64],
                     results: vec![ValueType::I32],
                 }),
             ],
-            import_items: vec![],
-            internal_function_to_type_index_list: vec![1, 0],
+            import_items: vec![ImportItem {
+                module_name: "env".to_string(),
+                item_name: "putc".to_string(),
+                import_descriptor: ImportDescriptor::FunctionTypeIndex(1),
+            }],
+            internal_function_to_type_index_list: vec![2, 0],
             tables: vec![TableType {
                 limit: Limit::Range(2, 4),
             }],
@@ -2246,12 +2263,12 @@ mod tests {
                 ElementItem {
                     table_index: 0,
                     offset_instruction_items: vec![Instruction::I32Const(1), Instruction::End],
-                    function_indices: vec![0],
+                    function_indices: vec![1],
                 },
                 ElementItem {
                     table_index: 0,
                     offset_instruction_items: vec![Instruction::I32Const(3), Instruction::End],
-                    function_indices: vec![1],
+                    function_indices: vec![2],
                 },
             ],
             code_items: vec![
