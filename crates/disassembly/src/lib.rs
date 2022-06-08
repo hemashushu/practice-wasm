@@ -6,3 +6,4 @@
 
 pub mod name_package;
 pub mod text_format;
+pub mod disassembler;

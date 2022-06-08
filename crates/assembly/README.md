@@ -1,4 +1,4 @@
-# XiaoXuan VM - Compile
+# XiaoXuan VM - Assembly
 
 Converting the WebAssembly AST to binary format.
 

@@ -7,4 +7,6 @@ edition = "2021"
 anvm-ast = { path = "../ast" }
 
 [dev-dependencies]
+anvm-binary-parser = { path = "../binary-parser" }
 pretty_assertions = "1.2.1"
+
