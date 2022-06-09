@@ -824,8 +824,8 @@ impl TextFormat for Instruction {
             Self::F64PromoteF32 => write!(f, "f64.promote_f32"),
             Self::I32ReinterpretF32 => write!(f, "i32.reinterpret_f32"),
             Self::I64ReinterpretF64 => write!(f, "i64.reinterpret_f64"),
-            Self::F32ReinterpretI32 => write!(f, "i32.reinterpret_i32"),
-            Self::F64ReinterpretI64 => write!(f, "i64.reinterpret_i64"),
+            Self::F32ReinterpretI32 => write!(f, "f32.reinterpret_i32"),
+            Self::F64ReinterpretI64 => write!(f, "f64.reinterpret_i64"),
 
             Self::I32Extend8S => write!(f, "i32.extend8_s"),
             Self::I32Extend16S => write!(f, "i32.extend16_s"),

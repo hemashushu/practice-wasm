@@ -8,7 +8,7 @@
 //! 存储在 `自定义段` 里，这些信息对于反汇编、追踪调试过程都很有价值。
 //! 当前模块用于从 `自定义段` 里搜寻符号的名称信息。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anvm_ast::ast::{CustomItem, Module, NameCollection};
 
@@ -104,6 +104,19 @@ pub fn get_type_names(name_collections: &[NameCollection]) -> HashMap<u32, Strin
 }
 
 pub fn get_function_names(name_collections: &[NameCollection]) -> HashMap<u32, String> {
+
+    // 用于去除重复的函数名
+    // 使用 cargo 编译 Rust 程序到 wasm32-wasi 时会出现
+    // 重复函数名称的情况（在 custom 段里），为了避免函数调用错误，
+    // 需要把重复的函数名称移除。
+    //
+    // P.S.
+    // wasm-tools (https://github.com/bytecodealliance/wasm-tools) 采用的是重命名的
+    // 解决方案，比如遇到重复的函数名 dummy，则函数声明行会更改为 `(func $#func010<dummy> (@name dummy) ...`
+    // 其中 `#func010<dummy>` 为新名称，`010` 是函数的索引，`@name` 是
+    // WebAssembly Annotation (https://github.com/WebAssembly/annotations)
+    let mut name_set: HashSet<String> = HashSet::new();
+
     name_collections
         .iter()
         .filter_map(|item| match item {
@@ -112,6 +125,14 @@ pub fn get_function_names(name_collections: &[NameCollection]) -> HashMap<u32, S
         })
         .flatten()
         .map(|item| (item.index, item.name.to_owned()))
+        .filter(|(_, name)| {
+            if name_set.contains(name) {
+                false
+            } else {
+                name_set.insert(name.to_owned());
+                true
+            }
+        })
         .collect::<HashMap<u32, String>>()
 }
 

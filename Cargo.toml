@@ -5,6 +5,6 @@ members = [
     "crates/binary-parser",
     "crates/engine",
     # "crates/native-wasi",
-    # "crates/launcher"
-    # "crates/debug-web",
+    "crates/launcher",
+    "crates/debug",
 ]

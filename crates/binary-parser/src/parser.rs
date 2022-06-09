@@ -1678,7 +1678,7 @@ fn read_f32(source: &[u8]) -> Result<(f32, &[u8]), ParseError> {
 
 /// 读取固定长度的 f64
 fn read_f64(source: &[u8]) -> Result<(f64, &[u8]), ParseError> {
-    let (bytes, remains) = read_bytes(source, 4)?;
+    let (bytes, remains) = read_bytes(source, 8)?;
     Ok((f64::from_le_bytes(bytes.try_into().unwrap()), remains))
 }
 
