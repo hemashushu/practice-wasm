@@ -1,12 +1,22 @@
 # XiaoXuan VM
 
-A simple zero-dependency WebAssembly virtual machine.
+A zero-dependency WebAssembly virtual machine implemented in Rust.
 
-Comes with an interactive REPL environment to easily decompile and debug programs, view stack and memory contents, and execute instructions on-the-fly, etc. The source code has very detailed comments for learning how WebAssembly works.
+Features
 
-一个简单的零依赖的 WebAssembly 虚拟机。
+- [x] Run multi-module WASM applications
+- [x] Disassemble WASM applications
+- [ ] Supports WASI interface to run WASM programs compiled from C/C++ and Rust
+- [ ] Web GUI debugging interface with step-by-step traces, breakpoints, and visualization of memory and call stack data.
 
-附带一个 REPL 交互式环境，可以方便地反编译和调试程序，可以查看栈和内存的内容，以及即时执行指令等。源码有非常详细的注释，用于学习 WebAssembly 的工作原理。
+一个用 Rust 实现的零依赖 WebAssembly 虚拟机。
+
+功能
+
+- [x] 运行多模块 WASM 应用程序
+- [x] 反汇编 WASM 应用程序
+- [ ] 支持 WASI 接口，能运行由 C/C++ 和 Rust 编译而得的 WASM 程序
+- [ ] Web GUI 调试界面，能逐步跟踪、能设置断点、能直观地查看内存、调用栈的数据。
 
 ## 测试
 

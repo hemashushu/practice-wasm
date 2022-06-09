@@ -40,7 +40,7 @@ $ anvm -d input.wasm output.wat
                 }
             }
             _ => {
-                println!("run");
+                println!("running application has not implemented yet, try the disassembly instead");
             }
         }
     }

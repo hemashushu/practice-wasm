@@ -4,7 +4,7 @@ members = [
     "crates/disassembly",
     "crates/binary-parser",
     "crates/engine",
-    # "crates/native-wasi",
+    "crates/native-wasi",
     "crates/launcher",
-    "crates/debug",
+    "crates/debugger",
 ]
