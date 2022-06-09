@@ -57,14 +57,3 @@ Native I/O functions provided to the WebAssembly VM:
 - sock_shutdown
 
 see: https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md
-
-<!--
-## Alloc
-
-api list
-
-- alloc
-- dealloc
-- alloc_zeroed
-- realloc
--->

@@ -1,5 +1,5 @@
 # XiaoXuan VM - Launcher
 
-WebAssembly application launcher.
+XiaoXuan VM launcher.
 
-WebAssembly 应用程序启动器。
+XiaoXuan VM 程序启动器。

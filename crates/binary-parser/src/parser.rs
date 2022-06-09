@@ -1258,7 +1258,6 @@ fn continue_parse_instruction_item(
         opcode::I64_EXTEND16_S => Instruction::I64Extend16S,
         opcode::I64_EXTEND32_S => Instruction::I64Extend32S,
         opcode::EXTENSION => {
-            // trunc_sat = opcode_trunc_sat:byte + opcode_trunc_sat_sub_opcode:byte
             let (sub_opcode, post_sub_opcode) = read_byte(remains)?;
             remains = post_sub_opcode;
 
@@ -1285,6 +1284,7 @@ fn continue_parse_instruction_item(
 
 fn continue_parse_extension_instructions(sub_opcode: u8) -> Result<Instruction, ParseError> {
     match sub_opcode {
+        // trunc_sat = opcode_trunc_sat:byte + opcode_trunc_sat_sub_opcode:byte
         opcode::I32_TRUNC_SAT_F32_S => Ok(Instruction::I32TruncSatF32S),
         opcode::I32_TRUNC_SAT_F32_U => Ok(Instruction::I32TruncSatF32U),
         opcode::I32_TRUNC_SAT_F64_S => Ok(Instruction::I32TruncSatF64S),
@@ -1752,8 +1752,6 @@ mod tests {
         // 下面语句用于处理这种情况。
 
         if !path_buf.ends_with("binary-parser") {
-            // path_buf.pop();
-            // path_buf.pop();
             path_buf.push("crates");
             path_buf.push("binary-parser");
         }

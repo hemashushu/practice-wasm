@@ -55,6 +55,8 @@
 //!
 //! ## 饱和截断
 //!
+//! 用于将浮点数转换为整数
+//!
 //! - i32.trunc_sat_f32_s
 //! - i32.trunc_sat_f32_u
 //! - i32.trunc_sat_f64_s
@@ -67,10 +69,9 @@
 //! 跟一般截断不同的是：
 //! - 将 NaN 转为 0
 //! - 将正/负无穷转为整数最大/最小值
-//!
-//! 饱和截断不会抛出异常，原文：
-//! `saturating` meaning that their results are limited to the maximum or
-//! minimum possible value for the given destination type.
+//! - 饱和截断不会抛出异常，原文：
+//!   `saturating` meaning that their results are limited to the maximum or
+//!   minimum possible value for the given destination type.
 //!
 //! ## 整数转浮点数（转换运算）
 //!
