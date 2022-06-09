@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-        "*.toy": "javascript",
-        "unistd.h": "c",
-        "stdio.h": "c"
-    }
-}
