@@ -1,0 +1,89 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'anvm'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=anvm",
+                    "--package=anvm-launcher"
+                ],
+                "filter": {
+                    "name": "anvm",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "-f",
+                "a::b",
+                "10",
+                "20f",
+                "30l",
+                "40d",
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'anvm'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=anvm",
+                    "--package=anvm-launcher"
+                ],
+                "filter": {
+                    "name": "anvm",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'anvm-debugger'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=anvm-debugger",
+                    "--package=anvm-debugger"
+                ],
+                "filter": {
+                    "name": "anvm-debugger",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'anvm-debugger'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=anvm-debugger",
+                    "--package=anvm-debugger"
+                ],
+                "filter": {
+                    "name": "anvm-debugger",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

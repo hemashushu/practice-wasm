@@ -1663,6 +1663,7 @@ fn read_i64(source: &[u8]) -> Result<(i64, &[u8]), ParseError> {
 }
 
 /// 读取变长（leb128 编码的）i64
+#[allow(dead_code)]
 fn read_u64(source: &[u8]) -> Result<(u64, &[u8]), ParseError> {
     match leb128decoder::decode_u64(source) {
         Ok((value, length)) => Ok((value, &source[length..])),

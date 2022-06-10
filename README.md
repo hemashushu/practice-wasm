@@ -1,15 +1,15 @@
 # XiaoXuan VM
 
-A zero-dependency WebAssembly virtual machine implemented in Rust.
+A zero-dependency WebAssembly VM with a full-featured Web UI debugger implemented in Rust.
 
 Features
 
 - [x] Run multi-module WASM applications
 - [x] Disassemble WASM applications
 - [ ] Supports WASI interface to run WASM programs compiled from C/C++ and Rust
-- [ ] Web GUI debugging interface with step-by-step traces, breakpoints, and visualization of memory and call stack data.
+- [ ] Web UI debugging interface with step-by-step traces, breakpoints, and visualization of memory and call stack data.
 
-一个用 Rust 实现的零依赖 WebAssembly 虚拟机。
+一个用 Rust 实现的零依赖 WebAssembly 虚拟机，带有全功能的 Web GUI 调试器。
 
 功能
 
