@@ -85,7 +85,10 @@ cannot find the entry function.
 please specify the name of the entry module and function on the command line, e.g.
 
     $ anvm app.wasm -f app::function_name
-    $ anvm app.wasm -f app::3
+
+function index is also supported, e.g.
+
+    $ anvm app.wasm -f app::1
 ".to_string())?
         };
 

@@ -10,14 +10,15 @@ use anvm_ast::types::Value;
 use anvm_launcher::{disassembly, execute_function};
 
 /// 编译之后将会得到程序 `./target/debug/anvm`
-/// 然后通过诸如 `$ anvm app.wasm` 命令来运行 WebAssembly 应用程序，
+/// 然后通过诸如 `$ anvm fib.wasm` （其中的 `fib.wasm` 是 WebAssembly
+/// 应用程序模块文件的名称）命令来运行 WebAssembly 应用程序
 ///
-/// 有时如果不想编译就直接运行 XiaoXuan VM（比如正在修改及调试 XiaoXuan VM 程序），
-/// 也可以通过命令 `cargo run` 来启动 XiaoXuan VM，例如：
+/// 有时如果不想先编译再运行 XiaoXuan VM 程序，比如正在修改及调试 XiaoXuan VM 程序时，
+/// 可以通过命令 `cargo run` 来直接运行 XiaoXuan VM 程序，例如：
 ///
-/// `$ cargo run --bin anvm -- app.wasm`
+/// `$ cargo run --bin anvm -- fib.wasm`
 ///
-/// 这跟 `$ anvm app.wasm` 的效果是一样的，也就是说，
+/// 这跟 `$ anvm fib.wasm` 的效果是一样的，也就是说，
 /// `$ cargo run --bin anvm -- ...` 等价于 `$ anvm ...`。
 fn main() {
     print_version();
@@ -57,10 +58,10 @@ Usage:
 
 e.g.
 
-    $ anvm app.wasm
-    $ anvm math.wasm app.wasm
-    $ anvm app.wasm --function app::test_add 10 20
-    $ anvm console.wasm -- command
+    $ anvm fib.wasm
+    $ anvm lib.wasm app.wasm
+    $ anvm lib.wasm --function lib::pow 2 10
+    $ anvm console.wasm -- help
     $ anvm console.wasm -- convert -d 123 --format hex
     $ anvm --disassembly input.wasm output.wat
 "
@@ -197,7 +198,7 @@ Wrong format of function name: {}
 
 please specify the name of entry module and function as \"module_name::function_name\", e.g.
 
-    $ anvm app.wasm --function app::test_add
+    $ anvm lib.wasm --function lib::pow 2 10
 
 where the module name is the base name of the WASM file (i.e. file name without extension)
 ",
@@ -223,12 +224,12 @@ where the module name is the base name of the WASM file (i.e. file name without 
         Err("\
 Please specify the name of entry module and function as \"module_name::function_name\", e.g.
 
-    $ anvm app.wasm --function app::test_add
+    $ anvm fib.wasm --function fib::main
 
 where the module name is the base name of the WASM file name (i.e. without extension). \
 you can also specify the parameters of the function, e.g.
 
-    $ anvm app.wasm --function app::test_add 10 20
+    $ anvm lib.wasm --function lib::pow 2 10
             "
         .to_string())
     }
