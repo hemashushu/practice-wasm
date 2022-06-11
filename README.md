@@ -2,63 +2,100 @@
 
 A zero-dependency WebAssembly VM with a full-featured Web UI debugger implemented in Rust.
 
+一个用 Rust 实现的零依赖 WebAssembly 虚拟机，带有全功能的 Web UI 调试界面。
+
 Features
 
 - [x] Run multi-module WASM applications
 - [x] Disassemble WASM applications
-- [ ] Supports WASI interface to run WASM programs compiled from C/C++ and Rust
-- [ ] Web UI debugging interface with step-by-step traces, breakpoints, and visualization of memory and call stack data.
+- [ ] Supports WASI interface to run WASM applications compiled from C/C++ and Rust
+- [ ] Web UI debugging interface, support step-by-step tracing, set breakpoints, and view memory and call stack data.
 
-一个用 Rust 实现的零依赖 WebAssembly 虚拟机，带有全功能的 Web GUI 调试器。
+<!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
 
-功能
+<!-- code_chunk_output -->
+
+- [XiaoXuan VM](#xiaoxuan-vm)
+  - [功能](#功能)
+  - [获取程序](#获取程序)
+    - [下载预编译可执行文件](#下载预编译可执行文件)
+    - [从源码编译](#从源码编译)
+      - [单元测试](#单元测试)
+      - [编译及安装](#编译及安装)
+  - [运行程序](#运行程序)
+    - [指定入口函数及其参数](#指定入口函数及其参数)
+    - [运行多个模块的程序](#运行多个模块的程序)
+  - [反汇编](#反汇编)
+
+<!-- /code_chunk_output -->
+
+## 功能
 
 - [x] 运行多模块 WASM 应用程序
 - [x] 反汇编 WASM 应用程序
 - [ ] 支持 WASI 接口，能运行由 C/C++ 和 Rust 编译而得的 WASM 程序
-- [ ] Web GUI 调试界面，能逐步跟踪、能设置断点、能直观地查看内存、调用栈的数据。
+- [ ] Web UI 调试界面，支持逐步跟踪、设置断点，能直观地查看内存、调用栈的数据。
 
-## 测试
+## 获取程序
+
+你可以通过下载预编译的可执行文件而获得 XiaoXuan VM 程序，或者从源码编译获得。
+
+### 下载预编译可执行文件
+
+访问 XiaoXuan VM 项目的 [源代码仓库](https://github.com/hemashushu/xiaoxuan-vm)，进入 "[Release 页面](https://github.com/hemashushu/xiaoxuan-vm/releases)"，选择最新的版本，然后根据你的操作系统选择相应的可执行文件压缩包。
+
+下载完毕之后将程序解压，并复制到目录 `~/.local/bin` 或者任意一个位于环境变量 `$PATH` 列表当中的目录。
+
+### 从源码编译
+
+todo::
+
+#### 单元测试
+
+切换到 XiaoXuan VM 项目的源码的首层目录，然后运行下面命令：
 
 `$ cargo test`
 
-## 编译
+如果所有单元测试均通过，则可以进行下一步。
+
+#### 编译及安装
+
+运行下面命令以编译 XiaoXuan VM 程序：
 
 `$ cargo build`
 
-编译完成之后将会在 `./target/debug/` 里面得到 `anvm` 和 `anvm-debug` 两个程序。也可以编译为发行版：
+编译完成之后将会在目录 `./target/debug/` 里面得到 `anvm` 和 `anvm-debugger` 两个程序。
+
+也可以编译为发行版：
 
 `$ cargo build --release`
 
-编译后的程序将会在 `./target/release` 里。
+编译后的程序将会存在目录 `./target/release` 里。
 
-## 示例
+为了方便运行程序，建议将上面步骤得到的两个程序复制到目录 `~/.local/bin` 或者任意一个位于环境变量 `$PATH` 列表当中的目录。也可以使用下面命令将程序复制到目录 `~/.cargo/bin`：
 
-### 运行程序
+```bash
+$ cargo install --path ./crates/launcher
+$ cargo install --path ./crates/debugger
+```
+
+## 运行程序
+
+XiaoXuan VM 可以运行由 C/C++/Rust 编译而得的 WebAssembly 应用程序（以下简称 "WASM 应用程序"，一个 WASM 应用程序由一个或多个 `*.WASM` 模块文件组成）。XiaoXuan VM 支持 [WASI](https://github.com/WebAssembly/WASI) 接口，即支持基本的文件 I/O 等操作。
+
+> XiaoXuan VM 项目自带几个测试用的 WASM 应用程序，位于 `./crate/launcher/resources` 目录之中，可用于下面的示例。
+
+假设有一个 WASM 应用程序的模块文件名为 `app.wasm`，则运行这个应用程序的命令如下：
 
 `$ anvm app.wasm`
 
-其中 `app.wasm` 为被运行的 WebAssembly 应用程序（模块），模块当中 `start` 段指向的函数或者名称为 `main` 的函数将会作为程序的入口。
+如果模块文件不在当前目录，则需要写上模块文件的完整路径或者相对路径，比如：
 
-如果模块文件不在当前目录，则需要写上模块文件的完整路径（也可以写相对路径），比如：
-
-`$ anvm ~/myproject/first/app.wasm`
-
-如果你不想编译就直接运行 XiaoXuan VM，也可以通过命令 `cargo run` 来启动 XiaoXuan VM，例如：
-
-`$ cargo run --bin anvm -- app.wasm`
-
-这跟 `$ anvm app.wasm` 的效果是一样的，也就是说，下面的例子当中的 `$ anvm ...` 都可以替换成 `$ cargo run --bin anvm -- ...` 。
-
-### 运行多个模块的程序
-
-有时一个 WebAssembly 应用程序可能由多个模块组成，如果要运行这种应用程序，则只需将所有模块（的文件名）传入 XiaoXuan VM 即可：
-
-`$ anvm core.wasm std.wasm app.wasm`
-
-程序的入口将从右侧的模块开始搜索。
+`$ anvm ~/projects/xiaoxuan-vm/crate/launcher/resources/app.wasm`
 
 ### 指定入口函数及其参数
+
+模块当中 `start` 段指向的函数或者名称为 `main` 的函数将会作为程序的入口。
 
 `$ anvm app.wasm --function app::add 123 456`
 
@@ -72,7 +109,15 @@ Features
 
 `$ anvm app.wasm -f app::add 123 456`
 
-### 反汇编
+### 运行多个模块的程序
+
+有时一个 WebAssembly 应用程序可能由多个模块组成，如果要运行这种应用程序，则只需将所有模块（的文件名）传入 XiaoXuan VM 即可：
+
+`$ anvm core.wasm std.wasm app.wasm`
+
+程序的入口将从右侧的模块开始搜索。
+
+## 反汇编
 
 XiaoXuam VM 也提供了反汇编的功能，用于将二进制的 WASM 反汇编为文本格式，命令如下：
 

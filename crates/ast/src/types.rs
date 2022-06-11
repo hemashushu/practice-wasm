@@ -54,6 +54,17 @@ impl Value {
     }
 }
 
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::I32(v) => write!(f, "{}", v),
+            Value::I64(v) => write!(f, "{}", v),
+            Value::F32(v) => write!(f, "{}", v),
+            Value::F64(v) => write!(f, "{}", v),
+        }
+    }
+}
+
 impl Into<usize> for Value {
     fn into(self) -> usize {
         if let Self::I64(v) = self {

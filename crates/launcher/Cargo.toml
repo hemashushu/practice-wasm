@@ -11,6 +11,7 @@ path = "bin/anvm.rs"
 anvm-ast = { path = "../ast" }
 anvm-binary-parser = { path = "../binary-parser" }
 anvm-disassembly = { path = "../disassembly" }
+anvm-engine = { path = "../engine" }
 
 [dev-dependencies]
 pretty_assertions = "1.2.1"

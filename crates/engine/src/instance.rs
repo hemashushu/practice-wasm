@@ -5,7 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use anvm_ast::{
-    ast::{FunctionType, TypeItem},
+    ast::{self, FunctionType, TypeItem},
     types::{Value, ValueType},
 };
 
@@ -180,6 +180,39 @@ pub fn create_instance(
     }
 
     Ok(vm)
+}
+
+/// 从 named_ast_modules 的最后一个元素开始，寻找 ast module 当中
+/// `start` 段指定的函数或者导出名称为 `main` 的函数的索引。
+pub fn get_entry_module_and_function_index(
+    named_ast_modules: &[NamedAstModule],
+) -> Option<(usize, usize)> {
+    let mut option_mod_and_func_index: Option<(usize, usize)> = None;
+
+    for (module_index, named_ast_module) in named_ast_modules.iter().enumerate().rev() {
+        let ast_module = &named_ast_module.module;
+        if let Some(i) = ast_module.start_function_index {
+            option_mod_and_func_index = Some((module_index, i as usize));
+            break;
+        } else if let Some(i) = find_ast_module_export_function(ast_module, "main") {
+            // 查找导出函数当中，名字为 `main` 的函数的索引
+            option_mod_and_func_index = Some((module_index, i as usize));
+            break;
+        }
+    }
+
+    option_mod_and_func_index
+}
+
+/// 在指定的模块当中查找指定名字的导出函数的索引
+pub fn find_ast_module_export_function(ast_module: &ast::Module, export_name: &str) -> Option<u32> {
+    ast_module
+        .export_items
+        .iter()
+        .find_map(|item| match &item.export_descriptor {
+            ast::ExportDescriptor::FunctionIndex(i) if item.name == export_name => Some(*i),
+            _ => None,
+        })
 }
 
 #[cfg(test)]
@@ -1096,13 +1129,31 @@ mod tests {
         let module_name = "test-block-branch-table.wasm";
 
         // 测试 br_table
-        assert_eq!(eval(module_name, 0, &vec![Value::I32(0)]).unwrap(), vec![Value::I32(22)]);
-        assert_eq!(eval(module_name, 0, &vec![Value::I32(1)]).unwrap(), vec![Value::I32(33)]);
-        assert_eq!(eval(module_name, 0, &vec![Value::I32(2)]).unwrap(), vec![Value::I32(44)]);
+        assert_eq!(
+            eval(module_name, 0, &vec![Value::I32(0)]).unwrap(),
+            vec![Value::I32(22)]
+        );
+        assert_eq!(
+            eval(module_name, 0, &vec![Value::I32(1)]).unwrap(),
+            vec![Value::I32(33)]
+        );
+        assert_eq!(
+            eval(module_name, 0, &vec![Value::I32(2)]).unwrap(),
+            vec![Value::I32(44)]
+        );
 
         // 超出 br_table 范围
-        assert_eq!(eval(module_name, 0, &vec![Value::I32(3)]).unwrap(), vec![Value::I32(55)]);
-        assert_eq!(eval(module_name, 0, &vec![Value::I32(4)]).unwrap(), vec![Value::I32(55)]);
-        assert_eq!(eval(module_name, 0, &vec![Value::I32(5)]).unwrap(), vec![Value::I32(55)]);
+        assert_eq!(
+            eval(module_name, 0, &vec![Value::I32(3)]).unwrap(),
+            vec![Value::I32(55)]
+        );
+        assert_eq!(
+            eval(module_name, 0, &vec![Value::I32(4)]).unwrap(),
+            vec![Value::I32(55)]
+        );
+        assert_eq!(
+            eval(module_name, 0, &vec![Value::I32(5)]).unwrap(),
+            vec![Value::I32(55)]
+        );
     }
 }

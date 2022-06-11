@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{any::Any, fmt::Debug};
+use std::{any::Any, fmt::{Debug, Display}};
 
 /// INVALID_OPERAND_DATA_TYPE
 pub fn make_invalid_operand_data_type_engine_error(
@@ -70,13 +70,25 @@ pub enum EngineError {
     NativeError(NativeError),
 }
 
+impl Display for EngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EngineError::OutOfIndex(s) => write!(f, "out of index: {}", s),
+            EngineError::Overflow(s) => write!(f, "overflow: {}", s),
+            EngineError::ObjectNotFound(s) => write!(f, "object not found: {}", s),
+            EngineError::InvalidOperation(s) => write!(f, "invalid operation: {}", s),
+            EngineError::NativeError(e) => write!(f, "{}", e.to_string()),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct NativeError {
     pub internal_error: Box<dyn InternalError>,
     pub message: String,
 }
 
-pub trait InternalError: Debug {
+pub trait InternalError: Debug + Display {
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -86,5 +98,11 @@ impl NativeError {
             internal_error: internal_error,
             message: message.to_string(),
         }
+    }
+}
+
+impl Display for NativeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "native module error: {}", self.internal_error.to_string())
     }
 }

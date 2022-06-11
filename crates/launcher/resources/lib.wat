@@ -6,12 +6,13 @@
         (local.set $result)             ;; let $result = $base
 
         (loop
+            (local.get $result)
+
             (local.get $exponent)
             (i32.const 1)
             (i32.le_s)
-            (br_if 1)                   ;; if $exponent <= 1 then break;
+            (br_if 1)                   ;; if $exponent <= 1 then break $result;
 
-            (local.get $result)
             (local.get $base)
             (i32.mul)
             (local.set $result)         ;; result = result * base

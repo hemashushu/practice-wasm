@@ -9,6 +9,16 @@ use std::env;
 use anvm_ast::types::Value;
 use anvm_launcher::{disassembly, execute_function};
 
+/// 编译之后将会得到程序 `./target/debug/anvm`
+/// 然后通过诸如 `$ anvm app.wasm` 命令来运行 WebAssembly 应用程序，
+///
+/// 有时如果不想编译就直接运行 XiaoXuan VM（比如正在修改及调试 XiaoXuan VM 程序），
+/// 也可以通过命令 `cargo run` 来启动 XiaoXuan VM，例如：
+///
+/// `$ cargo run --bin anvm -- app.wasm`
+///
+/// 这跟 `$ anvm app.wasm` 的效果是一样的，也就是说，
+/// `$ cargo run --bin anvm -- ...` 等价于 `$ anvm ...`。
 fn main() {
     print_version();
 
@@ -41,18 +51,18 @@ fn print_usage() {
         "\
 Usage:
 
-$ anvm module_names
+    $ anvm module_names
        [-f module_name::function_name arg0 ... argN]
        [-- command -o --option -arg0 val0 -arg1=val1 --argumentN valueN]
 
 e.g.
 
-$ anvm app.wasm
-$ anvm math.wasm app.wasm
-$ anvm app.wasm --function app::test_add 10 20
-$ anvm console.wasm -- command
-$ anvm console.wasm -- convert -d 123 --format hex
-$ anvm --disassembly input.wasm output.wat
+    $ anvm app.wasm
+    $ anvm math.wasm app.wasm
+    $ anvm app.wasm --function app::test_add 10 20
+    $ anvm console.wasm -- command
+    $ anvm console.wasm -- convert -d 123 --format hex
+    $ anvm --disassembly input.wasm output.wat
 "
     );
 }
@@ -63,8 +73,8 @@ fn process_disassembly_command(fragments: &[String]) {
             "\
 Please specify both the input and output file names, e.g.
 
-$ anvm --disassembly input.wasm output.wat
-$ anvm -d input.wasm output.wat
+    $ anvm --disassembly input.wasm output.wat
+    $ anvm -d input.wasm output.wat
 "
         )
     } else {
@@ -75,7 +85,7 @@ $ anvm -d input.wasm output.wat
 }
 
 fn process_execute_function_command(fragments: &[String]) {
-    let mut module_filenames: Vec<String> = vec![];
+    let mut module_filepaths: Vec<String> = vec![];
     let mut entry_module_function_name: Option<(String, String)> = None;
     let mut function_arguments: Vec<Value> = vec![];
     let mut application_arguments: Vec<String> = vec![];
@@ -127,7 +137,7 @@ Unexpected VM launcher argument: \"{}\"
                         return;
                     }
 
-                    module_filenames.push(first.to_owned());
+                    module_filepaths.push(first.to_owned());
                     rest
                 }
             },
@@ -137,12 +147,39 @@ Unexpected VM launcher argument: \"{}\"
         };
     }
 
-    execute_function(
-        &module_filenames,
+    match execute_function(
+        &module_filepaths,
         entry_module_function_name,
         &function_arguments,
         &application_arguments,
-    );
+    ) {
+        Ok((results, exit_code)) => {
+            println!(
+                "\
+program exit normally with code: {}",
+                exit_code
+            );
+
+            if results.len() > 0 {
+                println!(
+                    "\
+function return values: [{}]",
+                    results
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                );
+            }
+        }
+        Err(e) => {
+            println!(
+                "\
+program terminated unexpectedly, error message: {}",
+                e
+            )
+        }
+    }
 }
 
 fn continue_parse_entry_module_function_name(
@@ -160,7 +197,7 @@ Wrong format of function name: {}
 
 please specify the name of entry module and function as \"module_name::function_name\", e.g.
 
-$ anvm app.wasm --function app::test_add
+    $ anvm app.wasm --function app::test_add
 
 where the module name is the base name of the WASM file (i.e. file name without extension)
 ",
@@ -186,12 +223,12 @@ where the module name is the base name of the WASM file (i.e. file name without 
         Err("\
 Please specify the name of entry module and function as \"module_name::function_name\", e.g.
 
-$ anvm app.wasm --function app::test_add
+    $ anvm app.wasm --function app::test_add
 
 where the module name is the base name of the WASM file name (i.e. without extension). \
 you can also specify the parameters of the function, e.g.
 
-$ anvm app.wasm --function app::test_add 10 20
+    $ anvm app.wasm --function app::test_add 10 20
             "
         .to_string())
     }
@@ -252,12 +289,12 @@ fn continue_parse_function_arguments(
                             "\
 failed to parse \"{}\" as a function argument, only integer and float number are supported, e.g.
 
-| type | example       |
-| ---- | ------------- |
-| i32  | 123    123i   |
-| i64  | 3l     345l   |
-| f32  | 3.142  3.142f |
-| f64  | 2d     2.718d |",
+    | type | example       |
+    | ---- | ------------- |
+    | i32  | 123    123i   |
+    | i64  | 3l     345l   |
+    | f32  | 3.142  3.142f |
+    | f64  | 2d     2.718d |",
                             first
                         ));
                     }
