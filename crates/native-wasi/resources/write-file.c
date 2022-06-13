@@ -6,7 +6,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-// run this wasm module by:
 // $ wasmtime --dir . crates/native/resources/fileio.wasm
 
 #include <stdio.h>

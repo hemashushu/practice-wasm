@@ -10,7 +10,7 @@
 
 extern char **environ;
 
-int main(int argc, char *argv[]) //, char *envp[])
+int main(int argc, char *argv[])
 {
     puts("argv:");
     for (int i = 0; argv[i] != 0; i++)

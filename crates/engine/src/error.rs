@@ -4,7 +4,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{any::Any, fmt::{Debug, Display}};
+use std::{
+    any::Any,
+    fmt::{Debug, Display},
+};
 
 /// INVALID_OPERAND_DATA_TYPE
 pub fn make_invalid_operand_data_type_engine_error(
@@ -85,7 +88,7 @@ impl Display for EngineError {
 #[derive(Debug)]
 pub struct NativeError {
     pub internal_error: Box<dyn InternalError>,
-    pub message: String,
+    pub module_name: String,
 }
 
 pub trait InternalError: Debug + Display {
@@ -93,16 +96,21 @@ pub trait InternalError: Debug + Display {
 }
 
 impl NativeError {
-    pub fn new(internal_error: Box<dyn InternalError>, message: &str) -> Self {
+    pub fn new(internal_error: Box<dyn InternalError>, module_name: &str) -> Self {
         NativeError {
             internal_error: internal_error,
-            message: message.to_string(),
+            module_name: module_name.to_owned(),
         }
     }
 }
 
 impl Display for NativeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "native module error: {}", self.internal_error.to_string())
+        write!(
+            f,
+            "native module \"{}\" error: {}",
+            self.module_name,
+            self.internal_error.to_string()
+        )
     }
 }

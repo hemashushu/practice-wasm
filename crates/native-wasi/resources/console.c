@@ -19,11 +19,6 @@ int main(void)
     fgets(s, 10, stdin);
     puts(s);
 
-    // puts("getchar and putchar");
-    // puts("input a char:");
-    // char c = getchar();
-    // putchar(c);
-
     puts("read and write, press Ctrl+D to exit");
 
     int n;

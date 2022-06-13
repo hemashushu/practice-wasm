@@ -274,6 +274,7 @@ pub fn call_native(
         }
     }
 
+    // 调用本地函数
     let result = native_function(&arguments);
 
     match result {
