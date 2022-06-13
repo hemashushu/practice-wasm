@@ -30,16 +30,21 @@ pub struct VMModule {
     /// 复制一份内部函数的 `局部变量信息表`
     /// 调用函数时，需要这个局部变量表来分配局部变量空槽
     ///
-    /// 注意这个列表的索引是 `内部函数的索引`，而不是 `模块的函数索引`，后者
-    /// 包括了导入函数和内部函数。
+    /// 注意这个列表的索引是 `内部函数的索引`，而不是 `模块的所有函数的索引`，后者
+    /// 包括导入函数和内部函数。
     pub internal_function_local_variable_types_list: Vec<Vec<ValueType>>,
 
     /// 函数位置信息列表
+    /// 包括导入函数和内部函数
     /// 用于从 vm 外部调用模块内部函数时，获取被调用函数的信息
     pub function_items: Vec<FunctionItem>,
 
     /// 指令列表
     pub instructions: Vec<Instruction>,
+
+    /// 内部函数的名称列表
+    /// 用于生成错误信息
+    pub internal_function_names: Vec<Option<String>>,
 }
 
 impl VMModule {
@@ -52,6 +57,7 @@ impl VMModule {
         internal_function_local_variable_types_list: Vec<Vec<ValueType>>,
         function_items: Vec<FunctionItem>,
         instructions: Vec<Instruction>,
+        internal_function_names: Vec<Option<String>>,
     ) -> Self {
         Self {
             name,
@@ -62,6 +68,7 @@ impl VMModule {
             internal_function_local_variable_types_list,
             function_items,
             instructions,
+            internal_function_names,
         }
     }
 }

@@ -6,120 +6,71 @@
 
 - [实用工具](#实用工具)
   - [脚本](#脚本)
-  - [wasm-tools](#wasm-tools)
-    - [Wasm 的文本和二进制格式的相互转换](#wasm-的文本和二进制格式的相互转换)
-    - [查看 Wasm 二进制的全部信息](#查看-wasm-二进制的全部信息)
-    - [查看 Wasm 二进制的段信息](#查看-wasm-二进制的段信息)
-  - [wabt](#wabt)
-    - [Wasm 的文本和二进制格式的相互转换](#wasm-的文本和二进制格式的相互转换-1)
-    - [查看 Wasm 二进制的信息](#查看-wasm-二进制的信息)
-    - [运行 Wasm 的所有导出函数](#运行-wasm-的所有导出函数)
-  - [编译 Rust 到 Wasm](#编译-rust-到-wasm)
-    - [编译单独一个 Rust 源码文件](#编译单独一个-rust-源码文件)
-    - [编译一个 cargo 项目](#编译一个-cargo-项目)
-  - [编译 Rust 到 Wasi](#编译-rust-到-wasi)
-  - [编译 C 到 Wasm](#编译-c-到-wasm)
-  - [编译 C 到 Wasi](#编译-c-到-wasi)
+  - [安装及使用 wasm-tools](#安装及使用-wasm-tools)
+    - [WASM 的文本和二进制格式的相互转换](#wasm-的文本和二进制格式的相互转换)
+    - [查看 WASM 二进制的全部信息](#查看-wasm-二进制的全部信息)
+    - [查看 WASM 二进制的段信息](#查看-wasm-二进制的段信息)
+  - [编译 Rust 到 WASM](#编译-rust-到-wasm)
+    - [编译单独一个 Rust 源代码文件](#编译单独一个-rust-源代码文件)
+    - [编译一个 Cargo 项目](#编译一个-cargo-项目)
+  - [编译 Rust 到 WASI](#编译-rust-到-wasi)
+  - [编译 C 到 WASM](#编译-c-到-wasm)
+  - [编译 C 到 WASI](#编译-c-到-wasi)
   - [wasm-pack 和 wasm-bindgen](#wasm-pack-和-wasm-bindgen)
 
 <!-- /code_chunk_output -->
 
 ## 脚本
 
-本目录附带了几个脚本，用于方便地编译 C、Rust、Wat 到 WebAssembly 字节码：
+本目录附带了几个脚本，用于方便地编译 C、Rust、WAT 到 WebAssembly：
 
-- c2wasm 编译单独一个 C 源码文件到 Wasm
-- rust2wasm 编译单独一个 Rust 源码文件到 Wasm
-- wat2wasm 编译 Wat 到 Wasm
-
-另外还有：
-
-- wasm2wat 转换 Wasm 二进制格式到文本格式（可以理解为反编译）
-- wasmdump 显示 Wasm 二进制格式内容（可以理解为反编译的同时，显示结果到屏幕）
+- c2wasm：编译单独一个 C 源代码文件到 WASM
+- rust2wasm：编译单独一个 Rust 源代码文件到 WASM
+- wat2wasm：编译 WAT 到 WASM
+- wasm2wat：转换 WASM 二进制格式到文本格式（可以理解为反编译）
+- wasmdump：显示 WASM 二进制格式内容（可以理解为反编译的同时，显示结果到屏幕）
 
 直接运行它们即可阅读它们的使用方法。
 
-## wasm-tools
+## 安装及使用 wasm-tools
 
-程序的源码：
-
-[https://github.com/bytecodealliance/wasm-tools](https://github.com/bytecodealliance/wasm-tools)
-
-安装：
+使用下面的命令安装 [wasm-tools](https://github.com/bytecodealliance/wasm-tools)：
 
 `$ cargo install wasm-tools`
 
-### Wasm 的文本和二进制格式的相互转换
+### WASM 的文本和二进制格式的相互转换
 
 文本转二进制：
 
-`$ wasm-tools parse hello.wat -o hello.wasm`
+`$ wasm-tools parse demo.wat -o demo.wasm`
 
 二进制转文本：
 
-`wasm-tools print hello.wasm`
+`$ wasm-tools print demo.wasm`
 
-### 查看 Wasm 二进制的全部信息
+### 查看 WASM 二进制的全部信息
 
-显示二进制信息，及其对应的文本格式的内容，相当于一边反编译一边显示内容：
+显示二进制信息，及其对应的文本格式（即反汇编）：
 
-`$ wasm-tools dump hello.wasm`
+`$ wasm-tools dump demo.wasm`
 
-### 查看 Wasm 二进制的段信息
+### 查看 WASM 二进制的段信息
 
-`$ wasm-tools objdump hello.wasm`
+`$ wasm-tools objdump demo.wasm`
 
-## wabt
+## 编译 Rust 到 WASM
 
-程序的源码：
-
-[https://github.com/WebAssembly/wabt](https://github.com/WebAssembly/wabt)
-
-### Wasm 的文本和二进制格式的相互转换
-
-文本转二进制：
-
-`$ wat2wasm hello.wat`
-
-二进制转文本：
-
-`$ wasm2wat hello.wasm`
-
-### 查看 Wasm 二进制的信息
-
-`$ wasm-objdump -h hello.wasm`
-
-可选参数：
-
-- `-h, --headers`
-  显示头信息
-
-- `-j, --section=SECTION`
-  只显示指定段的信息
-
-- `-s, --full-contents`
-  显示原始的内容
-
-- `-d, --disassemble`
-  反编译函数的字节码
-
-### 运行 Wasm 的所有导出函数
-
-`$ wasm-interp test.wasm --run-all-exports`
-
-## 编译 Rust 到 Wasm
-
-先 [安装 Rust](https://www.rust-lang.org/tools/install)，然后添加 `target` 之 `wasm32-unknown-unknown`：
+先 [安装 Rust](https://www.rust-lang.org/tools/install)，然后添加 `wasm32-unknown-unknown` `target`：
 
 `$ rustup target add wasm32-unknown-unknown`
 
-### 编译单独一个 Rust 源码文件
+### 编译单独一个 Rust 源代码文件
 
-`$ rustc --target wasm32-unknown-unknown -C lto -O --crate-type=cdylib hello.rs -o hello.wasm`
+`$ rustc demo.rs --target wasm32-unknown-unknown -C lto -O --crate-type=cdylib -o demo.wasm`
 
-### 编译一个 cargo 项目
+### 编译一个 Cargo 项目
 
-确保在 `Cargo.toml` 里面指定了 crate 的类型为 `cdylib`：
+在 `Cargo.toml` 里面指定了 crate 的类型为 `cdylib`：
 
 ```toml
 [lib]
@@ -131,49 +82,36 @@ crate-type = ["cdylib"]
 
 `$ cargo build --target wasm32-unknown-unknown --release`
 
-## 编译 Rust 到 Wasi
+## 编译 Rust 到 WASI
 
-跟编译到 Wasm 类似，只需将编译目标更改为 `wasm32-wasi` 即可：
+跟编译到 WASM 类似，只需将编译目标更改为 `wasm32-wasi` 即可，先添加 `wasm32-wasi` `target`：
 
-`$ rustc --target wasm32-wasi -C lto -O hello.rs -o hello.wasm`
+`$ rustup target add wasm32-wasi`
 
-## 编译 C 到 Wasm
+然后开始编译：
 
-先安装 clang（LLVM），然后使用 `clang` 命令编译：
+`$ rustc demo.rs --target wasm32-wasi -C lto -O -o demo.wasm`
 
-`$ clang --target=wasm32 -c --no-standard-libraries hello.c -o hello.wasm`
+## 编译 C 到 WASM
 
-参考：
+先安装 Clang（LLVM），然后使用 `clang` 命令编译：
 
-- [Compiling C to WebAssembly and Running It - without Emscripten](https://depth-first.com/articles/2019/10/16/compiling-c-to-webassembly-and-running-it-without-emscripten/)
-- [Compiling C to WebAssembly without Emscripten](https://dassur.ma/things/c-to-webassembly/)
-- [Compiling C to WebAssembly using clang/LLVM and WASI](https://00f.net/2019/04/07/compiling-to-webassembly-with-llvm-and-clang/)
+`$ clang demo.c --target=wasm32 -c --no-standard-libraries -o demo.wasm`
 
-## 编译 C 到 Wasi
+## 编译 C 到 WASI
 
-1. 安装 clang（LLVM）
-2. 克隆并编译 [wasi-libc](https://github.com/WebAssembly/wasi-libc)
+这个操作需要下载 [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) 提供的 LLVM 编译工具。
 
-```bash
-$ git clone https://github.com/WebAssembly/wasi-libc.git
-$ cd wasi-libc
-$ make install INSTALL_DIR=~/sysroot
-```
+1. 访问 wasi-sdk 源代码仓库然后转到 [Release 页面](https://github.com/WebAssembly/wasi-sdk/releases)，根据你的操作系统下载相应的预编译包。
+2. 下载完成后解压到任意目录，假设是 ~/wasi-sdk-16.0。
+3. 使用如下命令编译 C 语言的程序：
 
-3. 获取 libclang_rt.builtins-wasm32.a
+`$ ~/wasi-sdk-16.0/bin/clang demo.c -Os -o demo.wasm`
 
-可以通过编译 [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) 获取，或者下载预编译的包 https://github.com/jedisct1/libclang_rt.builtins-wasm32.a
+4. （可选）如果你的系统已经安装了 Clang（LLVM），可以将 `~/wasi-sdk-16.0/lib/wasi` 目录复制或者链接到 `/usr/lib/clang/x.y.z/lib`，然后第 3 步换成下面的命令：
 
-把库复制到类似 `/usr/lib/clang/x.y.z/lib/wasi/` 目录。
-
-4. 编译
-
-`$ clang --target=wasm32-unknown-wasi --sysroot ~/wasi-libc -Os -s -o example.wasm example.c`
-
-参考:
-
-- [Compiling C to WebAssembly using clang/LLVM and WASI](https://00f.net/2019/04/07/compiling-to-webassembly-with-llvm-and-clang/)
+`$ clang demo.c --target=wasm32-unknown-wasi --sysroot ~/wasi-sdk-16.0/share/wasi-sysroot -Os -o demo.wasm`
 
 ## wasm-pack 和 wasm-bindgen
 
-这两个工具用于构建可以跟 JavaScript 互动的 Wasm 程序，参考：[Compiling from Rust to WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly/Rust_to_wasm)
+这两个工具用于构建可以跟 JavaScript 互动的 WASM 程序，参考：[Compiling from Rust to WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly/Rust_to_wasm)

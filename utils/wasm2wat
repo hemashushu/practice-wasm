@@ -3,8 +3,8 @@
 // 运行此脚本需要先安装：
 //
 // - rust
-// - [wasm-tools](https://github.com/bytecodealliance/wasm-tools) `$ cargo install wasm-tools`
-// - zx (https://github.com/google/zx)
+// - [wasm-tools](https://github.com/bytecodealliance/wasm-tools), run `$ cargo install wasm-tools`
+// - [zx](https://github.com/google/zx)
 
 let args = process.argv;
 

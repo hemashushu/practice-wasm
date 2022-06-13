@@ -53,13 +53,15 @@ pub fn make_invalid_memory_index_engine_error() -> EngineError {
     EngineError::InvalidOperation("only memory index 0 is supported".to_string())
 }
 
-/// MISMATCH_FUNCTION_TYPE
-pub fn make_mismatch_function_type_engine_error(
+/// MISMATCH_DYNAMIC_FUNCTION_TYPE
+pub fn make_mismatch_dynamic_function_type_engine_error(
     function_index: usize,
     vm_module_index: usize,
 ) -> EngineError {
+    // TODO::
+    // 尝试获取函数的名称
     EngineError::InvalidOperation(format!(
-        "failed to call function {} (module {}), the function type does not match",
+        "failed to call dynamic function {} (module {}), the type of function does not match",
         function_index, vm_module_index
     ))
 }

@@ -3,9 +3,9 @@
 // 运行此脚本需要先安装：
 //
 // - nodejs
-// - zx (https://github.com/google/zx)
+// - [zx](https://github.com/google/zx)
 // - clang
-// - https://github.com/WebAssembly/wasi-libc
+// - [wasi-sdk](https://github.com/WebAssembly/wasi-sdk)
 
 
 let args = process.argv;
@@ -13,14 +13,14 @@ let args = process.argv;
 if (args.length != 5) {
     console.log(
 `Usage:
-    ./c2wasi path-to-sysroot path-to-source.c
+    ./c2wasi path-to-wasi-sdk path-to-source.c
 `);
     process.exit(1);
 }
 
 import 'path';
 
-let sysrootPath = path.resolve(args[3])
+let wasiSdkPath = path.resolve(args[3])
 let filePath = path.resolve(args[4]);
 
 if (!filePath.endsWith('.c')) {
@@ -31,6 +31,6 @@ if (!filePath.endsWith('.c')) {
 let pos = filePath.lastIndexOf('.');
 let outputFile = filePath.substring(0, pos) + '.wasm';
 
-await $`clang --target=wasm32-unknown-wasi --sysroot "${sysrootPath}" -O2 -s -o "${outputFile}" "${filePath}"`
+await $`${wasiSdkPath}/bin/clang -O2 -o "${outputFile}" "${filePath}"`
 
 console.log(`output: ${outputFile}`);

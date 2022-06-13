@@ -3,7 +3,7 @@
 // 运行此脚本需要先安装：
 //
 // - nodejs
-// - zx (https://github.com/google/zx)
+// - [zx](https://github.com/google/zx)
 // - clang
 
 let args = process.argv;

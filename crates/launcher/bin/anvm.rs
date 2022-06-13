@@ -13,7 +13,7 @@ use anvm_launcher::{disassembly, execute_function};
 /// 然后通过诸如 `$ anvm fib.wasm` （其中的 `fib.wasm` 是 WebAssembly
 /// 应用程序模块文件的名称）命令来运行 WebAssembly 应用程序
 ///
-/// 有时如果不想先编译再运行 XiaoXuan VM 程序，比如正在修改及调试 XiaoXuan VM 程序时，
+/// 有时不想先编译再运行 XiaoXuan VM 程序，比如正在修改及调试 XiaoXuan VM 程序时，
 /// 可以通过命令 `cargo run` 来直接运行 XiaoXuan VM 程序，例如：
 ///
 /// `$ cargo run --bin anvm -- fib.wasm`
@@ -171,6 +171,11 @@ function return values: [{}]",
                         .collect::<Vec<String>>()
                         .join(", ")
                 );
+            } else {
+                println!(
+                    "\
+function has no return values."
+                );
             }
         }
         Err(e) => {
@@ -179,6 +184,8 @@ function return values: [{}]",
 program terminated unexpectedly, error message: {}",
                 e
             )
+            // TODO::
+            // 打印 call stack、最后栈帧的内容（局部变量、操作数）、错误的位置（pc）
         }
     }
 }

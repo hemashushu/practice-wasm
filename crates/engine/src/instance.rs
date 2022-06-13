@@ -88,6 +88,7 @@ pub fn create_instance(
             internal_function_local_variable_types_list,
             function_items,
             instructions,
+            vec![] // TODO::
         );
 
         vm_modules.push(vm_module);

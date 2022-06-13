@@ -177,10 +177,10 @@ fn continue_process_block(
     match check_value_types(&arguments, &parameter_types) {
         Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
             return Err(EngineError::InvalidOperation(format!(
-            "failed to enter block {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-            block_index, function_index, vm_module_index, index + 1,
-            parameter_types[index],
-            arguments[index].get_type())));
+                "failed to enter block {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                block_index, function_index, vm_module_index, index,
+                parameter_types[index],
+                arguments[index].get_type())));
         }
         _ => {
             // pass
@@ -357,10 +357,10 @@ pub fn recur(
             // }
             Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
                 return Err(EngineError::InvalidOperation(format!(
-                "failed to recur block {} to relative depth {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                block_index,relative_depth,  function_index, vm_module_index, index + 1,
-                parameter_types[index],
-                arguments[index].get_type())));
+                    "failed to recur block {} to relative depth {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                    block_index,relative_depth,  function_index, vm_module_index, index,
+                    parameter_types[index],
+                    arguments[index].get_type())));
             }
             _ => {
                 // pass

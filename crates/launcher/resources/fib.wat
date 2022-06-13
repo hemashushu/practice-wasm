@@ -1,7 +1,8 @@
 (module
-    (func $main (result i32)
-        (i32.const 10)
+    (func $main
+        (i32.const 32)
         (call $fib)
+        (drop)
     )
 
     ;; 计算 `斐波那契数`（`fib`）的函数
@@ -32,15 +33,23 @@
     (export "main" (func $main))
     (export "fib" (func $fib))
 
-    ;; 我使用几个自制的解析器分别测试 fib 函数的运行速度，测试结果挺有趣的
-    ;; fib(32) benchmark:
+    ;; 我使用几个自制的解析器分别测试 fib 函数的运行速度，测试结果挺有趣的：
     ;;
-    ;; go      vm           0m1.185s
-    ;; go      interpreter  0m4.899s
-    ;; rust    vm           0m2.148s
-    ;; rust    interpreter  0m8.869s
-    ;; nodejs  interpreter  0m3.381s
+    ;; fib(32)
     ;;
-    ;; 需要指出的是，这几个解析器我都没有进行过优化，更没有使用到 AOT 或者 JIT 等技术，
+    ;; go       interpreter 0m4.899s
+    ;; rust     interpreter 0m8.869s
+    ;; nodejs   interpreter 0m3.381s
+    ;; go       vm          0m1.185s
+    ;; rust     wasm        0m2.148s
+    ;;
+    ;; 需要指出的是，这几个解析器我都没有进行过优化，没有使用到 AOT 或者 JIT 等技术，
     ;; 大概是怎样简单就怎么写，所以测试结果只反映了我这堆乱写的代码的运行情况。
+    ;;
+    ;; 下面是使用其他 WASM 虚拟机的运行情况：
+    ;;
+    ;; c++      wasm        0m1.473s    (wabt)
+    ;; rust     jit         0m0.021s    (wasmtime)
+    ;; c        wasm        0m0.263s    (wamrsm-micro-runtime without aot jit)
+    ;; c        wasm        0m0.080s    (wasm3)
 )

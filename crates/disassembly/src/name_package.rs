@@ -105,7 +105,7 @@ pub fn get_type_names(name_collections: &[NameCollection]) -> HashMap<u32, Strin
 
 pub fn get_function_names(name_collections: &[NameCollection]) -> HashMap<u32, String> {
 
-    // 用于去除重复的函数名
+    // 对象 `name_set` 用于去除重复的函数名
     // 使用 cargo 编译 Rust 程序到 wasm32-wasi 时会出现
     // 重复函数名称的情况（在 custom 段里），为了避免函数调用错误，
     // 需要把重复的函数名称移除。

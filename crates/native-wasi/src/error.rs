@@ -9,13 +9,15 @@ use std::{
     fmt::{Debug, Display},
 };
 
+use anvm_ast::types::{Value, ValueType};
 use anvm_engine::error::{InternalError, NativeError};
 
-pub const MODULE_NAME: &str = "wasi_snapshot_preview1";
+use crate::types::MODULE_NAME;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct WASIError {
-    pub code: i32,
+    pub err_no: ErrNo,
+    pub message: String,
 }
 
 impl InternalError for WASIError {
@@ -26,12 +28,12 @@ impl InternalError for WASIError {
 
 impl Display for WASIError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "code: {}", self.code)
+        write!(f, "{}: {}", self.err_no, self.message)
     }
 }
 
-pub fn make_wasi_native_error(code: i32) -> NativeError {
-    let wasi_error = WASIError { code };
+pub fn make_wasi_native_error(err_no: ErrNo, message: String) -> NativeError {
+    let wasi_error = WASIError { err_no, message };
 
     NativeError {
         internal_error: Box::new(wasi_error),
@@ -39,13 +41,51 @@ pub fn make_wasi_native_error(code: i32) -> NativeError {
     }
 }
 
+/// INVALID_ARGUMENT_DATA_TYPE
+pub fn make_invalid_argument_data_type_native_error(
+    function_name: &str,
+    argument_index: usize,
+    expected_type: ValueType,
+    actual_type: ValueType,
+) -> NativeError {
+    make_wasi_native_error(
+        ErrNo::Invalid,
+        format!(
+            "invalid data type for the argument {} of function \"{}\", expected: {}, actual: {}",
+            argument_index, function_name, expected_type, actual_type
+        ),
+    )
+}
+
+/// INVALID_ARGUMENT_SIZE
+pub fn make_invalid_argument_size_native_error(
+    function_name: &str,
+    expected_size: usize,
+    actual_size: usize,
+) -> NativeError {
+    make_wasi_native_error(
+        ErrNo::Invalid,
+        format!(
+            "invalid number of arguments of function \"{}\", expected: {}, actual: {}",
+            function_name, expected_size, actual_size
+        ),
+    )
+}
+
 /// 函数返回的错误类型
 ///
 /// 对应着错误代码，原始错误代码的名称过于精简，这里对名称
 /// 稍微进行补充。
-/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#variants-1
+///
 /// errno: Enum(u16)
-pub enum ErrorNumber {
+///
+/// Error codes returned by functions. Not all of these error codes are returned by the functions
+/// provided by this API;
+/// some are used in higher-level library layers, and others are provided merely for alignment with POSIX.
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#variants-1
+#[derive(Debug, PartialEq, Clone)]
+pub enum ErrNo {
     TooBig,                     // 2big: Argument list too long.
     AccessDenied,               // acces: Permission denied.
     AddressInUse,               // addrinuse: Address in use.
@@ -124,3 +164,87 @@ pub enum ErrorNumber {
     NotCapable,                 // notcapable: Extension: Capabilities insufficient.
 }
 
+impl Display for ErrNo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let err_name = match self {
+            ErrNo::TooBig => "E2BIG",
+            ErrNo::AccessDenied => "EACCES",
+            ErrNo::AddressInUse => "EADDRINUSE",
+            ErrNo::AddressNotAvailable => "EADDRNOTAVAIL",
+            ErrNo::AddressFamilyNotSupported => "EAFNOSUPPORT",
+            ErrNo::Again => "EAGAIN",
+            ErrNo::Already => "EALREADY",
+            ErrNo::BadFileDescriptor => "EBADF",
+            ErrNo::BadMessage => "EBADMSG",
+            ErrNo::Busy => "EBUSY",
+            ErrNo::Canceled => "ECANCELED",
+            ErrNo::Child => "ECHILD",
+            ErrNo::ConnectionAborted => "ECONNABORTED",
+            ErrNo::ConnectionRefused => "ECONNREFUSED",
+            ErrNo::ConnectionReset => "ECONNRESET",
+            ErrNo::DeadLock => "EDEADLK",
+            ErrNo::DestinationAddressRequired => "EDESTADDRREQ",
+            ErrNo::Dom => "EDOM",
+            ErrNo::Dquot => "EDQUOT",
+            ErrNo::Exist => "EEXIST",
+            ErrNo::Fault => "EFAULT",
+            ErrNo::FileTooBig => "EFBIG",
+            ErrNo::HostUnreachable => "EHOSTUNREACH",
+            ErrNo::IdRemoved => "EIDRM",
+            ErrNo::IllegalSequence => "EILSEQ",
+            ErrNo::InProgress => "EINPROGRESS",
+            ErrNo::Interrupted => "EINTR",
+            ErrNo::Invalid => "EINVAL",
+            ErrNo::Io => "EIO",
+            ErrNo::IsConnected => "EISCONN",
+            ErrNo::IsDir => "EISDIR",
+            ErrNo::LoopLink => "ELOOP",
+            ErrNo::Mfile => "EMFILE",
+            ErrNo::Mlink => "EMLINK",
+            ErrNo::MessageSize => "EMSGSIZE",
+            ErrNo::Multihop => "EMULTIHOP",
+            ErrNo::NameTooLong => "ENAMETOOLONG",
+            ErrNo::NetworkDown => "ENETDOWN",
+            ErrNo::NetworkReset => "ENETRESET",
+            ErrNo::NetworkUnreachable => "ENETUNREACH",
+            ErrNo::Nfile => "ENFILE",
+            ErrNo::NoBufferSpace => "ENOBUFS",
+            ErrNo::NoDevice => "ENODEV",
+            ErrNo::NoEntry => "ENOENT",
+            ErrNo::NoExecute => "ENOEXEC",
+            ErrNo::NoLock => "ENOLCK",
+            ErrNo::Nolink => "ENOLINK",
+            ErrNo::NoMemory => "ENOMEM",
+            ErrNo::NoMessage => "ENOMSG",
+            ErrNo::NoProtocolOpt => "ENOPROTOOPT",
+            ErrNo::NoSpace => "ENOSPC",
+            ErrNo::Nosys => "ENOSYS",
+            ErrNo::NotConnect => "ENOTCONN",
+            ErrNo::NotDir => "ENOTDIR",
+            ErrNo::NotEmpty => "ENOTEMPTY",
+            ErrNo::NotRecoverable => "ENOTRECOVERABLE",
+            ErrNo::NotSocket => "ENOTSOCK",
+            ErrNo::NotSupported => "ENOTSUP",
+            ErrNo::NotTty => "ENOTTY",
+            ErrNo::Nxio => "ENXIO",
+            ErrNo::Overflow => "EOVERFLOW",
+            ErrNo::OwnerDead => "EOWNERDEAD",
+            ErrNo::Permitted => "EPERM",
+            ErrNo::Pipe => "EPIPE",
+            ErrNo::Protocol => "EPROTO",
+            ErrNo::ProtocolNotSupported => "EPROTONOSUPPORT",
+            ErrNo::ProtocolType => "EPROTOTYPE",
+            ErrNo::Range => "ERANGE",
+            ErrNo::ReadOnlyFileSystem => "EROFS",
+            ErrNo::Spipe => "ESPIPE",
+            ErrNo::Srch => "ESRCH",
+            ErrNo::Stale => "ESTALE",
+            ErrNo::Timedout => "ETIMEDOUT",
+            ErrNo::TextBusy => "ETXTBSY",
+            ErrNo::Xdev => "EXDEV",
+            ErrNo::NotCapable => "ENOTCAPABLE",
+        };
+
+        write!(f, "{}", err_name)
+    }
+}

@@ -288,14 +288,18 @@ impl VM {
         // 核对实参的数据类型和数量
         match check_value_types(arguments, parameter_types) {
             Err(ValueTypeCheckError::LengthMismatch) => {
+                // TODO::
+                // 尝试获取函数的名称
                 return Err(EngineError::InvalidOperation(format!(
                     "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
                     function_index, vm_module_index, parameter_count, arguments.len())));
             }
             Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+                // TODO::
+                // 尝试获取函数的名称
                 return Err(EngineError::InvalidOperation(format!(
                     "failed to call function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                    function_index, vm_module_index, index + 1,
+                    function_index, vm_module_index, index,
                     parameter_types[index],
                     arguments[index].get_type())));
             }
@@ -343,14 +347,18 @@ impl VM {
         // 核对实参的数据类型和数量
         match check_value_types(&arguments, parameter_types) {
             Err(ValueTypeCheckError::LengthMismatch) => {
+                // TODO::
+                // 尝试获取函数的名称
                 return Err(EngineError::InvalidOperation(format!(
                     "failed to call function {} (native module {}). The number of parameters does not match, expected: {}, actual: {}",
                     function_index, native_module_index, parameter_count, arguments.len())));
             }
             Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+                // TODO::
+                // 尝试获取函数的名称
                 return Err(EngineError::InvalidOperation(format!(
                     "failed to call function {} (native module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                    function_index, native_module_index, index + 1,
+                    function_index, native_module_index, index,
                     parameter_types[index],
                     arguments[index].get_type())));
             }

@@ -134,7 +134,7 @@ use anvm_ast::{
 use crate::{
     error::{
         make_invalid_operand_data_type_engine_error, make_invalid_table_index_engine_error,
-        make_mismatch_function_type_engine_error, EngineError,
+        make_mismatch_dynamic_function_type_engine_error, EngineError,
     },
     ins_control::ControlResult,
     object::FunctionItem,
@@ -163,6 +163,8 @@ pub fn call(
     let stack_size = vm.stack.get_size();
     let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
     if operands_count < parameter_count {
+        // TODO::
+        // 尝试获取函数的名称
         return Err(EngineError::InvalidOperation(format!(
             "failed to call function {} (module {}), not enough operands, expected: {}, actual: {}",
             function_index, vm_module_index, parameter_count, operands_count
@@ -174,15 +176,12 @@ pub fn call(
     // 核对实参的数据类型和数量
     match check_value_types(arguments, parameter_types) {
         Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
-        // {
-        //     return Err(EngineError::InvalidOperation(format!(
-        //         "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
-        //         function_index, vm_module_index, parameter_count, arguments.len())));
-        // }
         Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+            // TODO::
+            // 尝试获取函数的名称
             return Err(EngineError::InvalidOperation(format!(
                 "failed to call function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                function_index, vm_module_index, index + 1,
+                function_index, vm_module_index, index,
                 parameter_types[index],
                 arguments[index].get_type())));
         }
@@ -251,6 +250,8 @@ pub fn call_native(
     let stack_size = vm.stack.get_size();
     let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
     if operands_count < parameter_count {
+        // TODO::
+        // 尝试获取函数的名称
         return Err(EngineError::InvalidOperation(format!(
             "failed to call function {} (native module {}), not enough operands, expected: {}, actual: {}",
             function_index, native_module_index, parameter_count, operands_count
@@ -263,9 +264,11 @@ pub fn call_native(
     // 核对实参的数据类型和数量
     match check_value_types(&arguments, &parameter_types) {
         Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
+            // TODO::
+            // 尝试获取函数的名称
             return Err(EngineError::InvalidOperation(format!(
                 "failed to call function {} (native module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                function_index, native_module_index, index + 1,
+                function_index, native_module_index, index,
                 parameter_types[index],
                 arguments[index].get_type())));
         }
@@ -366,7 +369,7 @@ pub fn call_indirect(
     };
 
     if let Err(_) = check_types(&expected_function_type.params, &actual_function_type.params) {
-        return Err(make_mismatch_function_type_engine_error(
+        return Err(make_mismatch_dynamic_function_type_engine_error(
             function_index,
             vm_module_index,
         ));
@@ -376,7 +379,7 @@ pub fn call_indirect(
         &expected_function_type.results,
         &actual_function_type.results,
     ) {
-        return Err(make_mismatch_function_type_engine_error(
+        return Err(make_mismatch_dynamic_function_type_engine_error(
             function_index,
             vm_module_index,
         ));

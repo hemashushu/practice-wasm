@@ -4,7 +4,7 @@
 //
 // - rust
 // - `$ rustup target add wasm32-wasi`
-// - zx (https://github.com/google/zx)
+// - [zx](https://github.com/google/zx)
 
 let args = process.argv;
 
