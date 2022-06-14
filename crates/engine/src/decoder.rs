@@ -83,9 +83,10 @@ pub fn decode(
     // 转换一个模块
     for (ast_module_index, named_ast_module) in named_ast_modules.iter().enumerate() {
         let mut instructions: Vec<Instruction> = vec![];
-        // let mut function_address_offset: usize = 0;
 
         // 获取模块第一个内部函数的索引值
+
+        // 统计导入的函数的数量
         let internal_function_index_offset = named_ast_module
             .module
             .import_items

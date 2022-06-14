@@ -4,8 +4,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::collections::{HashMap, HashSet};
+
 use anvm_ast::{
-    ast::{self, FunctionType, TypeItem},
+    ast::{self, FunctionType, ImportDescriptor, NameCollection, TypeItem},
     types::{Value, ValueType},
 };
 
@@ -79,6 +81,8 @@ pub fn create_instance(
             })
             .collect::<Vec<Vec<ValueType>>>();
 
+        let internal_function_names = get_internal_function_names(ast_module);
+
         let vm_module = VMModule::new(
             name,
             table_index,
@@ -88,7 +92,7 @@ pub fn create_instance(
             internal_function_local_variable_types_list,
             function_items,
             instructions,
-            vec![] // TODO::
+            internal_function_names,
         );
 
         vm_modules.push(vm_module);
@@ -214,6 +218,59 @@ pub fn find_ast_module_export_function(ast_module: &ast::Module, export_name: &s
             ast::ExportDescriptor::FunctionIndex(i) if item.name == export_name => Some(*i),
             _ => None,
         })
+}
+
+fn get_internal_function_names(ast_module: &ast::Module) -> HashMap<usize, String> {
+    let name_collections = ast_module.get_module_name_collections();
+
+    // 统计导入的函数的数量
+    let internal_function_index_offset = ast_module
+        .import_items
+        .iter()
+        .filter(|item| match item.import_descriptor {
+            ImportDescriptor::FunctionTypeIndex(_) => true,
+            _ => false,
+        })
+        .count();
+
+    // 对象 `name_set` 用于去除重复的函数名
+    // 使用 cargo 编译 Rust 程序到 wasm32-wasi 时会出现
+    // 重复函数名称的情况（在 custom 段里），为了避免函数调用错误，
+    // 需要把重复的函数名称移除。
+    //
+    // P.S.
+    // wasm-tools (https://github.com/bytecodealliance/wasm-tools) 采用的是重命名的
+    // 解决方案，比如遇到重复的函数名 dummy，则函数声明行会更改为 `(func $#func010<dummy> (@name dummy) ...`
+    // 其中 `#func010<dummy>` 为新名称，`010` 是函数的索引，`@name` 是
+    // WebAssembly Annotation (https://github.com/WebAssembly/annotations)
+    let mut name_set: HashSet<String> = HashSet::new();
+
+    name_collections
+        .iter()
+        .filter_map(|item| match item {
+            NameCollection::FunctionNames(pairs) => Some(pairs),
+            _ => None,
+        })
+        .flatten()
+        .map(|item| (item.index as usize, item.name.to_owned()))
+        .filter(|(_, name)| {
+            // 去除重复函数名
+            if name_set.contains(name) {
+                false
+            } else {
+                name_set.insert(name.to_owned());
+                true
+            }
+        })
+        .filter_map(|(index, name)| {
+            // 去除导入的函数，并且把 "模块全范围的函数索引值" 转换为 "内部函数的索引值"
+            if index < internal_function_index_offset {
+                None
+            } else {
+                Some((index - internal_function_index_offset, name))
+            }
+        })
+        .collect::<HashMap<usize, String>>()
 }
 
 #[cfg(test)]

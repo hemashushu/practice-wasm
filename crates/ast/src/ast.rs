@@ -664,33 +664,11 @@ pub struct CodeItem {
     pub instruction_items: Vec<Instruction>,
 }
 
-/// 指令项
-///
-/// 指令项包括了指令本身（类型和参数）以及指令的位置等信息
-#[derive(Debug, PartialEq, Clone)]
-pub struct InstructionItem {
-    pub instruction: Instruction,
-    pub location: Location,
-}
-
 /// 局部变量信息组
 #[derive(Debug, PartialEq, Clone)]
 pub struct LocalGroup {
     pub variable_count: u32,   // 变量的数量
     pub value_type: ValueType, // 数据类型
-}
-
-/// 指令在源码（包括二进制和文本格式）当中的位置
-#[derive(Debug, PartialEq, Clone)]
-pub struct Location {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl Location {
-    pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
-    }
 }
 
 /// # 数据项
@@ -738,3 +716,40 @@ pub struct DataItem {
     /// 内容
     pub data: Vec<u8>,
 }
+
+impl Module {
+    pub fn get_module_name_collections(&self) -> Vec<NameCollection> {
+        self
+            .custom_items
+            .iter()
+            .filter_map(|item| match item {
+                CustomItem::NameCollections(name_collections) => Some(name_collections),
+                _ => None,
+            })
+            .flatten()
+            .map(|item| item.to_owned())
+            .collect::<Vec<NameCollection>>()
+    }
+}
+
+// /// 指令项
+// ///
+// /// 指令项包括了指令本身（类型和参数）以及指令的位置等信息
+// #[derive(Debug, PartialEq, Clone)]
+// pub struct InstructionItem {
+//     pub instruction: Instruction,
+//     pub location: Location,
+// }
+//
+// /// 指令在源码（包括二进制和文本格式）当中的位置
+// #[derive(Debug, PartialEq, Clone)]
+// pub struct Location {
+//     pub start: usize,
+//     pub end: usize,
+// }
+//
+// impl Location {
+//     pub fn new(start: usize, end: usize) -> Self {
+//         Self { start, end }
+//     }
+// }

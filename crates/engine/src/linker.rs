@@ -828,6 +828,8 @@ pub fn link_global_variables(
         let mut module_global_variable_map_item: Vec<Option<usize>> = vec![];
 
         // 先以 None 为值，填充模块的导入全局变量
+
+        // 统计导入的全局变量的数量
         let import_global_variable_count = ast_module
             .import_items
             .iter()

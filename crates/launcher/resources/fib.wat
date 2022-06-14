@@ -1,6 +1,6 @@
 (module
     (func $main
-        (i32.const 32)
+        (i32.const 10)
         (call $fib)
         (drop)
     )

@@ -84,7 +84,7 @@ pub fn module_to_text(module: &Module) -> String {
     );
 
     // 转换 function 段（二进制模块里的 function 段和 code 段）
-    let function_items = get_function_items(&module); //, function_index as usize);
+    let function_items = get_function_items(&module);
     lines.extend(
         function_items
             .iter()

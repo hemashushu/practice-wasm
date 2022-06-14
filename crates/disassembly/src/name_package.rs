@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use anvm_ast::ast::{CustomItem, Module, NameCollection};
+use anvm_ast::ast::{Module, NameCollection};
 
 /// 模块当中所有 `名称` 的集合
 pub struct NamePackage {
@@ -27,7 +27,7 @@ pub struct NamePackage {
 
 impl NamePackage {
     pub fn new(module: &Module) -> Self {
-        let name_collections = get_module_name_collections(module);
+        let name_collections = module.get_module_name_collections();
 
         Self {
             type_names: get_type_names(&name_collections),
@@ -104,7 +104,6 @@ pub fn get_type_names(name_collections: &[NameCollection]) -> HashMap<u32, Strin
 }
 
 pub fn get_function_names(name_collections: &[NameCollection]) -> HashMap<u32, String> {
-
     // 对象 `name_set` 用于去除重复的函数名
     // 使用 cargo 编译 Rust 程序到 wasm32-wasi 时会出现
     // 重复函数名称的情况（在 custom 段里），为了避免函数调用错误，
@@ -238,17 +237,4 @@ pub fn get_data_names(name_collections: &[NameCollection]) -> HashMap<u32, Strin
         .flatten()
         .map(|item| (item.index, item.name.to_owned()))
         .collect::<HashMap<u32, String>>()
-}
-
-fn get_module_name_collections(module: &Module) -> Vec<NameCollection> {
-    module
-        .custom_items
-        .iter()
-        .filter_map(|item| match item {
-            CustomItem::NameCollections(name_collections) => Some(name_collections),
-            _ => None,
-        })
-        .flatten()
-        .map(|item| item.to_owned())
-        .collect::<Vec<NameCollection>>()
 }
