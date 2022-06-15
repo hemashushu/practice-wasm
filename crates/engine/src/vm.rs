@@ -748,9 +748,8 @@ impl VM {
             };
             Ok(value)
         } else {
-            Err(EngineError::InvalidOperation(
-                "the constant expression is empty".to_string(),
-            ))
+            // parser 应该事先检查常量表示式不为空
+            unreachable!("empty constant expression")
         }
     }
 }

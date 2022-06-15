@@ -182,12 +182,11 @@ impl VMStack {
     /// 对于弹出 bool 值的约定：
     /// 如果数值为 i32 0，则表示 false，
     /// 如果数值为 i32 非零，则表示 true。
-    pub fn pop_bool(&mut self) -> Result<bool, EngineError> {
-        match self.pop() {
+    pub fn pop_bool(&mut self) -> Result<bool, Value> {
+        let value = self.pop();
+        match value {
             Value::I32(0) => Ok(false),
-            Value::I64(_) | Value::F32(_) | Value::F64(_) => Err(EngineError::InvalidOperation(
-                "expected i32 for bool value".to_string(),
-            )),
+            Value::I64(_) | Value::F32(_) | Value::F64(_) => Err(value),
             _ => Ok(true),
         }
     }
@@ -298,7 +297,7 @@ mod tests {
 
         // 测试 push
         s0.push(Value::F32(3.14));
-        s0.push(Value::F32(0.0));
+        s0.push(Value::I64(1));
         s0.push_bool(true);
         s0.push_bool(false);
         s0.push_bool(true);
@@ -307,15 +306,8 @@ mod tests {
         assert_eq!(s0.pop_bool().unwrap(), false);
         assert_eq!(s0.pop_bool().unwrap(), true);
 
-        assert!(matches!(
-            s0.pop_bool(),
-            Err(EngineError::InvalidOperation(_))
-        ));
-
-        assert!(matches!(
-            s0.pop_bool(),
-            Err(EngineError::InvalidOperation(_))
-        ));
+        assert!(matches!(s0.pop_bool(), Err(Value::I64(_))));
+        assert!(matches!(s0.pop_bool(), Err(Value::F32(_))));
     }
 
     #[test]

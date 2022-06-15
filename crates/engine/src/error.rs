@@ -68,7 +68,7 @@ pub fn make_mismatch_dynamic_function_type_engine_error(
 
 #[derive(Debug)]
 pub enum EngineError {
-    OutOfIndex(String),
+    OutOfRange(OutOfRange),
     Overflow(Overflow),
     ObjectNotFound(ObjectNotFound),
     InvalidOperation(String),
@@ -78,7 +78,7 @@ pub enum EngineError {
 impl Display for EngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EngineError::OutOfIndex(s) => write!(f, "out of index: {}", s),
+            EngineError::OutOfRange(s) => write!(f, "{}", s),
             EngineError::Overflow(s) => write!(f, "{}", s),
             EngineError::ObjectNotFound(s) => write!(f, "{}", s),
             EngineError::InvalidOperation(s) => write!(f, "invalid operation: {}", s),
@@ -173,19 +173,66 @@ impl Display for ObjectNotFound {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Overflow {
-    MemoryPageExceed(/* max allowed */ usize),
-    TableSizeExceed(/* max allowed */ usize),
+    MemoryPageExceed(/* actual */ u32, /* max allowed */ u32),
+    TableSizeExceed(/* actual */ u32, /* max allowed */ u32),
 }
 
 impl Display for Overflow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Overflow::MemoryPageExceed(max) => {
-                write!(f, "memory pages exceeds the limit, allowed maximum {}", max)
+            Overflow::MemoryPageExceed(actual, max) => {
+                write!(
+                    f,
+                    "memory pages {} exceeds the limit, maximum allowed {}",
+                    actual, max
+                )
             }
-            Overflow::TableSizeExceed(max) => {
-                write!(f, "table size exceeds the limit, allowed maximum {}", max)
+            Overflow::TableSizeExceed(actual, max) => {
+                write!(
+                    f,
+                    "table size {} exceeds the limit, maximum allowed {}",
+                    actual, max
+                )
             }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum OutOfRange {
+    BlockRelativeDepthOutOfRange(/* relative_depth */ usize, /* max */ usize),
+    ElementIndexOutOfRange(/* element index */ usize, /* max */ usize),
+
+    /// 暂时用不上，仅当支持多表格时才有此异常
+    TableIndexOutOfRange(/* table index */ usize, /* max */ usize),
+
+    /// 暂时用不上，仅当支持多内存块时才有此异常
+    MemoryBlockIndexOutOfRange(/* memory block index */ usize, /* max */ usize),
+}
+
+impl Display for OutOfRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutOfRange::BlockRelativeDepthOutOfRange(relative_depth, max) => write!(
+                f,
+                "the relative depth of the block {} is out of range, maximum {}",
+                relative_depth, max
+            ),
+            OutOfRange::ElementIndexOutOfRange(element_index, max) => write!(
+                f,
+                "the element index {} is out of range, maximum {}",
+                element_index, max
+            ),
+            OutOfRange::TableIndexOutOfRange(table_index, max) => write!(
+                f,
+                "the table index {} is out of range, maximum {}",
+                table_index, max
+            ),
+            OutOfRange::MemoryBlockIndexOutOfRange(memory_block_index, max) => write!(
+                f,
+                "the memory block index {} is out of range, maximum {}",
+                memory_block_index, max
+            ),
         }
     }
 }

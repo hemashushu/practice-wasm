@@ -44,7 +44,17 @@ pub fn execute_function(
     application_arguments: &[String],
 ) -> Result<(Vec<Value>, i32), String> {
     let named_ast_modules = load_ast_modules(module_filepaths)?;
+    execute_function_by_modules(&named_ast_modules, entry_module_function_name, function_arguments, application_arguments)
+    // todo::
+    // 将错误信息转换为可读的文本
+}
 
+pub fn execute_function_by_modules(
+    named_ast_modules: &[NamedAstModule],
+    entry_module_function_name: Option<(String, String)>,
+    function_arguments: &[Value],
+    application_arguments: &[String],
+) -> Result<(Vec<Value>, i32), String> {
     let (vm_module_index, function_index) =
         // 用户指定了入口模块及函数
         if let Some((target_module_name, target_function_name_or_index)) =

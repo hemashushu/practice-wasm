@@ -125,7 +125,7 @@ pub fn process_end(
                     "failed to return result from function {} (module {}), The data type of result {} does not match, expected: {}, actual: {}",
                     function_index,
                     vm_module_index,
-                    index +1,
+                    index ,
                     result_types[index],
                     results[index].get_type())
             };

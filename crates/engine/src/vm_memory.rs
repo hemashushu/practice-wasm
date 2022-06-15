@@ -70,14 +70,16 @@ impl VMMemory {
         if let Limit::Range(_, max_page) = self.memory_type.limit {
             if new_page_count > max_page {
                 return Err(EngineError::Overflow(Overflow::MemoryPageExceed(
-                    max_page as usize,
+                    new_page_count,
+                    max_page,
                 )));
             }
         }
 
         if new_page_count > MAX_PAGES {
             return Err(EngineError::Overflow(Overflow::MemoryPageExceed(
-                MAX_PAGES as usize,
+                new_page_count,
+                MAX_PAGES,
             )));
         }
 
@@ -193,7 +195,7 @@ mod tests {
         assert!(matches!(m2.increase_page(2), Ok(_)));
         assert!(matches!(
             m2.increase_page(1),
-            Err(EngineError::Overflow(Overflow::MemoryPageExceed(_)))
+            Err(EngineError::Overflow(Overflow::MemoryPageExceed(_, _)))
         ));
     }
 

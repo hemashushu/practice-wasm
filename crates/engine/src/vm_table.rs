@@ -26,7 +26,7 @@
 
 use anvm_ast::ast::{Limit, TableType};
 
-use crate::error::{EngineError, Overflow};
+use crate::error::{EngineError, Overflow, OutOfRange};
 
 pub struct VMTable {
     /// TableType 的信息包含表的类型（目前只有函数引用类型）以及限制值（范围值）
@@ -81,7 +81,7 @@ impl VMTable {
         if let Limit::Range(_, max) = self.table_type.limit {
             if new_len > max {
                 return Err(EngineError::Overflow(Overflow::TableSizeExceed(
-                    max as usize,
+                    new_len, max,
                 )));
             }
         }
@@ -93,8 +93,8 @@ impl VMTable {
 
     pub fn get_element(&self, index: usize) -> Result<Option<u32>, EngineError> {
         if index >= self.elements.len() {
-            return Err(EngineError::OutOfIndex(
-                "element index value is out of the range of the table".to_string(),
+            return Err(EngineError::OutOfRange(
+                OutOfRange::ElementIndexOutOfRange(index, self.elements.len())
             ));
         }
 
@@ -103,8 +103,8 @@ impl VMTable {
 
     pub fn set_element(&mut self, index: usize, function_index: u32) -> Result<(), EngineError> {
         if index >= self.elements.len() {
-            return Err(EngineError::OutOfIndex(
-                "element index value is out of the range of the table".to_string(),
+            return Err(EngineError::OutOfRange(
+                OutOfRange::ElementIndexOutOfRange(index, self.elements.len())
             ));
         }
 
@@ -120,7 +120,7 @@ impl VMTable {
 #[cfg(test)]
 mod tests {
     use crate::{
-        error::{EngineError, Overflow},
+        error::{EngineError, OutOfRange, Overflow},
         vm_table::VMTable,
     };
 
@@ -150,7 +150,7 @@ mod tests {
         assert!(matches!(m2.increase_size(2), Ok(_)));
         assert!(matches!(
             m2.increase_size(1),
-            Err(EngineError::Overflow(Overflow::TableSizeExceed(_)))
+            Err(EngineError::Overflow(Overflow::TableSizeExceed(_, _)))
         ));
     }
 
@@ -173,7 +173,10 @@ mod tests {
 
         assert!(matches!(
             t0.get_element(20),
-            Err(EngineError::OutOfIndex(_))
+            Err(EngineError::OutOfRange(OutOfRange::ElementIndexOutOfRange(
+                _,
+                _
+            )))
         ));
     }
 }

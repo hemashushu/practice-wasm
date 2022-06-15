@@ -794,7 +794,7 @@ fn resolve_ast_module_memory_block(
             )?
         };
 
-    // 检查表格类型
+    // 检查内存块类型
     let instance_memory_block = &instance_memory_blocks[target_instance_memory_block_index];
 
     if instance_memory_block.get_memory_type() != target_memory_type {
@@ -976,7 +976,7 @@ fn resolve_ast_module_global_variable(
             )?
         };
 
-    // 检查表格类型
+    // 检查全局变量类型
     let instance_global_variable =
         &instance_global_variables[target_instance_global_variable_index];
 

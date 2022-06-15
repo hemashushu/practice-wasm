@@ -99,7 +99,14 @@ pub fn block_and_jump_when_eq_zero(
     // 返回地址应该是结构块最后一条指令 `end 指令` 的下一个指令
     let return_address = end_address + 1;
 
-    let testing = vm.stack.pop_bool()?;
+    let testing = match vm.stack.pop_bool() {
+        Ok(b) => b,
+        Err(v) => {
+            return Err(EngineError::InvalidOperation(
+                "expected i32 for bool value".to_string(),
+            ))
+        }
+    };
 
     // 执行完 `if 指令` 之后，如果刚才栈顶的数值是：
     //
@@ -279,13 +286,21 @@ pub fn process_break(
     }
 }
 
+/// 处理原 `br_if` 跳转到 `loop` 结构层的情况
 pub fn process_break_when_not_eq_zero(
     vm: &mut VM,
     option_block_index: Option<usize>,
     relative_depth: usize,
     address: usize,
 ) -> Result<ControlResult, EngineError> {
-    let testing = vm.stack.pop_bool()?;
+    let testing = match vm.stack.pop_bool() {
+        Ok(b) => b,
+        Err(v) => {
+            return Err(EngineError::InvalidOperation(
+                "expected i32 for bool value".to_string(),
+            ))
+        }
+    };
 
     if testing {
         process_break(vm, option_block_index, relative_depth, address)
@@ -376,13 +391,21 @@ pub fn recur(
     }
 }
 
+/// 处理原 `br_if` 跳转到 `loop` 结构层的情况
 pub fn recur_when_not_eq_zero(
     vm: &mut VM,
     block_index: usize,
     relative_depth: usize,
     address: usize,
 ) -> Result<ControlResult, EngineError> {
-    let testing = vm.stack.pop_bool()?;
+    let testing = match vm.stack.pop_bool() {
+        Ok(b) => b,
+        Err(v) => {
+            return Err(EngineError::InvalidOperation(
+                "expected i32 for bool value".to_string(),
+            ))
+        }
+    };
 
     if testing {
         recur(vm, block_index, relative_depth, address)

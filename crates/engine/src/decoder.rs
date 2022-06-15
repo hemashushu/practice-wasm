@@ -52,7 +52,7 @@
 use anvm_ast::{ast::ImportDescriptor, instruction};
 
 use crate::{
-    error::EngineError,
+    error::{EngineError, OutOfRange},
     object::{BlockItem, BranchTarget, Control, FunctionItem, Instruction, NamedAstModule},
 };
 
@@ -389,8 +389,8 @@ fn get_branch_target(
 
     if (target_level as isize) < 0 {
         // 目标层级超出了范围
-        return Err(EngineError::OutOfIndex(
-            "target depth out of index for instruction \"br\"".to_string(),
+        return Err(EngineError::OutOfRange(
+            OutOfRange::BlockRelativeDepthOutOfRange(relative_depth, block_index_stack.len()),
         ));
     }
 
