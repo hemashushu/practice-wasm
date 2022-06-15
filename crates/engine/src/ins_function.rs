@@ -134,7 +134,7 @@ use anvm_ast::{
 use crate::{
     error::{
         make_invalid_operand_data_type_engine_error, make_invalid_table_index_engine_error,
-        make_mismatch_dynamic_function_type_engine_error, EngineError,
+        make_mismatch_dynamic_function_type_engine_error, EngineError, ObjectNotFound,
     },
     ins_control::ControlResult,
     object::FunctionItem,
@@ -318,16 +318,20 @@ pub fn call_indirect(
     let (vm_module_index, function_index, function_item, expected_function_type) = {
         let vm_module_index = vm.status.vm_module_index;
         let vm_module = &vm.resource.vm_modules[vm_module_index];
-        let table = &vm.resource.tables[vm_module.table_index];
+        let table_index = vm_module.table_index;
+        let table = &vm.resource.tables[table_index];
 
         let element_item = table.get_element(element_index)?;
         let function_index = match element_item {
             Some(index) => index as usize,
             _ => {
-                return Err(EngineError::ObjectNotFound(format!(
-                    "can not found table element {} (module {})",
-                    element_index, vm_module_index
-                )))
+                return Err(EngineError::ObjectNotFound(
+                    ObjectNotFound::ElementItemNotFound(
+                        vm_module_index,
+                        table_index,
+                        element_index,
+                    ),
+                ))
             }
         };
 

@@ -24,10 +24,9 @@
 // | ...         |       | #2 func#5   |     | #5 div     |
 // | -- 栈底。 -- |       | ...         |     | ...        |
 
-
 use anvm_ast::ast::{Limit, TableType};
 
-use crate::error::EngineError;
+use crate::error::{EngineError, Overflow};
 
 pub struct VMTable {
     /// TableType 的信息包含表的类型（目前只有函数引用类型）以及限制值（范围值）
@@ -81,9 +80,9 @@ impl VMTable {
         // 增长到 u32 的最大值
         if let Limit::Range(_, max) = self.table_type.limit {
             if new_len > max {
-                return Err(EngineError::Overflow(
-                    "the size exceeds the specified maximum of the table".to_string(),
-                ));
+                return Err(EngineError::Overflow(Overflow::TableSizeExceed(
+                    max as usize,
+                )));
             }
         }
 
@@ -120,7 +119,10 @@ impl VMTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::{error::EngineError, vm_table::VMTable};
+    use crate::{
+        error::{EngineError, Overflow},
+        vm_table::VMTable,
+    };
 
     #[test]
     fn test_increase_size() {
@@ -146,7 +148,10 @@ mod tests {
 
         assert_eq!(m2.get_size(), 2);
         assert!(matches!(m2.increase_size(2), Ok(_)));
-        assert!(matches!(m2.increase_size(1), Err(EngineError::Overflow(_))));
+        assert!(matches!(
+            m2.increase_size(1),
+            Err(EngineError::Overflow(Overflow::TableSizeExceed(_)))
+        ));
     }
 
     #[test]

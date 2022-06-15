@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use anvm_ast::ast::{Module, NameCollection};
+use crate::ast::{CustomItem, Module, NameCollection};
 
 /// 模块当中所有 `名称` 的集合
 pub struct NamePackage {
@@ -27,7 +27,7 @@ pub struct NamePackage {
 
 impl NamePackage {
     pub fn new(module: &Module) -> Self {
-        let name_collections = module.get_module_name_collections();
+        let name_collections = get_module_name_collections(module);
 
         Self {
             type_names: get_type_names(&name_collections),
@@ -237,4 +237,17 @@ pub fn get_data_names(name_collections: &[NameCollection]) -> HashMap<u32, Strin
         .flatten()
         .map(|item| (item.index, item.name.to_owned()))
         .collect::<HashMap<u32, String>>()
+}
+
+fn get_module_name_collections(module: &Module) -> Vec<NameCollection> {
+    module
+        .custom_items
+        .iter()
+        .filter_map(|item| match item {
+            CustomItem::NameCollections(name_collections) => Some(name_collections),
+            _ => None,
+        })
+        .flatten()
+        .map(|item| item.to_owned())
+        .collect::<Vec<NameCollection>>()
 }

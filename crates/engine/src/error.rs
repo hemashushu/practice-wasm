@@ -6,7 +6,7 @@
 
 use std::{
     any::Any,
-    fmt::{Debug, Display},
+    fmt::{format, Debug, Display},
 };
 
 /// INVALID_OPERAND_DATA_TYPE
@@ -69,8 +69,8 @@ pub fn make_mismatch_dynamic_function_type_engine_error(
 #[derive(Debug)]
 pub enum EngineError {
     OutOfIndex(String),
-    Overflow(String),
-    ObjectNotFound(String),
+    Overflow(Overflow),
+    ObjectNotFound(ObjectNotFound),
     InvalidOperation(String),
     NativeError(NativeError),
 }
@@ -79,10 +79,113 @@ impl Display for EngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EngineError::OutOfIndex(s) => write!(f, "out of index: {}", s),
-            EngineError::Overflow(s) => write!(f, "overflow: {}", s),
-            EngineError::ObjectNotFound(s) => write!(f, "object not found: {}", s),
+            EngineError::Overflow(s) => write!(f, "{}", s),
+            EngineError::ObjectNotFound(s) => write!(f, "{}", s),
             EngineError::InvalidOperation(s) => write!(f, "invalid operation: {}", s),
             EngineError::NativeError(e) => write!(f, "{}", e.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ObjectNotFound {
+    // 以下几个异常都是在链接模块时触发的
+    ModuleNotFound(/* module name */ String),
+    FunctionNotFound(
+        /* module name */ String,
+        /* function name */ String,
+    ),
+    NativeFunctionNotFound(
+        /* module name */ String,
+        /* function name */ String,
+    ),
+    MemoryBlockFound(
+        /* module name */ String,
+        /* memory block name */ String,
+    ),
+    TableNotFound(/* module name */ String, /* table name */ String),
+    GlobalVariableNotFound(
+        /* module name */ String,
+        /* global variable name */ String,
+    ),
+
+    // 以下几个异常是在运行程序时触发的
+    ElementItemNotFound(
+        /* vm module index */ usize,
+        /* table index */ usize,
+        /* element index */ usize,
+    ),
+    DataItemNotFound(
+        /* vm module index */ usize,
+        /* memory block index */ usize,
+        /* data index */ usize,
+    ),
+}
+
+impl Display for ObjectNotFound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ObjectNotFound::ModuleNotFound(module_name) => {
+                write!(f, "cannot find module \"{}\"", module_name)
+            }
+            ObjectNotFound::FunctionNotFound(module_name, function_name) => write!(
+                f,
+                "cannot find function \"{}\" in module \"{}\"",
+                function_name, module_name
+            ),
+            ObjectNotFound::NativeFunctionNotFound(module_name, function_name) => write!(
+                f,
+                "cannot find function \"{}\" in module \"{}\"",
+                function_name, module_name
+            ),
+            ObjectNotFound::MemoryBlockFound(module_name, memory_block_name) => write!(
+                f,
+                "cannot find function \"{}\" in module \"{}\"",
+                memory_block_name, module_name
+            ),
+            ObjectNotFound::TableNotFound(module_name, table_name) => write!(
+                f,
+                "cannot find function \"{}\" in module \"{}\"",
+                table_name, module_name
+            ),
+            ObjectNotFound::GlobalVariableNotFound(module_name, global_variable_name) => write!(
+                f,
+                "cannot find function \"{}\" in module \"{}\"",
+                global_variable_name, module_name
+            ),
+            ObjectNotFound::ElementItemNotFound(module_index, table_index, element_index) => {
+                write!(
+                    f,
+                    "cannot find the element item #{} in the table #{} of the module #{}",
+                    element_index, table_index, module_index
+                )
+            }
+            ObjectNotFound::DataItemNotFound(module_index, memory_block_index, data_index) => {
+                write!(
+                    f,
+                    "cannot find the data item #{} in the memory block #{} of the module #{}",
+                    data_index, memory_block_index, module_index
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Overflow {
+    MemoryPageExceed(/* max allowed */ usize),
+    TableSizeExceed(/* max allowed */ usize),
+}
+
+impl Display for Overflow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Overflow::MemoryPageExceed(max) => {
+                write!(f, "memory pages exceeds the limit, allowed maximum {}", max)
+            }
+            Overflow::TableSizeExceed(max) => {
+                write!(f, "table size exceeds the limit, allowed maximum {}", max)
+            }
         }
     }
 }

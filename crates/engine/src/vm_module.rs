@@ -44,9 +44,9 @@ pub struct VMModule {
     /// 指令列表
     pub instructions: Vec<Instruction>,
 
-    /// 内部函数的名称列表
-    /// 用于生成错误信息
-    pub internal_function_names: HashMap<usize, String>,
+    // /// 内部函数的名称列表
+    // /// 用于生成错误信息
+    // pub internal_function_names: HashMap<usize, String>,
 }
 
 impl VMModule {
@@ -59,7 +59,7 @@ impl VMModule {
         internal_function_local_variable_types_list: Vec<Vec<ValueType>>,
         function_items: Vec<FunctionItem>,
         instructions: Vec<Instruction>,
-        internal_function_names: HashMap<usize, String>,
+        // internal_function_names: HashMap<usize, String>,
     ) -> Self {
         Self {
             name,
@@ -70,7 +70,7 @@ impl VMModule {
             internal_function_local_variable_types_list,
             function_items,
             instructions,
-            internal_function_names,
+            // internal_function_names,
         }
     }
 }

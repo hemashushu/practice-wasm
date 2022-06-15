@@ -6,7 +6,7 @@
 
 use anvm_ast::ast::{Limit, MemoryType};
 
-use crate::error::EngineError;
+use crate::error::{EngineError, Overflow};
 
 /// 内存的容量单位是 `页`（`page`）
 /// 一页内存为 65536 个字节
@@ -69,16 +69,16 @@ impl VMMemory {
         // 增长到 WebAssembly 内存块最大允许的页面数 MAX_PAGES
         if let Limit::Range(_, max_page) = self.memory_type.limit {
             if new_page_count > max_page {
-                return Err(EngineError::Overflow(
-                    "memory page exceeds the specified maximum value".to_string(),
-                ));
+                return Err(EngineError::Overflow(Overflow::MemoryPageExceed(
+                    max_page as usize,
+                )));
             }
         }
 
         if new_page_count > MAX_PAGES {
-            return Err(EngineError::Overflow(
-                "memory pages exceeds the maximum allowed value".to_string(),
-            ));
+            return Err(EngineError::Overflow(Overflow::MemoryPageExceed(
+                MAX_PAGES as usize,
+            )));
         }
 
         // 新增加的空槽的初始值都是 0u8
@@ -163,7 +163,7 @@ impl VMMemory {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::EngineError;
+    use crate::error::{EngineError, Overflow};
 
     use super::VMMemory;
 
@@ -191,7 +191,10 @@ mod tests {
 
         assert_eq!(m2.get_page_count(), 2);
         assert!(matches!(m2.increase_page(2), Ok(_)));
-        assert!(matches!(m2.increase_page(1), Err(EngineError::Overflow(_))));
+        assert!(matches!(
+            m2.increase_page(1),
+            Err(EngineError::Overflow(Overflow::MemoryPageExceed(_)))
+        ));
     }
 
     #[test]

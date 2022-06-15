@@ -4,13 +4,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::name_package::NamePackage;
 use anvm_ast::{
     ast::{
         CodeItem, DataItem, ElementItem, ExportItem, GlobalItem, ImportDescriptor, ImportItem,
         Limit, MemoryType, Module, TableType, TypeItem,
     },
     instruction::{BlockType, Instruction, MemoryArgument},
+    name_package::NamePackage,
 };
 use std::fmt::Write;
 
@@ -1190,14 +1190,12 @@ mod tests {
             MemoryType, Module, NameCollection, TableType, TypeItem,
         },
         instruction::{BlockType, Instruction, MemoryArgument},
+        name_package::NamePackage,
         types::ValueType,
     };
     use pretty_assertions::assert_eq;
 
-    use crate::{
-        name_package::NamePackage,
-        text_format::{format_function_item, TextFormat},
-    };
+    use crate::text_format::{format_function_item, TextFormat};
 
     use super::{format_import_items, get_function_items};
 

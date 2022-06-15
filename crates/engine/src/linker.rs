@@ -8,6 +8,7 @@ use crate::{
     decoder::decode_constant_expression,
     error::{
         make_invalid_memory_index_engine_error, make_invalid_table_index_engine_error, EngineError,
+        ObjectNotFound,
     },
     native_module::NativeModule,
     object::{BlockItem, FunctionItem, NamedAstModule},
@@ -120,9 +121,8 @@ pub fn link_functions(
                     loop {
                         let target_module_index =
                             get_module_index_by_name(&module_names, target_module_name).ok_or(
-                                EngineError::ObjectNotFound(format!(
-                                    "cannot found the module: {}",
-                                    target_module_name
+                                EngineError::ObjectNotFound(ObjectNotFound::ModuleNotFound(
+                                    target_module_name.to_owned(),
                                 )),
                             )?;
 
@@ -136,10 +136,12 @@ pub fn link_functions(
                                     target_function_name,
                                 )
                                 .ok_or(
-                                    EngineError::ObjectNotFound(format!(
-                                        "cannot found the native function: {} in native module: {}",
-                                        target_function_name, target_module_name
-                                    )),
+                                    EngineError::ObjectNotFound(
+                                        ObjectNotFound::NativeFunctionNotFound(
+                                            target_module_name.to_owned(),
+                                            target_function_name.to_owned(),
+                                        ),
+                                    ),
                                 )?;
 
                             // 检查函数的实际类型个导入时声明的类型是否匹配
@@ -174,9 +176,9 @@ pub fn link_functions(
                                     target_function_name,
                                 )
                                 .ok_or(
-                                    EngineError::ObjectNotFound(format!(
-                                        "cannot found the exported function: {} in module: {}",
-                                        target_function_name, target_module_name
+                                    EngineError::ObjectNotFound(ObjectNotFound::FunctionNotFound(
+                                        target_module_name.to_owned(),
+                                        target_function_name.to_owned(),
                                     )),
                                 )?;
 
@@ -600,9 +602,8 @@ fn resolve_ast_module_table(
         .enumerate()
         .find(|(_index, item)| &item.name == target_module_name)
         .map(|(index, item)| (index, &item.module))
-        .ok_or(EngineError::ObjectNotFound(format!(
-            "can not found the module: {}",
-            target_module_name
+        .ok_or(EngineError::ObjectNotFound(ObjectNotFound::ModuleNotFound(
+            target_module_name.to_owned(),
         )))?;
 
     let target_table_index = target_ast_module
@@ -614,9 +615,9 @@ fn resolve_ast_module_table(
             }
             _ => None,
         })
-        .ok_or(EngineError::ObjectNotFound(format!(
-            "can not found the export table: {}.{}",
-            target_module_name, target_export_item_name
+        .ok_or(EngineError::ObjectNotFound(ObjectNotFound::TableNotFound(
+            target_module_name.to_owned(),
+            target_export_item_name.to_owned(),
         )))?;
 
     if target_table_index != 0 {
@@ -750,9 +751,8 @@ fn resolve_ast_module_memory_block(
         .enumerate()
         .find(|(_index, item)| &item.name == target_module_name)
         .map(|(index, item)| (index, &item.module))
-        .ok_or(EngineError::ObjectNotFound(format!(
-            "can not found the module: {}",
-            target_module_name
+        .ok_or(EngineError::ObjectNotFound(ObjectNotFound::ModuleNotFound(
+            target_module_name.to_owned(),
         )))?;
 
     let target_memory_block_index = target_ast_module
@@ -766,10 +766,12 @@ fn resolve_ast_module_memory_block(
             }
             _ => None,
         })
-        .ok_or(EngineError::ObjectNotFound(format!(
-            "can not found the export memory: {}.{}",
-            target_module_name, target_export_item_name
-        )))?;
+        .ok_or(EngineError::ObjectNotFound(
+            ObjectNotFound::MemoryBlockFound(
+                target_module_name.to_owned(),
+                target_export_item_name.to_owned(),
+            ),
+        ))?;
 
     if target_memory_block_index != 0 {
         return Err(make_invalid_memory_index_engine_error());
@@ -934,9 +936,8 @@ fn resolve_ast_module_global_variable(
         .enumerate()
         .find(|(_index, item)| &item.name == target_module_name)
         .map(|(index, item)| (index, &item.module))
-        .ok_or(EngineError::ObjectNotFound(format!(
-            "can not found the module: {}",
-            target_module_name
+        .ok_or(EngineError::ObjectNotFound(ObjectNotFound::ModuleNotFound(
+            target_module_name.to_owned(),
         )))?;
 
     let target_module_global_variable_index = target_ast_module
@@ -950,10 +951,12 @@ fn resolve_ast_module_global_variable(
             }
             _ => None,
         })
-        .ok_or(EngineError::ObjectNotFound(format!(
-            "can not found the export global variable: {}.{}",
-            target_module_name, target_export_item_name
-        )))?;
+        .ok_or(EngineError::ObjectNotFound(
+            ObjectNotFound::GlobalVariableNotFound(
+                target_module_name.to_owned(),
+                target_export_item_name.to_owned(),
+            ),
+        ))?;
 
     let option_target_instance_global_variable_index =
         module_global_variable_map[target_ast_module_index][target_module_global_variable_index];

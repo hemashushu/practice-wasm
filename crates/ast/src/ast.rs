@@ -717,21 +717,6 @@ pub struct DataItem {
     pub data: Vec<u8>,
 }
 
-impl Module {
-    pub fn get_module_name_collections(&self) -> Vec<NameCollection> {
-        self
-            .custom_items
-            .iter()
-            .filter_map(|item| match item {
-                CustomItem::NameCollections(name_collections) => Some(name_collections),
-                _ => None,
-            })
-            .flatten()
-            .map(|item| item.to_owned())
-            .collect::<Vec<NameCollection>>()
-    }
-}
-
 // /// 指令项
 // ///
 // /// 指令项包括了指令本身（类型和参数）以及指令的位置等信息

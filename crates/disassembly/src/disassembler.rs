@@ -5,10 +5,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use anvm_ast::ast::Module;
+use anvm_ast::name_package::NamePackage;
 
-use crate::{
-    name_package::NamePackage,
-    text_format::{format_function_item, format_import_items, get_function_items, TextFormat},
+use crate::text_format::{
+    format_function_item, format_import_items, get_function_items, TextFormat,
 };
 
 pub fn module_to_text(module: &Module) -> String {

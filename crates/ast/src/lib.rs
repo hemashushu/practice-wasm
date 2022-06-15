@@ -8,3 +8,4 @@ pub mod ast;
 pub mod instruction;
 pub mod opcode;
 pub mod types;
+pub mod name_package;
