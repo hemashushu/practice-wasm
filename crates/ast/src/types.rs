@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::fmt::Display;
+
 /// # 数值的数据类型
 ///
 /// <https://webassembly.github.io/spec/core/syntax/types.html>
@@ -130,12 +132,10 @@ pub fn check_types(
 
 pub enum ValueTypeCheckError {
     LengthMismatch,
-    DataTypeMismatch(/* index */ usize),
+    DataTypeMismatch(/* parameter_index */ usize),
 }
 
 // WebAssembly 的索引值，比如类型索引、函数索引、内存块索引、表索引、标签索引等，使用 u32 类型。
 // https://webassembly.github.io/spec/core/syntax/modules.html#indices
 //
 // 为了简单起见，XiaoXuan VM 里不单独定义它们
-
-use std::fmt::Display;

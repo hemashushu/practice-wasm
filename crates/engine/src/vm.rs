@@ -10,10 +10,10 @@ use anvm_ast::{
 };
 
 use crate::{
-    error::EngineError,
+    error::{EngineError, InvalidOperation, TypeMismatch, Unsupported},
     interpreter,
     native_module::NativeModule,
-    object::{FunctionItem, Instruction},
+    object::FunctionItem,
     vm_global_variable::VMGlobalVariable,
     vm_memory::VMMemory,
     vm_module::VMModule,
@@ -175,12 +175,12 @@ impl VM {
 
         match result {
             CallFunctionResult::Immediate(values) => Ok(values),
-            CallFunctionResult::Standby(result_count) => {
+            CallFunctionResult::Standby(results_count) => {
                 self.recur_without_break()?;
 
                 // 从 vm 内部返回结果给外部（即宿主）函数调用者
                 // 先弹出的数值放置在结果数组的右边（大索引端）。
-                let results = self.stack.pop_values(result_count);
+                let results = self.stack.pop_values(results_count);
                 Ok(results)
             }
         }
@@ -271,7 +271,7 @@ impl VM {
         address: usize,
         arguments: &[Value],
     ) -> Result<usize, EngineError> {
-        let (parameter_types, local_variable_types, result_count) = {
+        let (parameter_types, local_variable_types, results_count) = {
             let vm_module = &self.resource.vm_modules[vm_module_index];
             let function_type = &vm_module.function_types[type_index];
             let local_variable_types =
@@ -283,25 +283,30 @@ impl VM {
             )
         };
 
-        let parameter_count = parameter_types.len();
+        let parameters_count = parameter_types.len();
 
         // 核对实参的数据类型和数量
         match check_value_types(arguments, parameter_types) {
             Err(ValueTypeCheckError::LengthMismatch) => {
-                // TODO::
-                // 尝试获取函数的名称
-                return Err(EngineError::InvalidOperation(format!(
-                    "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
-                    function_index, vm_module_index, parameter_count, arguments.len())));
+                return Err(EngineError::InvalidOperation(
+                    InvalidOperation::IncorrectFunctionCallArgumentCount {
+                        vm_module_index,
+                        function_index,
+                        parameters_count,
+                        values_count: arguments.len(),
+                    },
+                ));
             }
-            Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-                // TODO::
-                // 尝试获取函数的名称
-                return Err(EngineError::InvalidOperation(format!(
-                    "failed to call function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                    function_index, vm_module_index, index,
-                    parameter_types[index],
-                    arguments[index].get_type())));
+            Err(ValueTypeCheckError::DataTypeMismatch(parameter_index)) => {
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::FunctionCallArgumentTypeMismatch {
+                        vm_module_index,
+                        function_index,
+                        parameter_index,
+                        parameter_type: parameter_types[parameter_index].clone(),
+                        value_type: arguments[parameter_index].get_type(),
+                    },
+                ));
             }
             _ => {
                 // pass
@@ -313,7 +318,7 @@ impl VM {
 
         // 压入调用栈
         // 第一个调用栈的 previous_frame_pointer 等信息的值都为 0。
-        self.push_call_frame(parameter_count, &local_variable_types, 0);
+        self.push_call_frame(parameters_count, &local_variable_types, 0);
 
         // 更新状态，
         let status = &mut self.status;
@@ -324,7 +329,7 @@ impl VM {
         status.address = address;
 
         // 返回函数返回值的数量
-        Ok(result_count)
+        Ok(results_count)
     }
 
     fn call_native_function(
@@ -342,25 +347,30 @@ impl VM {
             (&function_type.params, native_function)
         };
 
-        let parameter_count = parameter_types.len();
+        let parameters_count = parameter_types.len();
 
         // 核对实参的数据类型和数量
         match check_value_types(&arguments, parameter_types) {
             Err(ValueTypeCheckError::LengthMismatch) => {
-                // TODO::
-                // 尝试获取函数的名称
-                return Err(EngineError::InvalidOperation(format!(
-                    "failed to call function {} (native module {}). The number of parameters does not match, expected: {}, actual: {}",
-                    function_index, native_module_index, parameter_count, arguments.len())));
+                return Err(EngineError::InvalidOperation(
+                    InvalidOperation::IncorrectNativeFunctionCallArgumentCount {
+                        native_module_index,
+                        function_index,
+                        parameters_count,
+                        values_count: arguments.len(),
+                    },
+                ));
             }
-            Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-                // TODO::
-                // 尝试获取函数的名称
-                return Err(EngineError::InvalidOperation(format!(
-                    "failed to call function {} (native module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                    function_index, native_module_index, index,
-                    parameter_types[index],
-                    arguments[index].get_type())));
+            Err(ValueTypeCheckError::DataTypeMismatch(parameter_index)) => {
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::NativeFunctionCallArgumentTypeMismatch {
+                        native_module_index,
+                        function_index,
+                        parameter_index,
+                        parameter_type: parameter_types[parameter_index].clone(),
+                        value_type: arguments[parameter_index].get_type(),
+                    },
+                ));
             }
             _ => {
                 // pass
@@ -433,7 +443,7 @@ impl VM {
     /// - 更新跟栈帧部分相关的 status
     pub fn push_call_frame(
         &mut self,
-        parameter_count: usize,
+        parameters_count: usize,
         local_variable_types: &[ValueType],
         return_address: usize,
     ) {
@@ -453,7 +463,7 @@ impl VM {
         // 栈帧的起始位置为：
         //
         // 原栈顶（sp）- 参数数量
-        let frame_pointer = previous_stack_pointer - parameter_count;
+        let frame_pointer = previous_stack_pointer - parameters_count;
 
         // 对于 call frame，local pointer 的值跟 frame pointer 一致
         let local_pointer = frame_pointer;
@@ -555,7 +565,7 @@ impl VM {
     /// - 更新但跟栈帧部分相关的 status
     pub fn pop_frame(
         &mut self,
-        result_count: usize,
+        results_count: usize,
     ) -> (
         /* vm_module_index */ usize,
         /* function_index */ usize,
@@ -580,7 +590,7 @@ impl VM {
         let return_address: usize = stack.get_value(base_pointer + 7).into();
 
         // 先保存一份返回值
-        let results = stack.pop_values(result_count);
+        let results = stack.pop_values(results_count);
 
         // 删除当前栈帧
         stack.drop_values_at(frame_pointer);
@@ -611,7 +621,7 @@ impl VM {
     pub fn pop_frames(
         &mut self,
         relative_depth: usize,
-        result_count: usize,
+        results_count: usize,
     ) -> (
         /* vm_module_index */ usize,
         /* function_index */ usize,
@@ -654,7 +664,7 @@ impl VM {
             let return_address: usize = stack.get_value(base_pointer + 7).into();
 
             // 先保存一份返回值
-            let results = stack.pop_values(result_count);
+            let results = stack.pop_values(results_count);
 
             // 丢弃自 frame_pointer 之后的所有数据
             stack.drop_values_at(frame_pointer);
@@ -725,25 +735,24 @@ impl VM {
     /// 目前只支持一个 `t.const 指令` 和一个 `end 指令` 这种常量表达式
     pub fn eval_constant_expression(
         &mut self,
-        instructions: &[Instruction],
+        instructions: &[instruction::Instruction],
     ) -> Result<Value, EngineError> {
         VM::get_constant_instruction_value(instructions)
     }
 
     pub fn get_constant_instruction_value(
-        instructions: &[Instruction],
+        instructions: &[instruction::Instruction],
     ) -> Result<Value, EngineError> {
-        if let Some(first_instruction) = instructions.first() {
-            let value = match first_instruction {
-                Instruction::Sequence(instruction::Instruction::I32Const(v)) => Value::I32(*v),
-                Instruction::Sequence(instruction::Instruction::I64Const(v)) => Value::I64(*v),
-                Instruction::Sequence(instruction::Instruction::F32Const(v)) => Value::F32(*v),
-                Instruction::Sequence(instruction::Instruction::F64Const(v)) => Value::F64(*v),
+        if let Some(first) = instructions.first() {
+            let value = match first {
+                instruction::Instruction::I32Const(v) => Value::I32(*v),
+                instruction::Instruction::I64Const(v) => Value::I64(*v),
+                instruction::Instruction::F32Const(v) => Value::F32(*v),
+                instruction::Instruction::F64Const(v) => Value::F64(*v),
                 _ => {
-                    return Err(EngineError::InvalidOperation(format!(
-                        "does not support instruction \"{:?}\" in the constant expression yet",
-                        first_instruction
-                    )))
+                    return Err(EngineError::Unsupported(
+                        Unsupported::UnsupportedConstantExpressionInstruction(first.to_owned()),
+                    ))
                 }
             };
             Ok(value)
@@ -791,10 +800,10 @@ fn convert_to_frame_type(frame_type_class: usize, frame_type_value: usize) -> Bl
             2 => BlockType::ResultI64,
             3 => BlockType::ResultF32,
             4 => BlockType::ResultF64,
-            _ => unreachable!(),
+            _ => unreachable!("no this frame type value"),
         },
         // class 0
         0 => BlockType::TypeIndex(frame_type_value as u32),
-        _ => unreachable!(),
+        _ => unreachable!("no this frame type value"),
     }
 }

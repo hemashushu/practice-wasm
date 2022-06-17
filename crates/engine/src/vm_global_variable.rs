@@ -6,8 +6,6 @@
 
 use anvm_ast::{ast::GlobalType, types::Value};
 
-use crate::error::EngineError;
-
 pub struct VMGlobalVariable {
     /// GlobalType 记录变量的 `数据类型` 以及 `可变性`
     global_type: GlobalType,
@@ -27,18 +25,13 @@ impl VMGlobalVariable {
         self.value
     }
 
-    pub fn set_value(&mut self, value: Value) -> Result<(), EngineError> {
+    pub fn set_value(&mut self, value: Value) -> Result<(), SetGlobalVariableError> {
         if !self.global_type.mutable {
-            return Err(EngineError::InvalidOperation(
-                "the specified global variable is immutable".to_string(),
-            ));
+            return Err(SetGlobalVariableError::Immutable);
         }
 
         if self.value.get_type() != value.get_type() {
-            return Err(EngineError::InvalidOperation(
-                "the type of the new value does not match the specified global variable"
-                    .to_string(),
-            ));
+            return Err(SetGlobalVariableError::TypeMismatch);
         }
 
         self.value = value;
@@ -50,6 +43,11 @@ impl VMGlobalVariable {
     }
 }
 
+pub enum SetGlobalVariableError {
+    Immutable,
+    TypeMismatch,
+}
+
 #[cfg(test)]
 mod tests {
     use anvm_ast::{
@@ -57,7 +55,7 @@ mod tests {
         types::{Value, ValueType},
     };
 
-    use crate::error::EngineError;
+    use crate::vm_global_variable::SetGlobalVariableError;
 
     use super::VMGlobalVariable;
 
@@ -74,8 +72,8 @@ mod tests {
 
         assert_eq!(g0.get_value(), Value::I32(10));
         assert!(matches!(
-            g0.set_value(Value::I32(20)),
-            Err(EngineError::InvalidOperation(_))
+            g0.set_value(Value::I32(20)), // 设置一个不可变的全局变量
+            Err(SetGlobalVariableError::Immutable)
         ));
 
         // 创建一个可变的全局变量
@@ -94,7 +92,7 @@ mod tests {
 
         assert!(matches!(
             g1.set_value(Value::I64(40)), // 设置一个不同数据类型的值
-            Err(EngineError::InvalidOperation(_))
+            Err(SetGlobalVariableError::TypeMismatch)
         ))
     }
 }

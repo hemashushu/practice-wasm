@@ -38,10 +38,10 @@
 //!
 //! 注，f64 有跟 f32 一样的比较指令，这里省略列出
 
-use anvm_ast::types::Value;
+use anvm_ast::types::{Value, ValueType};
 
 use crate::{
-    error::{make_invalid_operand_data_types_engine_error, EngineError},
+    error::{make_operand_data_types_mismatch_engine_error, EngineError},
     vm::VM,
 };
 
@@ -56,7 +56,11 @@ pub fn i32_eq(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left == right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.eq", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.eq",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -69,7 +73,11 @@ pub fn i32_ne(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left != right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.ne", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.ne",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -82,7 +90,11 @@ pub fn i32_lt_s(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left < right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.lt_s", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.lt_s",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -95,7 +107,11 @@ pub fn i32_lt_u(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool((left as u32) < (right as u32));
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.lt_u", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.lt_u",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -108,7 +124,11 @@ pub fn i32_gt_s(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left > right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.gt_s", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.gt_s",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -121,7 +141,11 @@ pub fn i32_gt_u(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool((left as u32) > (right as u32));
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.gt_u", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.gt_u",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -134,7 +158,11 @@ pub fn i32_le_s(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left <= right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.le_s", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.le_s",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -147,7 +175,11 @@ pub fn i32_le_u(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool((left as u32) <= (right as u32));
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.le_u", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.le_u",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -160,7 +192,11 @@ pub fn i32_ge_s(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left >= right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.ge_s", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.ge_s",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -173,7 +209,11 @@ pub fn i32_ge_u(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool((left as u32) >= (right as u32));
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i32.ge_u", "i32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i32.ge_u",
+            vec![ValueType::I32, ValueType::I32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -188,7 +228,11 @@ pub fn i64_eq(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left == right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.eq", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.eq",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -201,7 +245,11 @@ pub fn i64_ne(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left != right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.ne", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.ne",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -214,7 +262,11 @@ pub fn i64_lt_s(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left < right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.lt_s", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.lt_s",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -227,7 +279,11 @@ pub fn i64_lt_u(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool((left as u64) < (right as u64));
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.lt_u", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.lt_u",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -240,7 +296,11 @@ pub fn i64_gt_s(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left > right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.gt_s", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.gt_s",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -253,7 +313,11 @@ pub fn i64_gt_u(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool((left as u64) > (right as u64));
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.gt_u", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.gt_u",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -266,7 +330,11 @@ pub fn i64_le_s(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left <= right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.le_s", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.le_s",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -279,7 +347,11 @@ pub fn i64_le_u(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool((left as u64) <= (right as u64));
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.le_u", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.le_u",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -292,7 +364,11 @@ pub fn i64_ge_s(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left >= right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.ge_s", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.ge_s",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -305,7 +381,11 @@ pub fn i64_ge_u(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool((left as u64) >= (right as u64));
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("i64.ge_u", "i64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "i64.ge_u",
+            vec![ValueType::I64, ValueType::I64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -320,7 +400,11 @@ pub fn f32_eq(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left == right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f32.eq", "f32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f32.eq",
+            vec![ValueType::F32, ValueType::F32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -333,7 +417,11 @@ pub fn f32_ne(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left != right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f32.ne", "f32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f32.ne",
+            vec![ValueType::F32, ValueType::F32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -346,7 +434,11 @@ pub fn f32_lt(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left < right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f32.lt", "f32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f32.lt",
+            vec![ValueType::F32, ValueType::F32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -359,7 +451,11 @@ pub fn f32_gt(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left > right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f32.gt", "f32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f32.gt",
+            vec![ValueType::F32, ValueType::F32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -372,7 +468,11 @@ pub fn f32_le(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left <= right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f32.le", "f32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f32.le",
+            vec![ValueType::F32, ValueType::F32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -385,7 +485,11 @@ pub fn f32_ge(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left >= right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f32.ge", "f32")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f32.ge",
+            vec![ValueType::F32, ValueType::F32],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -400,7 +504,11 @@ pub fn f64_eq(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left == right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f64.eq", "f64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f64.eq",
+            vec![ValueType::F64, ValueType::F64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -413,7 +521,11 @@ pub fn f64_ne(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left != right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f64.ne", "f64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f64.ne",
+            vec![ValueType::F64, ValueType::F64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -426,7 +538,11 @@ pub fn f64_lt(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left < right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f64.lt", "f64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f64.lt",
+            vec![ValueType::F64, ValueType::F64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -439,7 +555,11 @@ pub fn f64_gt(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left > right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f64.gt", "f64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f64.gt",
+            vec![ValueType::F64, ValueType::F64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -452,7 +572,11 @@ pub fn f64_le(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left <= right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f64.le", "f64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f64.le",
+            vec![ValueType::F64, ValueType::F64],
+            vec![&lhs, &rhs],
+        )),
     }
 }
 
@@ -465,6 +589,10 @@ pub fn f64_ge(vm: &mut VM) -> Result<(), EngineError> {
             stack.push_bool(left >= right);
             Ok(())
         }
-        _ => Err(make_invalid_operand_data_types_engine_error("f64.ge", "f64")),
+        _ => Err(make_operand_data_types_mismatch_engine_error(
+            "f64.ge",
+            vec![ValueType::F64, ValueType::F64],
+            vec![&lhs, &rhs],
+        )),
     }
 }

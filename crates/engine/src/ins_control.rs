@@ -14,7 +14,7 @@ use anvm_ast::{
 };
 
 use crate::{
-    error::EngineError,
+    error::{EngineError, InvalidOperation, TypeMismatch},
     vm::{INITIAL_FRAME_POINTER, VM},
     vm_stack::INFO_SEGMENT_ITEM_COUNT,
 };
@@ -90,53 +90,66 @@ pub fn process_end(
     };
 
     // 判断操作数是否足够当前函数或结构块用于返回
-    let result_count = result_types.len();
+    let results_count = result_types.len();
     let stack_size = vm.stack.get_size();
     let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
-    if operands_count < result_count {
-        let message = if let Some(block_index) = option_block_index {
-            format!(
-                "failed to return result from block {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
-                block_index, function_index, vm_module_index, result_count, operands_count)
+    if operands_count < results_count {
+        if let Some(block_index) = option_block_index {
+            return Err(EngineError::InvalidOperation(
+                InvalidOperation::NotEnoughOperandForBlockResult {
+                    vm_module_index,
+                    function_index,
+                    block_index: *block_index,
+                    results_count,
+                    operands_count,
+                },
+            ));
         } else {
-            format!(
-                "failed to return result from function {} (module {}), not enough operands, expected: {}, actual: {}",
-                function_index, vm_module_index, result_count, operands_count)
-        };
-        return Err(EngineError::InvalidOperation(message));
+            return Err(EngineError::InvalidOperation(
+                InvalidOperation::NotEnoughOperandForFunctionResult {
+                    vm_module_index,
+                    function_index,
+                    results_count,
+                    operands_count,
+                },
+            ));
+        }
     }
 
     // 判断返回值的数据类型
-    let results = vm.stack.peek_values(result_count);
+    let results = vm.stack.peek_values(results_count);
     match check_value_types(results, &result_types) {
-        Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
-        Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-            let message = if let Some(block_index) = option_block_index {
-                format!(
-                    "failed to return result from block {} (function {}, module {}), The data type of result {} does not match, expected: {}, actual: {}",
-                    block_index,
-                    function_index,
-                    vm_module_index,
-                    index +1,
-                    result_types[index],
-                    results[index].get_type())
+        Err(ValueTypeCheckError::LengthMismatch) => unreachable!("argument count should be match"),
+        Err(ValueTypeCheckError::DataTypeMismatch(result_index)) => {
+            if let Some(block_index) = option_block_index {
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::BlockResultTypeMismatch {
+                        vm_module_index,
+                        function_index,
+                        block_index: *block_index,
+                        result_index,
+                        result_type: result_types[result_index].clone(),
+                        value_type: results[result_index].get_type(),
+                    },
+                ));
             } else {
-                format!(
-                    "failed to return result from function {} (module {}), The data type of result {} does not match, expected: {}, actual: {}",
-                    function_index,
-                    vm_module_index,
-                    index ,
-                    result_types[index],
-                    results[index].get_type())
-            };
-            return Err(EngineError::InvalidOperation(message));
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::FunctionResultTypeMismatch {
+                        vm_module_index,
+                        function_index,
+                        result_index,
+                        result_type: result_types[result_index].clone(),
+                        value_type: results[result_index].get_type(),
+                    },
+                ));
+            }
         }
         _ => {
             // pass
         }
     }
 
-    let (vm_module_index, function_index, frame_type, address) = vm.pop_frame(result_count);
+    let (vm_module_index, function_index, frame_type, address) = vm.pop_frame(results_count);
 
     // 上一句 vm.pop_frame() 调用已经更新了部分 vm.status。
     // 如果 vm.status.frame_pointer 的值等于 0，说明刚才弹出的栈帧是
@@ -158,9 +171,7 @@ pub fn process_end(
 }
 
 pub fn process_unreachable(_vm: &mut VM) -> Result<ControlResult, EngineError> {
-    Err(EngineError::InvalidOperation(
-        "instruction \"unreachable\" is executed".to_string(),
-    ))
+    Err(EngineError::InvalidOperation(InvalidOperation::Unreachable))
 }
 
 pub fn process_nop(_vm: &mut VM) -> Result<ControlResult, EngineError> {

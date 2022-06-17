@@ -11,10 +11,10 @@
 //! - drop
 //! - select
 
-use anvm_ast::types::Value;
+use anvm_ast::types::{Value, ValueType};
 
 use crate::{
-    error::{make_invalid_operand_data_types_engine_error, EngineError},
+    error::{make_operand_data_types_mismatch_engine_error, EngineError, TypeMismatch},
     vm::VM,
 };
 
@@ -51,8 +51,8 @@ pub fn select(vm: &mut VM) -> Result<(), EngineError> {
     let (testing, consequent, alternate) = (stack.pop(), stack.pop(), stack.pop());
 
     if consequent.get_type() != alternate.get_type() {
-        Err(EngineError::InvalidOperation(
-            "the operand data type of the consequent and alternate for \"select\" instruction should be the same".to_string(),
+        Err(EngineError::TypeMismatch(
+            TypeMismatch::SelectInstructionConsequentTypeMismatch(consequent.get_type(), alternate.get_type()),
         ))
     } else {
         if let Value::I32(value) = testing {
@@ -63,8 +63,10 @@ pub fn select(vm: &mut VM) -> Result<(), EngineError> {
             }
             Ok(())
         } else {
-            Err(make_invalid_operand_data_types_engine_error(
-                "select", "i32",
+            Err(make_operand_data_types_mismatch_engine_error(
+                "select",
+                vec![ValueType::I32],
+                vec![&testing],
             ))
         }
     }

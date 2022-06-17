@@ -6,10 +6,7 @@
 
 use crate::{
     decoder::decode_constant_expression,
-    error::{
-        make_invalid_memory_index_engine_error, make_invalid_table_index_engine_error, EngineError,
-        ObjectNotFound,
-    },
+    error::{EngineError, ObjectNotFound, TypeMismatch, Unsupported},
     native_module::NativeModule,
     object::{BlockItem, FunctionItem, NamedAstModule},
     vm::VM,
@@ -151,8 +148,11 @@ pub fn link_functions(
                                 &target_native_module.function_types[target_type_index];
 
                             if expected_function_type != actual_function_type {
-                                return Err(EngineError::InvalidOperation(
-                                    "imported function type does not match".to_string(),
+                                return Err(EngineError::TypeMismatch(
+                                    TypeMismatch::ImportedFunctionTypeMismatch(
+                                        target_module_name.to_owned(),
+                                        target_function_name.to_owned(),
+                                    ),
                                 ));
                             }
 
@@ -211,8 +211,11 @@ pub fn link_functions(
                                         &target_ast_module.type_items[*target_type_index];
 
                                     if expected_type_item != actual_type_item {
-                                        return Err(EngineError::InvalidOperation(
-                                            "imported function type does not match".to_string(),
+                                        return Err(EngineError::TypeMismatch(
+                                            TypeMismatch::ImportedFunctionTypeMismatch(
+                                                target_module_name.to_owned(),
+                                                target_function_name.to_owned(),
+                                            ),
                                         ));
                                     }
 
@@ -398,7 +401,7 @@ pub fn get_function_block_items(
                 {
                     *alternate_address = Some(address); // 替换临时值
                 } else {
-                    unreachable!()
+                    unreachable!("should be \"if\" instruction")
                 }
             }
             instruction::Instruction::End => {
@@ -621,7 +624,9 @@ fn resolve_ast_module_table(
         )))?;
 
     if target_table_index != 0 {
-        return Err(make_invalid_table_index_engine_error());
+        return Err(EngineError::Unsupported(
+            Unsupported::UnsupportedMultipleTable,
+        ));
     }
 
     let option_target_instance_table_index = module_table_map[target_ast_module_index];
@@ -643,8 +648,11 @@ fn resolve_ast_module_table(
     let instance_table = &instance_tables[target_instance_table_index];
 
     if instance_table.get_table_type() != target_table_type {
-        return Err(EngineError::InvalidOperation(
-            "imported table type mismatch".to_string(),
+        return Err(EngineError::TypeMismatch(
+            TypeMismatch::ImportedTableTypeMismatch(
+                target_module_name.to_owned(),
+                target_export_item_name.to_owned(),
+            ),
         ));
     }
 
@@ -774,7 +782,9 @@ fn resolve_ast_module_memory_block(
         ))?;
 
     if target_memory_block_index != 0 {
-        return Err(make_invalid_memory_index_engine_error());
+        return Err(EngineError::Unsupported(
+            Unsupported::UnsupportedMultipleMemoryBlock,
+        ));
     }
 
     let option_target_instance_memory_block_index =
@@ -798,8 +808,11 @@ fn resolve_ast_module_memory_block(
     let instance_memory_block = &instance_memory_blocks[target_instance_memory_block_index];
 
     if instance_memory_block.get_memory_type() != target_memory_type {
-        return Err(EngineError::InvalidOperation(
-            "imported memory type mismatch".to_string(),
+        return Err(EngineError::TypeMismatch(
+            TypeMismatch::ImportedMemoryBlockTypeMismatch(
+                target_module_name.to_owned(),
+                target_export_item_name.to_owned(),
+            ),
         ));
     }
 
@@ -853,9 +866,11 @@ pub fn link_global_variables(
 
             // 检查数据类型是否匹配
             if value.get_type() != global_type.value_type {
-                return Err(EngineError::InvalidOperation(
-                    "the initialized value does not match the data type of the global variable"
-                        .to_string(),
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::ConstantExpressionValueTypeMismatch(
+                        global_type.value_type,
+                        value.get_type(),
+                    ),
                 ));
             }
 
@@ -981,8 +996,11 @@ fn resolve_ast_module_global_variable(
         &instance_global_variables[target_instance_global_variable_index];
 
     if instance_global_variable.get_global_type() != target_global_type {
-        return Err(EngineError::InvalidOperation(
-            "imported global variable type mismatch".to_string(),
+        return Err(EngineError::TypeMismatch(
+            TypeMismatch::ImportedGlobalVariableTypeMismatch(
+                target_module_name.to_owned(),
+                target_export_item_name.to_owned(),
+            ),
         ));
     }
 

@@ -51,11 +51,13 @@
 
 use anvm_ast::{
     instruction::BlockType,
-    types::{check_value_types, Value, ValueTypeCheckError},
+    types::{check_value_types, Value, ValueType, ValueTypeCheckError},
 };
 
 use crate::{
-    error::{make_invalid_operand_data_type_engine_error, EngineError},
+    error::{
+        make_operand_data_types_mismatch_engine_error, EngineError, InvalidOperation, TypeMismatch,
+    },
     ins_control::ControlResult,
     object::BranchTarget,
     vm::VM,
@@ -102,8 +104,10 @@ pub fn block_and_jump_when_eq_zero(
     let testing = match vm.stack.pop_bool() {
         Ok(b) => b,
         Err(v) => {
-            return Err(EngineError::InvalidOperation(
-                "expected i32 for bool value".to_string(),
+            return Err(make_operand_data_types_mismatch_engine_error(
+                "if",
+                vec![ValueType::I32],
+                vec![&v],
             ))
         }
     };
@@ -164,30 +168,40 @@ fn continue_process_block(
     let function_index = vm.status.function_index;
     let vm_module_index = vm.status.vm_module_index;
 
-    // 判断操作数是否足够当前函数或结构块用于返回
-    let parameter_count = parameter_types.len();
+    // 判断操作数是否足够当前结构块的参数
+    let parameters_count = parameter_types.len();
     let stack_size = vm.stack.get_size();
     let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
-    if operands_count < parameter_count {
-        return Err(EngineError::InvalidOperation(format!(
-            "failed to enter block {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
-            block_index, function_index, vm_module_index, parameter_count, operands_count
-        )));
+    if operands_count < parameters_count {
+        return Err(EngineError::InvalidOperation(
+            InvalidOperation::NotEnoughOperandForBlockCall {
+                vm_module_index,
+                function_index,
+                block_index,
+                parameters_count,
+                operands_count,
+            },
+        ));
     }
 
     // 从栈弹出数据，作为结构块的参数
     // 跟普通的函数调用栈帧不同，结构块的栈帧没有自己的局部变量段，所以只能
     // 把实参先弹出来，在创建了控制帧之后，再压入栈。
-    let arguments = vm.stack.pop_values(parameter_count);
+    let arguments = vm.stack.pop_values(parameters_count);
 
     // 核对实参的数据类型和数量
     match check_value_types(&arguments, &parameter_types) {
-        Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-            return Err(EngineError::InvalidOperation(format!(
-                "failed to enter block {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                block_index, function_index, vm_module_index, index,
-                parameter_types[index],
-                arguments[index].get_type())));
+        Err(ValueTypeCheckError::DataTypeMismatch(parameter_index)) => {
+            return Err(EngineError::TypeMismatch(
+                TypeMismatch::BlockCallArgumentTypeMismatch {
+                    vm_module_index,
+                    function_index,
+                    block_index,
+                    parameter_index,
+                    parameter_type: parameter_types[parameter_index].clone(),
+                    value_type: arguments[parameter_index].get_type(),
+                },
+            ));
         }
         _ => {
             // pass
@@ -245,7 +259,7 @@ pub fn process_break(
         // - 实际上当执行到结构块的 `end 指令` 时，解析器不单会检查返回值的数据类型，
         //   还会再次检查作为返回值的操作数的数量，这个检查跟现在的检查是重复的，
         //   目前这种处理方式主要是为了简化程序的实现。
-        let result_count = {
+        let results_count = {
             match target_frame_type {
                 BlockType::ResultEmpty => 0,
                 BlockType::ResultI32
@@ -263,21 +277,32 @@ pub fn process_break(
         // 判断操作数是否足够当前函数或结构块用于返回
         let stack_size = vm.stack.get_size();
         let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
-        if operands_count < result_count {
-            let message = if let Some(block_index) = option_block_index {
-                format!(
-                "failed to break block {} to relative depth {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
-                block_index, relative_depth, function_index, vm_module_index, result_count, operands_count)
+        if operands_count < results_count {
+            if let Some(block_index) = option_block_index {
+                return Err(EngineError::InvalidOperation(
+                    InvalidOperation::NotEnoughOperandForBlockBreakToResult {
+                        vm_module_index,
+                        function_index,
+                        source_block_index: block_index,
+                        relative_depth,
+                        results_count,
+                        operands_count,
+                    },
+                ));
             } else {
-                format!(
-                "failed to break function {} (module {}), not enough operands, expected: {}, actual: {}",
-                function_index, vm_module_index, result_count, operands_count)
-            };
-            return Err(EngineError::InvalidOperation(message));
+                return Err(EngineError::InvalidOperation(
+                    InvalidOperation::NotEnoughOperandForFunctionBreakToResult {
+                        vm_module_index,
+                        function_index,
+                        results_count,
+                        operands_count,
+                    },
+                ));
+            }
         }
 
         // 丢弃指定数量的栈帧
-        vm.pop_frames(relative_depth, result_count);
+        vm.pop_frames(relative_depth, results_count);
 
         Ok(ControlResult::JumpWithinFunction {
             frame_type: target_status.frame_type,
@@ -296,8 +321,10 @@ pub fn process_break_when_not_eq_zero(
     let testing = match vm.stack.pop_bool() {
         Ok(b) => b,
         Err(v) => {
-            return Err(EngineError::InvalidOperation(
-                "expected i32 for bool value".to_string(),
+            return Err(make_operand_data_types_mismatch_engine_error(
+                "br_if",
+                vec![ValueType::I32],
+                vec![&v],
             ))
         }
     };
@@ -348,41 +375,49 @@ pub fn recur(
             }
         };
 
-        // 判断操作数是否足够当前函数或结构块用于返回
-        let parameter_count = parameter_types.len();
+        // 判断操作数是否足够当前结构块用于递归调用
+        let parameters_count = parameter_types.len();
         let stack_size = vm.stack.get_size();
         let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
-        if operands_count < parameter_count {
+        if operands_count < parameters_count {
             return Err(EngineError::InvalidOperation(
-                format!(
-                    "failed to recur block {} to relative depth {} (function {}, module {}), not enough operands, expected: {}, actual: {}",
-                    block_index, relative_depth, function_index, vm_module_index, parameter_count, operands_count)
+                InvalidOperation::NotEnoughOperandForLoopBlockRecur {
+                    vm_module_index,
+                    function_index,
+                    source_block_index: block_index,
+                    relative_depth,
+                    parameters_count,
+                    operands_count,
+                },
             ));
         }
 
-        let arguments = vm.stack.peek_values(parameter_count);
+        let arguments = vm.stack.peek_values(parameters_count);
 
         // 核对实参的数据类型和数量
         match check_value_types(arguments, &parameter_types) {
-            Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
-            // {
-            //     return Err(EngineError::InvalidOperation(format!(
-            //         "failed to call function {} (module {}). The number of parameters does not match, expected: {}, actual: {}",
-            //         function_index, vm_module_index, parameter_count, arguments.len())));
-            // }
-            Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-                return Err(EngineError::InvalidOperation(format!(
-                    "failed to recur block {} to relative depth {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                    block_index,relative_depth,  function_index, vm_module_index, index,
-                    parameter_types[index],
-                    arguments[index].get_type())));
+            Err(ValueTypeCheckError::LengthMismatch) => {
+                unreachable!("arguments count should be match")
+            }
+            Err(ValueTypeCheckError::DataTypeMismatch(parameter_index)) => {
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::LoopBlockRecurArgumentTypeMismatch {
+                        vm_module_index,
+                        function_index,
+                        source_block_index: block_index,
+                        relative_depth,
+                        parameter_index,
+                        parameter_type: parameter_types[parameter_index].clone(),
+                        valuetype: arguments[parameter_index].get_type(),
+                    },
+                ));
             }
             _ => {
                 // pass
             }
         }
 
-        vm.pop_frames(relative_depth, parameter_count);
+        vm.pop_frames(relative_depth, parameters_count);
 
         Ok(ControlResult::JumpWithinFunction {
             frame_type: target_status.frame_type,
@@ -401,8 +436,10 @@ pub fn recur_when_not_eq_zero(
     let testing = match vm.stack.pop_bool() {
         Ok(b) => b,
         Err(v) => {
-            return Err(EngineError::InvalidOperation(
-                "expected i32 for bool value".to_string(),
+            return Err(make_operand_data_types_mismatch_engine_error(
+                "br_if",
+                vec![ValueType::I32],
+                vec![&v],
             ))
         }
     };
@@ -425,8 +462,10 @@ pub fn branch(
     let branch_index = if let Value::I32(branch_index) = branch_index_value {
         branch_index as usize
     } else {
-        return Err(make_invalid_operand_data_type_engine_error(
-            "br_table", "i32",
+        return Err(make_operand_data_types_mismatch_engine_error(
+            "br_table",
+            vec![ValueType::I32],
+            vec![&branch_index_value],
         ));
     };
 

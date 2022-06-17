@@ -52,7 +52,7 @@
 use anvm_ast::{ast::ImportDescriptor, instruction};
 
 use crate::{
-    error::{EngineError, OutOfRange},
+    error::{EngineError, OutOfRange, Unsupported},
     object::{BlockItem, BranchTarget, Control, FunctionItem, Instruction, NamedAstModule},
 };
 
@@ -116,7 +116,7 @@ pub fn decode(
                     end_address,
                     block_items,
                 } => (block_items, *start_address, *end_address),
-                _ => unreachable!(),
+                _ => unreachable!("should be normal \"function\" item"),
             };
 
             let mut block_index_stack: Vec<usize> = vec![];
@@ -139,7 +139,7 @@ pub fn decode(
                         {
                             end_address
                         } else {
-                            unreachable!()
+                            unreachable!("should be \"block\" structure")
                         };
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
@@ -161,7 +161,7 @@ pub fn decode(
                         {
                             end_address
                         } else {
-                            unreachable!()
+                            unreachable!("should be \"loop\" structure")
                         };
                         Instruction::Control(Control::Block {
                             block_type: block_type.to_owned(),
@@ -184,7 +184,7 @@ pub fn decode(
                         {
                             (end_address, alternate_address)
                         } else {
-                            unreachable!()
+                            unreachable!("should be \"if\" structure")
                         };
 
                         let map_alternate_address = option_alternate_address
@@ -213,7 +213,7 @@ pub fn decode(
                         {
                             end_address
                         } else {
-                            unreachable!()
+                            unreachable!("should be \"if\" structure")
                         };
                         Instruction::Control(Control::Jump(function_start_address + end_address))
                     }
@@ -435,7 +435,7 @@ fn get_branch_target(
     }
 }
 
-/// 转换常量表达式里的指令
+/// 转换（校验）常量表达式里的指令
 ///
 /// WebAssembly 里的
 ///
@@ -457,21 +457,20 @@ fn get_branch_target(
 /// 目前这里只支持 `t.const 指令`
 pub fn decode_constant_expression(
     original_instructions: &[instruction::Instruction],
-) -> Result<Vec<Instruction>, EngineError> {
-    let mut instructions = Vec::<Instruction>::with_capacity(original_instructions.len());
+) -> Result<Vec<instruction::Instruction>, EngineError> {
+    let mut instructions: Vec<instruction::Instruction> = vec![];
 
     for inst in original_instructions {
         let instruction = match inst {
             instruction::Instruction::I32Const(_)
             | instruction::Instruction::I64Const(_)
             | instruction::Instruction::F32Const(_)
-            | instruction::Instruction::F64Const(_) => Instruction::Sequence(inst.to_owned()),
-            instruction::Instruction::End => Instruction::Control(Control::End(None)),
+            | instruction::Instruction::F64Const(_)
+            | instruction::Instruction::End => inst.to_owned(),
             _ => {
-                return Err(EngineError::InvalidOperation(format!(
-                    "does not support instruction \"{:?}\" in constant expression",
-                    inst
-                )));
+                return Err(EngineError::Unsupported(
+                    Unsupported::UnsupportedConstantExpressionInstruction(inst.to_owned()),
+                ));
             }
         };
 

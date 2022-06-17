@@ -124,8 +124,6 @@
 
 use anvm_ast::types::Value;
 
-use crate::error::EngineError;
-
 /// 信息段的项目（数值）的数量
 pub const INFO_SEGMENT_ITEM_COUNT: usize = 8;
 
@@ -260,8 +258,6 @@ impl VMStack {
 #[cfg(test)]
 mod tests {
     use anvm_ast::types::Value;
-
-    use crate::error::EngineError;
 
     use super::VMStack;
 

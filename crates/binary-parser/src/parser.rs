@@ -17,77 +17,11 @@ use anvm_ast::{
     types::ValueType,
 };
 
-use crate::{error::ParseError, leb128decoder};
-
-/// 二进制模块以一个 4 个字节的幻数 `0x00 0x61 0x73 0x6d` 开始。
-/// 转成 ascii 则是 `0x00` 和 `asm`
-const MAGIC_NUMBER: u32 = 0x6d736100;
-
-/// 二进制格式的版本号，占用了 4 个字节
-/// 当前解析器只支持版本 1（little endian）
-const VERSION: u32 = 0x00000001;
-
-/// 二进制各个段（section）的 id
-const SECTION_CUSTOM_ID: u8 = 0; // 0
-const SECTION_TYPE_ID: u8 = 1; // 1
-const SECTION_IMPORT_ID: u8 = 2; // 2
-const SECTION_FUNCTION_ID: u8 = 3; // 3
-const SECTION_TABLE_ID: u8 = 4; // 4
-const SECTION_MEMORY_ID: u8 = 5; // 5
-const SECTION_GLOBAL_ID: u8 = 6; // 6
-const SECTION_EXPORT_ID: u8 = 7; // 7
-const SECTION_START_ID: u8 = 8; // 8
-const SECTION_ELEMENT_ID: u8 = 9; // 9
-const SECTION_CODE_ID: u8 = 10; // 10
-const SECTION_DATA_ID: u8 = 11; // 11
-
-/// 在 `函数类型段` 里的 `类型项` 的 tag 值目前只能是 `0x60`
-const FUNCTION_TYPE_TAG: u8 = 0x60;
-
-/// 值类型的 tag
-const VALUE_TYPE_TAG_I32: u8 = 0x7f; // i32
-const VALUE_TYPE_TAG_I64: u8 = 0x7E; // i64
-const VALUE_TYPE_TAG_F32: u8 = 0x7D; // f32
-const VALUE_TYPE_TAG_F64: u8 = 0x7C; // f64
-
-/// 导入项描述 tag
-const IMPORT_TAG_FUNCTION: u8 = 0;
-const IMPORT_TAG_TABLE: u8 = 1;
-const IMPORT_TAG_MEMORY: u8 = 2;
-const IMPORT_TAG_GLOBAL: u8 = 3;
-
-/// 表项的 tag，目前只支持 func_ref
-const TABLE_TYPE_TAG_FUNC_REF: u8 = 0x70;
-
-/// 全局变量的可变性 tag，0 == 常量
-const GLOBAL_VARIABLE_TAG_IMMUTABLE: u8 = 0;
-
-/// 全局变量的可变性 tag，1 == 变量
-const GLOBAL_VARIABLE_TAG_MUTABLE: u8 = 1;
-
-/// 块结构的返回值类型
-/// 块结构（比如 `block`，`loop`，`if` 等）能够返回一个值，
-/// 可以理解为一种内嵌的（无自己局部变量的）函数。
-const BLOCK_TYPE_I32: i32 = -1; // 返回 i32
-const BLOCK_TYPE_I64: i32 = -2; // 返回 i64
-const BLOCK_TYPE_F32: i32 = -3; // 返回 f32
-const BLOCK_TYPE_F64: i32 = -4; // 返回 f64
-const BLOCK_TYPE_EMPTY: i32 = -64; // 无返回
-
-const EXPORT_TAG_FUNCTION: u8 = 0;
-const EXPORT_TAG_TABLE: u8 = 1;
-const EXPORT_TAG_MEM: u8 = 2;
-const EXPORT_TAG_GLOBAL: u8 = 3;
-
-const NAME_COLLECTION_KIND_FUNCTION_NAMES: u8 = 0x01;
-const NAME_COLLECTION_KIND_FUNCTION_LOCAL_VARIABLE_NAMES: u8 = 0x02;
-const NAME_COLLECTION_KIND_FUNCTION_BLOCK_LABELS: u8 = 0x03;
-const NAME_COLLECTION_KIND_TYPE_NAMES: u8 = 0x04;
-const NAME_COLLECTION_KIND_TABLE_NAMES: u8 = 0x05;
-const NAME_COLLECTION_KIND_MEMORY_BLOCK_NAMES: u8 = 0x06;
-const NAME_COLLECTION_KIND_GLOBAL_VARIABLE_NAMES: u8 = 0x07;
-const NAME_COLLECTION_KIND_ELEMENT_NAMES: u8 = 0x08;
-const NAME_COLLECTION_KIND_DATA_NAMES: u8 = 0x09;
+use crate::{
+    types,
+    error::{ParseError, SyntaxError, Unsupported},
+    leb128decoder,
+};
 
 pub fn parse(source: &[u8]) -> Result<Module, ParseError> {
     parse_module(source)
@@ -101,19 +35,18 @@ fn parse_module(source: &[u8]) -> Result<Module, ParseError> {
 
     // 读取幻数
     let (magic_number, post_magic_number) = read_fixed_u32(remains)?;
-    if magic_number != MAGIC_NUMBER {
-        return Err(ParseError::Unsupported(
-            "unsupported file format".to_string(),
-        ));
+    if magic_number != types::MAGIC_NUMBER {
+        return Err(ParseError::Unsupported(Unsupported::UnsupportedFormat(
+            magic_number,
+        )));
     }
     remains = post_magic_number;
 
     // 读取版本号
     let (version_number, post_version_number) = read_fixed_u32(remains)?;
-    if version_number != VERSION {
-        return Err(ParseError::Unsupported(format!(
-            "unsupported version: {}",
-            version_number
+    if version_number != types::VERSION {
+        return Err(ParseError::Unsupported(Unsupported::UnsupportedVersion(
+            version_number,
         )));
     }
     remains = post_version_number;
@@ -163,49 +96,48 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
         remains = post_section_data;
 
         match section_id {
-            SECTION_CUSTOM_ID => {
+            types::SECTION_CUSTOM_ID => {
                 let custom_item = parse_custom_section(section_data)?;
                 module.custom_items.push(custom_item);
             }
-            SECTION_TYPE_ID => {
+            types::SECTION_TYPE_ID => {
                 module.type_items = parse_type_section(section_data)?;
             }
-            SECTION_IMPORT_ID => {
+            types::SECTION_IMPORT_ID => {
                 module.import_items = parse_import_section(section_data)?;
             }
-            SECTION_FUNCTION_ID => {
+            types::SECTION_FUNCTION_ID => {
                 module.internal_function_to_type_index_list =
                     parse_function_list_section(section_data)?;
             }
-            SECTION_TABLE_ID => {
+            types::SECTION_TABLE_ID => {
                 module.tables = parse_table_section(section_data)?;
             }
-            SECTION_MEMORY_ID => {
+            types::SECTION_MEMORY_ID => {
                 module.memory_blocks = parse_memory_section(section_data)?;
             }
-            SECTION_GLOBAL_ID => {
+            types::SECTION_GLOBAL_ID => {
                 module.global_items = parse_global_section(section_data)?;
             }
-            SECTION_EXPORT_ID => {
+            types::SECTION_EXPORT_ID => {
                 module.export_items = parse_export_section(section_data)?;
             }
-            SECTION_START_ID => {
+            types::SECTION_START_ID => {
                 let start_function_index = parse_start_function_section(section_data)?;
                 module.start_function_index = Some(start_function_index);
             }
-            SECTION_ELEMENT_ID => {
+            types::SECTION_ELEMENT_ID => {
                 module.element_items = parse_element_section(section_data)?;
             }
-            SECTION_CODE_ID => {
+            types::SECTION_CODE_ID => {
                 module.code_items = parse_function_code_section(section_data)?;
             }
-            SECTION_DATA_ID => {
+            types::SECTION_DATA_ID => {
                 module.data_items = parse_data_section(section_data)?;
             }
             _ => {
-                return Err(ParseError::SyntaxError(format!(
-                    "invalid section id: {}",
-                    section_id
+                return Err(ParseError::SyntaxError(SyntaxError::InvalidSectionId(
+                    section_id,
                 )))
             }
         }
@@ -308,48 +240,47 @@ fn continue_parse_name_collection_items(source: &[u8]) -> Result<Vec<NameCollect
         remains = post_item_data;
 
         let name_collection_item = match kind {
-            NAME_COLLECTION_KIND_FUNCTION_NAMES => {
+            types::NAME_COLLECTION_KIND_FUNCTION_NAMES => {
                 let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
                 NameCollection::FunctionNames(index_name_pairs)
             }
-            NAME_COLLECTION_KIND_TYPE_NAMES => {
+            types::NAME_COLLECTION_KIND_TYPE_NAMES => {
                 let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
                 NameCollection::TypeNames(index_name_pairs)
             }
-            NAME_COLLECTION_KIND_TABLE_NAMES => {
+            types::NAME_COLLECTION_KIND_TABLE_NAMES => {
                 let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
                 NameCollection::TableNames(index_name_pairs)
             }
-            NAME_COLLECTION_KIND_MEMORY_BLOCK_NAMES => {
+            types::NAME_COLLECTION_KIND_MEMORY_BLOCK_NAMES => {
                 let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
                 NameCollection::MemoryBlockNames(index_name_pairs)
             }
-            NAME_COLLECTION_KIND_GLOBAL_VARIABLE_NAMES => {
+            types::NAME_COLLECTION_KIND_GLOBAL_VARIABLE_NAMES => {
                 let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
                 NameCollection::GlobalVariableNames(index_name_pairs)
             }
-            NAME_COLLECTION_KIND_FUNCTION_LOCAL_VARIABLE_NAMES => {
+            types::NAME_COLLECTION_KIND_FUNCTION_LOCAL_VARIABLE_NAMES => {
                 let local_variable_names_pairs =
                     continue_parse_local_variable_names_pairs(item_data)?;
                 NameCollection::LocalVariableNamesPairList(local_variable_names_pairs)
             }
-            NAME_COLLECTION_KIND_FUNCTION_BLOCK_LABELS => {
+            types::NAME_COLLECTION_KIND_FUNCTION_BLOCK_LABELS => {
                 let block_labels_pairs = continue_parse_block_labels_pairs(item_data)?;
                 NameCollection::BlockLabelsPairList(block_labels_pairs)
             }
-            NAME_COLLECTION_KIND_ELEMENT_NAMES => {
+            types::NAME_COLLECTION_KIND_ELEMENT_NAMES => {
                 let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
                 NameCollection::ElementNames(index_name_pairs)
             }
-            NAME_COLLECTION_KIND_DATA_NAMES => {
+            types::NAME_COLLECTION_KIND_DATA_NAMES => {
                 let (index_name_pairs, _) = continue_parse_index_name_pairs(item_data)?;
                 NameCollection::DataNames(index_name_pairs)
             }
             _ => {
-                return Err(ParseError::Unsupported(format!(
-                    "unsupported custom name collection kind: {}",
-                    kind
-                )));
+                return Err(ParseError::SyntaxError(
+                    SyntaxError::InvalidCustomNameSectionTag(kind),
+                ));
             }
         };
 
@@ -398,8 +329,9 @@ fn continue_parse_local_variable_names_pairs(
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"custom\" for local name segment".to_string(),
+        Err(ParseError::UnexpectedData(
+            "custom".to_string(),
+            Some("local_variable_name".to_string()),
         ))
     } else {
         Ok(names_pairs)
@@ -434,8 +366,9 @@ fn continue_parse_block_labels_pairs(
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"custom\" for block label".to_string(),
+        Err(ParseError::UnexpectedData(
+            "custom".to_string(),
+            Some("block_label".to_string()),
         ))
     } else {
         Ok(labels_pairs)
@@ -472,9 +405,7 @@ fn parse_type_section(source: &[u8]) -> Result<Vec<TypeItem>, ParseError> {
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"type\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("type".to_string(), None))
     } else {
         Ok(type_items)
     }
@@ -485,10 +416,10 @@ fn parse_type_section(source: &[u8]) -> Result<Vec<TypeItem>, ParseError> {
 ///        |--- 目前 `类型项` 只支持函数类型， `0x60` 表示函数类型
 fn continue_parse_type_item(source: &[u8]) -> Result<(TypeItem, &[u8]), ParseError> {
     let (tag, post_tag) = read_byte(source)?;
-    if tag != FUNCTION_TYPE_TAG {
-        return Err(ParseError::Unsupported(
-            "only the \"type of function\" is supported in the \"type\" section".to_string(),
-        ));
+    if tag != types::FUNCTION_TYPE_TAG {
+        return Err(ParseError::Unsupported(Unsupported::UnsupportedTypeTag(
+            tag,
+        )));
     }
 
     let (param_types, post_param_types) = continue_parse_value_types(post_tag)?;
@@ -521,14 +452,13 @@ fn continue_parse_value_types(source: &[u8]) -> Result<(Vec<ValueType>, &[u8]), 
 fn continue_parse_value_type(source: &[u8]) -> Result<(ValueType, &[u8]), ParseError> {
     let (tag, post_tag) = read_byte(source)?;
     let value_type = match tag {
-        VALUE_TYPE_TAG_I32 => ValueType::I32,
-        VALUE_TYPE_TAG_I64 => ValueType::I64,
-        VALUE_TYPE_TAG_F32 => ValueType::F32,
-        VALUE_TYPE_TAG_F64 => ValueType::F64,
+        types::VALUE_TYPE_TAG_I32 => ValueType::I32,
+        types::VALUE_TYPE_TAG_I64 => ValueType::I64,
+        types::VALUE_TYPE_TAG_F32 => ValueType::F32,
+        types::VALUE_TYPE_TAG_F64 => ValueType::F64,
         _ => {
-            return Err(ParseError::Unsupported(format!(
-                "unsupported value type: {}",
-                tag
+            return Err(ParseError::Unsupported(Unsupported::UnsupportedValueTag(
+                tag,
             )));
         }
     };
@@ -554,9 +484,7 @@ fn parse_import_section(source: &[u8]) -> Result<Vec<ImportItem>, ParseError> {
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"import\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("import".to_string(), None))
     } else {
         Ok(import_items)
     }
@@ -572,30 +500,29 @@ fn continue_parse_import_item(source: &[u8]) -> Result<(ImportItem, &[u8]), Pars
     let mut remains = post_tag;
 
     let import_descriptor = match tag {
-        IMPORT_TAG_FUNCTION => {
+        types::IMPORT_TAG_FUNCTION => {
             let (type_index, post_type_index) = read_u32(remains)?;
             remains = post_type_index;
             ImportDescriptor::FunctionTypeIndex(type_index)
         }
-        IMPORT_TAG_TABLE => {
+        types::IMPORT_TAG_TABLE => {
             let (table_type, post_table_type) = continue_parse_table_type(remains)?;
             remains = post_table_type;
             ImportDescriptor::TableType(table_type)
         }
-        IMPORT_TAG_MEMORY => {
+        types::IMPORT_TAG_MEMORY => {
             let (memory_type, post_memory_type) = continue_parse_memory_type(remains)?;
             remains = post_memory_type;
             ImportDescriptor::MemoryType(memory_type)
         }
-        IMPORT_TAG_GLOBAL => {
+        types::IMPORT_TAG_GLOBAL => {
             let (global_type, post_global_type) = continue_parse_global_type(remains)?;
             remains = post_global_type;
             ImportDescriptor::GlobalType(global_type)
         }
         _ => {
-            return Err(ParseError::Unsupported(format!(
-                "unsupported import kind: {}",
-                tag
+            return Err(ParseError::Unsupported(Unsupported::UnsupportedImportTag(
+                tag,
             )));
         }
     };
@@ -614,11 +541,10 @@ fn continue_parse_import_item(source: &[u8]) -> Result<(ImportItem, &[u8]), Pars
 ///              |--- 0x70 表示该表项存储的是 funcref
 fn continue_parse_table_type(source: &[u8]) -> Result<(TableType, &[u8]), ParseError> {
     let (tag, post_tag) = read_byte(source)?;
-    if tag != TABLE_TYPE_TAG_FUNC_REF {
-        Err(ParseError::Unsupported(
-            "only the \"function reference\" type table is supported in the \"import\" section"
-                .to_string(),
-        ))
+    if tag != types::TABLE_TYPE_TAG_FUNC_REF {
+        Err(ParseError::Unsupported(Unsupported::UnsupportedTableTag(
+            tag,
+        )))
     } else {
         let (limit, post_limit) = continue_parse_limit(post_tag)?;
         Ok((TableType { limit: limit }, post_limit))
@@ -637,24 +563,21 @@ fn continue_parse_global_type(source: &[u8]) -> Result<(GlobalType, &[u8]), Pars
     let (value_type, post_value_type) = continue_parse_value_type(source)?;
     let (tag, post_tag) = read_byte(post_value_type)?;
     match tag {
-        GLOBAL_VARIABLE_TAG_IMMUTABLE => Ok((
+        types::GLOBAL_VARIABLE_TAG_IMMUTABLE => Ok((
             GlobalType {
                 value_type: value_type,
                 mutable: false,
             },
             post_tag,
         )),
-        GLOBAL_VARIABLE_TAG_MUTABLE => Ok((
+        types::GLOBAL_VARIABLE_TAG_MUTABLE => Ok((
             GlobalType {
                 value_type: value_type,
                 mutable: true,
             },
             post_tag,
         )),
-        _ => Err(ParseError::SyntaxError(format!(
-            "invalid global mutable tag: {}",
-            tag
-        ))),
+        _ => Err(ParseError::SyntaxError(SyntaxError::InvalidGlobalTag(tag))),
     }
 }
 
@@ -674,10 +597,7 @@ fn continue_parse_limit(source: &[u8]) -> Result<(Limit, &[u8]), ParseError> {
             Ok((Limit::Range(min, max), post_max))
         }
         0 => Ok((Limit::AtLeast(min), post_min)),
-        _ => Err(ParseError::SyntaxError(format!(
-            "invalid limit tag: {}",
-            tag
-        ))),
+        _ => Err(ParseError::SyntaxError(SyntaxError::InvalidLimitTag(tag))),
     }
 }
 
@@ -689,9 +609,7 @@ fn parse_function_list_section(source: &[u8]) -> Result<Vec<u32>, ParseError> {
     let (type_index_list, post_type_index_list) = read_u32_vec(source)?;
 
     if post_type_index_list.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"function\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("function".to_string(), None))
     } else {
         Ok(type_index_list)
     }
@@ -711,9 +629,7 @@ fn parse_table_section(source: &[u8]) -> Result<Vec<TableType>, ParseError> {
     let (item_count, post_item_count) = read_u32(source)?;
 
     if item_count > 1 {
-        return Err(ParseError::Unsupported(
-            "only one table is allowed in a module".to_string(),
-        ));
+        return Err(ParseError::Unsupported(Unsupported::UnsupportMultipleTable));
     }
 
     let mut remains = post_item_count;
@@ -726,9 +642,7 @@ fn parse_table_section(source: &[u8]) -> Result<Vec<TableType>, ParseError> {
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"table\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("table".to_string(), None))
     } else {
         Ok(table_types)
     }
@@ -748,7 +662,7 @@ fn parse_memory_section(source: &[u8]) -> Result<Vec<MemoryType>, ParseError> {
 
     if item_count > 1 {
         return Err(ParseError::Unsupported(
-            "only one memory block is allowed in a module".to_string(),
+            Unsupported::UnsupportMultipleMemoryBlock,
         ));
     }
 
@@ -762,9 +676,7 @@ fn parse_memory_section(source: &[u8]) -> Result<Vec<MemoryType>, ParseError> {
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"memory\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("memory".to_string(), None))
     } else {
         Ok(memory_types)
     }
@@ -797,9 +709,7 @@ fn parse_global_section(source: &[u8]) -> Result<Vec<GlobalItem>, ParseError> {
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"global\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("global".to_string(), None))
     } else {
         Ok(global_items)
     }
@@ -1261,13 +1171,12 @@ fn continue_parse_instruction_item(
             let (sub_opcode, post_sub_opcode) = read_byte(remains)?;
             remains = post_sub_opcode;
 
-            continue_parse_extension_instructions(sub_opcode)?
+            continue_parse_extension_instructions(opcode::EXTENSION, sub_opcode)?
         }
         _ => {
-            return Err(ParseError::Unsupported(format!(
-                "unsupported instruction opcode: {}",
-                opcode
-            )));
+            return Err(ParseError::Unsupported(
+                Unsupported::UnsupportedInstructionOpcode(opcode),
+            ));
         }
     };
 
@@ -1282,8 +1191,11 @@ fn continue_parse_instruction_item(
     Ok((instruction, remains, next_block_index))
 }
 
-fn continue_parse_extension_instructions(sub_opcode: u8) -> Result<Instruction, ParseError> {
-    match sub_opcode {
+fn continue_parse_extension_instructions(
+    opcode: u8,
+    extension_code: u8,
+) -> Result<Instruction, ParseError> {
+    match extension_code {
         // trunc_sat = opcode_trunc_sat:byte + opcode_trunc_sat_sub_opcode:byte
         opcode::I32_TRUNC_SAT_F32_S => Ok(Instruction::I32TruncSatF32S),
         opcode::I32_TRUNC_SAT_F32_U => Ok(Instruction::I32TruncSatF32U),
@@ -1293,10 +1205,9 @@ fn continue_parse_extension_instructions(sub_opcode: u8) -> Result<Instruction, 
         opcode::I64_TRUNC_SAT_F32_U => Ok(Instruction::I64TruncSatF32U),
         opcode::I64_TRUNC_SAT_F64_S => Ok(Instruction::I64TruncSatF64S),
         opcode::I64_TRUNC_SAT_F64_U => Ok(Instruction::I64TruncSatF64U),
-        _ => Err(ParseError::Unsupported(format!(
-            "unsupported extension instruction sub-opcode: {}",
-            sub_opcode
-        ))),
+        _ => Err(ParseError::Unsupported(
+            Unsupported::UnsupportedInstructionExtensionCode(opcode, extension_code),
+        )),
     }
 }
 
@@ -1306,15 +1217,14 @@ fn continue_parse_extension_instructions(sub_opcode: u8) -> Result<Instruction, 
 /// block_type = (signed) i32
 fn get_block_type(value: i32) -> Result<BlockType, ParseError> {
     match value {
-        BLOCK_TYPE_I32 => Ok(BlockType::ResultI32),
-        BLOCK_TYPE_I64 => Ok(BlockType::ResultI64),
-        BLOCK_TYPE_F32 => Ok(BlockType::ResultF32),
-        BLOCK_TYPE_F64 => Ok(BlockType::ResultF64),
-        BLOCK_TYPE_EMPTY => Ok(BlockType::ResultEmpty),
+        types::BLOCK_TYPE_I32 => Ok(BlockType::ResultI32),
+        types::BLOCK_TYPE_I64 => Ok(BlockType::ResultI64),
+        types::BLOCK_TYPE_F32 => Ok(BlockType::ResultF32),
+        types::BLOCK_TYPE_F64 => Ok(BlockType::ResultF64),
+        types::BLOCK_TYPE_EMPTY => Ok(BlockType::ResultEmpty),
         _ if value >= 0 => Ok(BlockType::TypeIndex(value as u32)),
-        _ => Err(ParseError::Unsupported(format!(
-            "unsupported block type: {}",
-            value
+        _ => Err(ParseError::SyntaxError(SyntaxError::InvalidBlockType(
+            value,
         ))),
     }
 }
@@ -1370,9 +1280,7 @@ fn parse_export_section(source: &[u8]) -> Result<Vec<ExportItem>, ParseError> {
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"export\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("export".to_string(), None))
     } else {
         Ok(export_items)
     }
@@ -1387,14 +1295,13 @@ fn continue_parse_export_item(source: &[u8]) -> Result<(ExportItem, &[u8]), Pars
     let (index, post_index) = read_u32(post_tag)?;
 
     let export_descriptor = match tag {
-        EXPORT_TAG_FUNCTION => ExportDescriptor::FunctionIndex(index),
-        EXPORT_TAG_TABLE => ExportDescriptor::TableIndex(index),
-        EXPORT_TAG_MEM => ExportDescriptor::MemoryBlockIndex(index),
-        EXPORT_TAG_GLOBAL => ExportDescriptor::GlobalItemIndex(index),
+        types::EXPORT_TAG_FUNCTION => ExportDescriptor::FunctionIndex(index),
+        types::EXPORT_TAG_TABLE => ExportDescriptor::TableIndex(index),
+        types::EXPORT_TAG_MEM => ExportDescriptor::MemoryBlockIndex(index),
+        types::EXPORT_TAG_GLOBAL => ExportDescriptor::GlobalItemIndex(index),
         _ => {
-            return Err(ParseError::Unsupported(format!(
-                "unsupported export kind: {}",
-                tag
+            return Err(ParseError::Unsupported(Unsupported::UnsupportedExportTag(
+                tag,
             )));
         }
     };
@@ -1413,9 +1320,7 @@ fn continue_parse_export_item(source: &[u8]) -> Result<(ExportItem, &[u8]), Pars
 fn parse_start_function_section(source: &[u8]) -> Result<u32, ParseError> {
     let (function_index, post_function_index) = read_u32(source)?;
     if post_function_index.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"start\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("start".to_string(), None))
     } else {
         Ok(function_index as u32)
     }
@@ -1439,9 +1344,7 @@ fn parse_element_section(source: &[u8]) -> Result<Vec<ElementItem>, ParseError> 
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"element\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("element".to_string(), None))
     } else {
         Ok(element_items)
     }
@@ -1484,9 +1387,7 @@ fn parse_function_code_section(source: &[u8]) -> Result<Vec<CodeItem>, ParseErro
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"code\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("code".to_string(), None))
     } else {
         Ok(code_items)
     }
@@ -1554,9 +1455,7 @@ fn continue_parse_instruction_items(source: &[u8]) -> Result<Vec<Instruction>, P
 
     if let Some(last) = instruction_items.last() {
         if last != &Instruction::End {
-            return Err(ParseError::SyntaxError(
-                "instruction sequence should end with the \"end\" instruction".to_string(),
-            ));
+            return Err(ParseError::UnexpectedEnd);
         }
     }
 
@@ -1581,9 +1480,7 @@ fn parse_data_section(source: &[u8]) -> Result<Vec<DataItem>, ParseError> {
     }
 
     if remains.len() != 0 {
-        Err(ParseError::SyntaxError(
-            "unexpected data in section \"data\"".to_string(),
-        ))
+        Err(ParseError::UnexpectedData("data".to_string(), None))
     } else {
         Ok(data_items)
     }

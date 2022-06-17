@@ -4,18 +4,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::{HashMap, HashSet};
-
 use anvm_ast::{
-    ast::{self, FunctionType, ImportDescriptor, NameCollection, TypeItem},
+    ast::{self, FunctionType, TypeItem},
     types::{Value, ValueType},
 };
 
 use crate::{
     decoder::{decode, decode_constant_expression},
-    error::{
-        make_invalid_memory_index_engine_error, make_invalid_table_index_engine_error, EngineError,
-    },
+    error::{EngineError, TypeMismatch, Unsupported},
     linker::{link_functions, link_global_variables, link_memorys, link_tables},
     native_module::NativeModule,
     object::NamedAstModule,
@@ -137,18 +133,23 @@ pub fn create_instance(
         for data_item in &ast_module.data_items {
             // 内存块索引，目前 WebAssembly 标准只支持 0
             if data_item.memory_block_index != 0 {
-                return Err(make_invalid_memory_index_engine_error());
+                return Err(EngineError::Unsupported(
+                    Unsupported::UnsupportedMultipleMemoryBlock,
+                ));
             }
 
             let offset_instruction_items = &data_item.offset_instruction_items;
             let constant_expression = decode_constant_expression(offset_instruction_items)?;
-            let offset = vm.eval_constant_expression(&constant_expression)?;
+            let offset_value = vm.eval_constant_expression(&constant_expression)?;
 
-            let address = match offset {
+            let address = match offset_value {
                 Value::I32(v) => v as usize,
                 _ => {
-                    return Err(EngineError::InvalidOperation(
-                        "memory data offset should be a i32 number".to_string(),
+                    return Err(EngineError::TypeMismatch(
+                        TypeMismatch::ConstantExpressionValueTypeMismatch(
+                            ValueType::I32,
+                            offset_value.get_type(),
+                        ),
                     ));
                 }
             };
@@ -161,7 +162,9 @@ pub fn create_instance(
         for element_item in &ast_module.element_items {
             // 表索引，目前 WebAssembly 标准只支持 0
             if element_item.table_index != 0 {
-                return Err(make_invalid_table_index_engine_error());
+                return Err(EngineError::Unsupported(
+                    Unsupported::UnsupportedMultipleTable,
+                ));
             }
 
             let offset_instruction_items = &element_item.offset_instruction_items;
@@ -171,8 +174,11 @@ pub fn create_instance(
             let offset = match offset_value {
                 Value::I32(v) => v as usize,
                 _ => {
-                    return Err(EngineError::InvalidOperation(
-                        "table element offset should be a i32 number".to_string(),
+                    return Err(EngineError::TypeMismatch(
+                        TypeMismatch::ConstantExpressionValueTypeMismatch(
+                            ValueType::I32,
+                            offset_value.get_type(),
+                        ),
                     ));
                 }
             };

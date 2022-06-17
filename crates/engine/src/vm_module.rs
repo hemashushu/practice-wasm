@@ -4,8 +4,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::HashMap;
-
 use anvm_ast::{ast::FunctionType, types::ValueType};
 
 use crate::object::{FunctionItem, Instruction};
@@ -43,10 +41,6 @@ pub struct VMModule {
 
     /// 指令列表
     pub instructions: Vec<Instruction>,
-
-    // /// 内部函数的名称列表
-    // /// 用于生成错误信息
-    // pub internal_function_names: HashMap<usize, String>,
 }
 
 impl VMModule {
@@ -59,7 +53,6 @@ impl VMModule {
         internal_function_local_variable_types_list: Vec<Vec<ValueType>>,
         function_items: Vec<FunctionItem>,
         instructions: Vec<Instruction>,
-        // internal_function_names: HashMap<usize, String>,
     ) -> Self {
         Self {
             name,
@@ -70,7 +63,6 @@ impl VMModule {
             internal_function_local_variable_types_list,
             function_items,
             instructions,
-            // internal_function_names,
         }
     }
 }

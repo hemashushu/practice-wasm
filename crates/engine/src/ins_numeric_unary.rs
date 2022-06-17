@@ -38,10 +38,10 @@
 //!
 //! Rust 的 f32::round() 函数是 4 舍 5 入，并不一样。
 
-use anvm_ast::types::Value;
+use anvm_ast::types::{Value, ValueType};
 
 use crate::{
-    error::{make_invalid_operand_data_type_engine_error, EngineError},
+    error::{make_operand_data_types_mismatch_engine_error, EngineError},
     vm::VM,
 };
 
@@ -56,8 +56,10 @@ pub fn i32_clz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i32.clz", "i32",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "i32.clz",
+            vec![ValueType::I32],
+            vec![&operand],
         ))
     }
 }
@@ -71,8 +73,10 @@ pub fn i32_ctz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i32.ctz", "i32",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "i32.ctz",
+            vec![ValueType::I32],
+            vec![&operand],
         ))
     }
 }
@@ -86,9 +90,10 @@ pub fn i32_popcnt(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I32(result as i32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "i32.popcnt",
-            "i32",
+            vec![ValueType::I32],
+            vec![&operand],
         ))
     }
 }
@@ -104,8 +109,10 @@ pub fn i64_clz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i64.clz", "i64",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "i64.clz",
+            vec![ValueType::I64],
+            vec![&operand],
         ))
     }
 }
@@ -119,8 +126,10 @@ pub fn i64_ctz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i64.ctz", "i64",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "i64.ctz",
+            vec![ValueType::I64],
+            vec![&operand],
         ))
     }
 }
@@ -134,9 +143,10 @@ pub fn i64_popcnt(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::I64(result as i64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "i64.popcnt",
-            "i64",
+            vec![ValueType::I64],
+            vec![&operand],
         ))
     }
 }
@@ -152,8 +162,10 @@ pub fn f32_abs(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f32.abs", "f32",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "f32.abs",
+            vec![ValueType::F32],
+            vec![&operand],
         ))
     }
 }
@@ -166,8 +178,10 @@ pub fn f32_neg(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(-value));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f32.neg", "f32",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "f32.neg",
+            vec![ValueType::F32],
+            vec![&operand],
         ))
     }
 }
@@ -181,8 +195,10 @@ pub fn f32_ceil(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f32.ceil", "f32",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "f32.ceil",
+            vec![ValueType::F32],
+            vec![&operand],
         ))
     }
 }
@@ -196,9 +212,10 @@ pub fn f32_floor(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "f32.floor",
-            "f32",
+            vec![ValueType::F32],
+            vec![&operand],
         ))
     }
 }
@@ -212,9 +229,10 @@ pub fn f32_trunc(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "f32.trunc",
-            "f32",
+            vec![ValueType::F32],
+            vec![&operand],
         ))
     }
 }
@@ -232,9 +250,10 @@ pub fn f32_nearest(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "f32.nearest",
-            "f32",
+            vec![ValueType::F32],
+            vec![&operand],
         ))
     }
 }
@@ -272,8 +291,10 @@ pub fn f32_sqrt(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F32(result as f32));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f32.sqrt", "f32",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "f32.sqrt",
+            vec![ValueType::F32],
+            vec![&operand],
         ))
     }
 }
@@ -289,8 +310,10 @@ pub fn f64_abs(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f64.abs", "f64",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "f64.abs",
+            vec![ValueType::F64],
+            vec![&operand],
         ))
     }
 }
@@ -303,8 +326,10 @@ pub fn f64_neg(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(-value));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f64.neg", "f64",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "f64.neg",
+            vec![ValueType::F64],
+            vec![&operand],
         ))
     }
 }
@@ -318,8 +343,10 @@ pub fn f64_ceil(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f64.ceil", "f64",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "f64.ceil",
+            vec![ValueType::F64],
+            vec![&operand],
         ))
     }
 }
@@ -333,9 +360,10 @@ pub fn f64_floor(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "f64.floor",
-            "f64",
+            vec![ValueType::F64],
+            vec![&operand],
         ))
     }
 }
@@ -349,9 +377,10 @@ pub fn f64_trunc(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "f64.trunc",
-            "f64",
+            vec![ValueType::F64],
+            vec![&operand],
         ))
     }
 }
@@ -369,9 +398,10 @@ pub fn f64_nearest(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "f64.nearest",
-            "f64",
+            vec![ValueType::F64],
+            vec![&operand],
         ))
     }
 }
@@ -409,8 +439,10 @@ pub fn f64_sqrt(vm: &mut VM) -> Result<(), EngineError> {
         stack.push(Value::F64(result as f64));
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f64.sqrt", "f64",
+        Err(make_operand_data_types_mismatch_engine_error(
+            "f64.sqrt",
+            vec![ValueType::F64],
+            vec![&operand],
         ))
     }
 }

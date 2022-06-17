@@ -12,10 +12,10 @@
 //! i32.eqz
 //! i64.eqz
 
-use anvm_ast::types::Value;
+use anvm_ast::types::{Value, ValueType};
 
 use crate::{
-    error::{make_invalid_operand_data_types_engine_error, EngineError},
+    error::{make_operand_data_types_mismatch_engine_error, EngineError},
     vm::VM,
 };
 
@@ -27,7 +27,11 @@ pub fn i32_eqz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push_bool(value == 0);
         Ok(())
     } else {
-        Err(make_invalid_operand_data_types_engine_error("i32.eqz", "i32"))
+        Err(make_operand_data_types_mismatch_engine_error(
+            "i32.eqz",
+            vec![ValueType::I32],
+            vec![&testing],
+        ))
     }
 }
 
@@ -39,6 +43,10 @@ pub fn i64_eqz(vm: &mut VM) -> Result<(), EngineError> {
         stack.push_bool(value == 0);
         Ok(())
     } else {
-        Err(make_invalid_operand_data_types_engine_error("i64.eqz", "i64"))
+        Err(make_operand_data_types_mismatch_engine_error(
+            "i64.eqz",
+            vec![ValueType::I64],
+            vec![&testing],
+        ))
     }
 }

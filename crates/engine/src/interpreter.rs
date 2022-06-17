@@ -242,7 +242,7 @@ pub fn exec_instruction(
                 // 其他指令已经被替换成 Instruction::Control，所以
                 // 程序不应该来到这个分支
                 _ => {
-                    unreachable!()
+                    unreachable!("should no this instruction")
                 }
             };
 

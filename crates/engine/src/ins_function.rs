@@ -128,13 +128,13 @@
 
 use anvm_ast::{
     instruction::BlockType,
-    types::{check_types, check_value_types, Value, ValueTypeCheckError},
+    types::{check_types, check_value_types, Value, ValueType, ValueTypeCheckError},
 };
 
 use crate::{
     error::{
-        make_invalid_operand_data_type_engine_error, make_invalid_table_index_engine_error,
-        make_mismatch_dynamic_function_type_engine_error, EngineError, ObjectNotFound,
+        make_operand_data_types_mismatch_engine_error, EngineError, InvalidOperation,
+        ObjectNotFound, TypeMismatch, Unsupported,
     },
     ins_control::ControlResult,
     object::FunctionItem,
@@ -159,31 +159,35 @@ pub fn call(
     };
 
     // 判断操作数是否足够当前函数或结构块用于返回
-    let parameter_count = parameter_types.len();
+    let parameters_count = parameter_types.len();
     let stack_size = vm.stack.get_size();
     let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
-    if operands_count < parameter_count {
-        // TODO::
-        // 尝试获取函数的名称
-        return Err(EngineError::InvalidOperation(format!(
-            "failed to call function {} (module {}), not enough operands, expected: {}, actual: {}",
-            function_index, vm_module_index, parameter_count, operands_count
-        )));
+    if operands_count < parameters_count {
+        return Err(EngineError::InvalidOperation(
+            InvalidOperation::NotEnoughOperandForFunctionCall {
+                vm_module_index,
+                function_index,
+                parameters_count,
+                operands_count,
+            },
+        ));
     }
 
-    let arguments = vm.stack.peek_values(parameter_count);
+    let arguments = vm.stack.peek_values(parameters_count);
 
     // 核对实参的数据类型和数量
     match check_value_types(arguments, parameter_types) {
-        Err(ValueTypeCheckError::LengthMismatch) => unreachable!(),
-        Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-            // TODO::
-            // 尝试获取函数的名称
-            return Err(EngineError::InvalidOperation(format!(
-                "failed to call function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                function_index, vm_module_index, index,
-                parameter_types[index],
-                arguments[index].get_type())));
+        Err(ValueTypeCheckError::LengthMismatch) => unreachable!("argument count should be match"),
+        Err(ValueTypeCheckError::DataTypeMismatch(parameter_index)) => {
+            return Err(EngineError::TypeMismatch(
+                TypeMismatch::FunctionCallArgumentTypeMismatch {
+                    vm_module_index,
+                    function_index,
+                    parameter_index,
+                    parameter_type: parameter_types[parameter_index].clone(),
+                    value_type: arguments[parameter_index].get_type(),
+                },
+            ));
         }
         _ => {
             // pass
@@ -193,7 +197,7 @@ pub fn call(
     // 压入调用栈
     // 返回地址应该是 `call 指令` 的下一个指令
     let return_address = vm.status.address + 1;
-    vm.push_call_frame(parameter_count, &local_variable_types, return_address);
+    vm.push_call_frame(parameters_count, &local_variable_types, return_address);
 
     // 返回新的状态信息，让调用者更新虚拟机状态
     let control_result = ControlResult::PushStackFrame {
@@ -245,32 +249,36 @@ pub fn call_native(
         (function_type.params.to_owned(), native_function)
     };
 
-    // 判断操作数是否足够当前函数或结构块用于返回
-    let parameter_count = parameter_types.len();
+    // 判断操作数是否足够当前函数的调用
+    let parameters_count = parameter_types.len();
     let stack_size = vm.stack.get_size();
     let operands_count = stack_size - vm.status.base_pointer - INFO_SEGMENT_ITEM_COUNT;
-    if operands_count < parameter_count {
-        // TODO::
-        // 尝试获取函数的名称
-        return Err(EngineError::InvalidOperation(format!(
-            "failed to call function {} (native module {}), not enough operands, expected: {}, actual: {}",
-            function_index, native_module_index, parameter_count, operands_count
-        )));
+    if operands_count < parameters_count {
+        return Err(EngineError::InvalidOperation(
+            InvalidOperation::NotEnoughOperandForNativeFunctionCall {
+                native_module_index,
+                function_index,
+                parameters_count,
+                operands_count,
+            },
+        ));
     }
 
     // 从栈弹出数据，作为函数调用的参数
-    let arguments = vm.stack.pop_values(parameter_count);
+    let arguments = vm.stack.pop_values(parameters_count);
 
     // 核对实参的数据类型和数量
     match check_value_types(&arguments, &parameter_types) {
-        Err(ValueTypeCheckError::DataTypeMismatch(index)) => {
-            // TODO::
-            // 尝试获取函数的名称
-            return Err(EngineError::InvalidOperation(format!(
-                "failed to call function {} (native module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
-                function_index, native_module_index, index,
-                parameter_types[index],
-                arguments[index].get_type())));
+        Err(ValueTypeCheckError::DataTypeMismatch(parameter_index)) => {
+            return Err(EngineError::TypeMismatch(
+                TypeMismatch::NativeFunctionCallArgumentTypeMismatch {
+                    native_module_index,
+                    function_index,
+                    parameter_index,
+                    parameter_type: parameter_types[parameter_index].clone(),
+                    value_type: arguments[parameter_index].get_type(),
+                },
+            ));
         }
         _ => {
             // pass
@@ -299,7 +307,9 @@ pub fn call_indirect(
     table_index: usize,
 ) -> Result<ControlResult, EngineError> {
     if table_index != 0 {
-        return Err(make_invalid_table_index_engine_error());
+        return Err(EngineError::Unsupported(
+            Unsupported::UnsupportedMultipleTable,
+        ));
     }
 
     let element_index = {
@@ -307,15 +317,16 @@ pub fn call_indirect(
         match element_index_value {
             Value::I32(index) => index as usize,
             _ => {
-                return Err(make_invalid_operand_data_type_engine_error(
+                return Err(make_operand_data_types_mismatch_engine_error(
                     "call_indirect",
-                    "i32",
+                    vec![ValueType::I32],
+                    vec![&element_index_value],
                 ));
             }
         }
     };
 
-    let (vm_module_index, function_index, function_item, expected_function_type) = {
+    let (/* vm_module_index, function_index, */ function_item, expected_function_type) = {
         let vm_module_index = vm.status.vm_module_index;
         let vm_module = &vm.resource.vm_modules[vm_module_index];
         let table_index = vm_module.table_index;
@@ -338,20 +349,15 @@ pub fn call_indirect(
         let function_item = &vm_module.function_items[function_index];
         let expected_function_type = &vm_module.function_types[type_index];
 
-        (
-            vm_module_index,
-            function_index,
-            function_item.to_owned(),
-            expected_function_type.to_owned(),
-        )
+        (function_item.to_owned(), expected_function_type.to_owned())
     };
 
     // 核对函数的签名
-    let actual_function_type = match &function_item {
+    match &function_item {
         FunctionItem::Normal {
             vm_module_index,
             type_index,
-            function_index: _,
+            function_index,
             internal_function_index: _,
             start_address: _,
             end_address: _,
@@ -359,34 +365,39 @@ pub fn call_indirect(
         } => {
             let vm_module = &vm.resource.vm_modules[*vm_module_index];
             let function_type = &vm_module.function_types[*type_index];
-            function_type
+
+            if let Err(_) = check_types(&expected_function_type.params, &function_type.params) {
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::DynamicCallFunctionTypeMismatch(*vm_module_index, *function_index),
+                ));
+            }
+
+            if let Err(_) = check_types(&expected_function_type.results, &function_type.results) {
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::DynamicCallFunctionTypeMismatch(*vm_module_index, *function_index),
+                ));
+            }
         }
         FunctionItem::Native {
             native_module_index,
             type_index,
-            function_index: _,
+            function_index,
         } => {
             let native_module = &vm.resource.native_modules[*native_module_index];
             let function_type = &native_module.function_types[*type_index];
-            function_type
+
+            if let Err(_) = check_types(&expected_function_type.params, &function_type.params) {
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::DynamicCallNativeFunctionTypeMismatch(*native_module_index, *function_index),
+                ));
+            }
+
+            if let Err(_) = check_types(&expected_function_type.results, &function_type.results) {
+                return Err(EngineError::TypeMismatch(
+                    TypeMismatch::DynamicCallNativeFunctionTypeMismatch(*native_module_index, *function_index),
+                ));
+            }
         }
-    };
-
-    if let Err(_) = check_types(&expected_function_type.params, &actual_function_type.params) {
-        return Err(make_mismatch_dynamic_function_type_engine_error(
-            function_index,
-            vm_module_index,
-        ));
-    }
-
-    if let Err(_) = check_types(
-        &expected_function_type.results,
-        &actual_function_type.results,
-    ) {
-        return Err(make_mismatch_dynamic_function_type_engine_error(
-            function_index,
-            vm_module_index,
-        ));
     }
 
     // 调用处理函数

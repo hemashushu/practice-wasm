@@ -6,63 +6,26 @@
 
 use std::{
     any::Any,
-    fmt::{format, Debug, Display},
+    fmt::{Debug, Display},
 };
 
-/// INVALID_OPERAND_DATA_TYPE
-pub fn make_invalid_operand_data_type_engine_error(
+use anvm_ast::{
+    instruction,
+    types::{Value, ValueType},
+};
+
+pub fn make_operand_data_types_mismatch_engine_error(
     instruction_name: &str,
-    data_type_name: &str,
+    expected_types: Vec<ValueType>,
+    actual_values: Vec<&Value>,
 ) -> EngineError {
-    EngineError::InvalidOperation(format!(
-        "operand data type for instruction \"{}\" should be \"{}\"",
-        instruction_name, data_type_name
-    ))
-}
-
-/// INVALID_OPERAND_DATA_TYPES
-pub fn make_invalid_operand_data_types_engine_error(
-    instruction_name: &str,
-    data_type_name: &str,
-) -> EngineError {
-    EngineError::InvalidOperation(format!(
-        "operands data type for instruction \"{}\" should be \"{}\"",
-        instruction_name, data_type_name
-    ))
-}
-
-/// INVALID_OPERAND_DATA_TYPES_2
-pub fn make_invalid_operand_data_types_2_engine_error(
-    instruction_name: &str,
-    data_type_name1: &str,
-    data_type_name2: &str,
-) -> EngineError {
-    EngineError::InvalidOperation(format!(
-        "the data type of the two operands of the instruction \"{}\" should be \"{}\" and \"{}\"",
-        instruction_name, data_type_name1, data_type_name2
-    ))
-}
-
-/// INVALID_TABLE_INDEX
-pub fn make_invalid_table_index_engine_error() -> EngineError {
-    EngineError::InvalidOperation("only table index 0 is supported".to_string())
-}
-
-/// INVALID_MEMORY_INDEX
-pub fn make_invalid_memory_index_engine_error() -> EngineError {
-    EngineError::InvalidOperation("only memory index 0 is supported".to_string())
-}
-
-/// MISMATCH_DYNAMIC_FUNCTION_TYPE
-pub fn make_mismatch_dynamic_function_type_engine_error(
-    function_index: usize,
-    vm_module_index: usize,
-) -> EngineError {
-    // TODO::
-    // 尝试获取函数的名称
-    EngineError::InvalidOperation(format!(
-        "failed to call dynamic function {} (module {}), the type of function does not match",
-        function_index, vm_module_index
+    EngineError::TypeMismatch(TypeMismatch::OperandDataTypeMismatch(
+        instruction_name.to_owned(),
+        expected_types,
+        actual_values
+            .iter()
+            .map(|v| v.get_type())
+            .collect::<Vec<ValueType>>(),
     ))
 }
 
@@ -71,7 +34,9 @@ pub enum EngineError {
     OutOfRange(OutOfRange),
     Overflow(Overflow),
     ObjectNotFound(ObjectNotFound),
-    InvalidOperation(String),
+    Unsupported(Unsupported),
+    TypeMismatch(TypeMismatch),
+    InvalidOperation(InvalidOperation),
     NativeError(NativeError),
 }
 
@@ -81,8 +46,10 @@ impl Display for EngineError {
             EngineError::OutOfRange(s) => write!(f, "{}", s),
             EngineError::Overflow(s) => write!(f, "{}", s),
             EngineError::ObjectNotFound(s) => write!(f, "{}", s),
-            EngineError::InvalidOperation(s) => write!(f, "invalid operation: {}", s),
-            EngineError::NativeError(e) => write!(f, "{}", e.to_string()),
+            EngineError::Unsupported(s) => write!(f, "{}", s),
+            EngineError::TypeMismatch(s) => write!(f, "{}", s),
+            EngineError::InvalidOperation(s) => write!(f, "{}", s),
+            EngineError::NativeError(s) => write!(f, "{}", s),
         }
     }
 }
@@ -233,6 +200,542 @@ impl Display for OutOfRange {
                 "the memory block index {} is out of range, maximum {}",
                 memory_block_index, max
             ),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Unsupported {
+    UnsupportedConstantExpressionInstruction(instruction::Instruction),
+
+    /// 当 vm 支持多表格时，需要移除此异常
+    UnsupportedMultipleTable,
+
+    /// 当 vm 支持多内存块时，需要移除此异常
+    UnsupportedMultipleMemoryBlock,
+}
+
+impl Display for Unsupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Unsupported::UnsupportedConstantExpressionInstruction(inst) => {
+                write!(
+                    f,
+                    "does not support instruction \"{:?}\" in the constant expression",
+                    inst
+                )
+            }
+            Unsupported::UnsupportedMultipleTable => {
+                write!(f, "does not support multiple tables")
+            }
+            Unsupported::UnsupportedMultipleMemoryBlock => {
+                write!(f, "does not support multiple memory blocks")
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TypeMismatch {
+    OperandDataTypeMismatch(
+        /* instruction_name */ String,
+        /* expected_types */ Vec<ValueType>,
+        /* actual_types */ Vec<ValueType>,
+    ),
+    ConstantExpressionValueTypeMismatch(
+        /* expected_type */ ValueType,
+        /* actual_type */ ValueType,
+    ),
+    ImportedGlobalVariableTypeMismatch(
+        /* module_name */ String,
+        /* import_name */ String,
+    ),
+    ImportedMemoryBlockTypeMismatch(/* module_name */ String, /* import_name */ String),
+    ImportedTableTypeMismatch(/* module_name */ String, /* import_name */ String),
+    ImportedFunctionTypeMismatch(/* module_name */ String, /* import_name */ String),
+
+    SetGlobalVariableValueTypeMismatch(
+        /* vm_module_index */ usize,
+        /* global_variable_index */ usize,
+        /* expected_type */ ValueType,
+        /* actual_type */ ValueType,
+    ),
+    DynamicCallNativeFunctionTypeMismatch(
+        /* native_module_index */ usize,
+        /* function_index */ usize,
+    ),
+    DynamicCallFunctionTypeMismatch(
+        /* vm_module_index */ usize,
+        /* function_index */ usize,
+    ),
+    FunctionCallArgumentTypeMismatch {
+        vm_module_index: usize,
+        function_index: usize,
+        parameter_index: usize,
+        parameter_type: ValueType,
+        value_type: ValueType,
+    },
+    NativeFunctionCallArgumentTypeMismatch {
+        native_module_index: usize,
+        function_index: usize,
+        parameter_index: usize,
+        parameter_type: ValueType,
+        value_type: ValueType,
+    },
+    BlockCallArgumentTypeMismatch {
+        vm_module_index: usize,
+        function_index: usize,
+        block_index: usize,
+        parameter_index: usize,
+        parameter_type: ValueType,
+        value_type: ValueType,
+    },
+    LoopBlockRecurArgumentTypeMismatch {
+        vm_module_index: usize,
+        function_index: usize,
+        source_block_index: usize,
+        relative_depth: usize,
+        parameter_index: usize,
+        parameter_type: ValueType,
+        valuetype: ValueType,
+    },
+
+    SelectInstructionConsequentTypeMismatch(
+        /* consequent_value_type */ ValueType,
+        /* alternate_value_type */ ValueType,
+    ),
+    FunctionResultTypeMismatch {
+        vm_module_index: usize,
+        function_index: usize,
+        result_index: usize,
+        result_type: ValueType,
+        value_type: ValueType,
+    },
+    BlockResultTypeMismatch {
+        vm_module_index: usize,
+        function_index: usize,
+        block_index: usize,
+        result_index: usize,
+        result_type: ValueType,
+        value_type: ValueType,
+    },
+}
+
+impl Display for TypeMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeMismatch::OperandDataTypeMismatch(
+                instruction_name,
+                expected_types,
+                actual_types,
+            ) => {
+                write!(f,
+                    "operand data type for instruction \"{}\" mismatch, expected types: [{}], actual types: [{}]",
+                    instruction_name,
+                    expected_types.iter().map(|t| t.to_string()).collect::<Vec<String>>().join(", "),
+                    actual_types.iter().map(|t| t.to_string()).collect::<Vec<String>>().join(", "))
+            }
+            TypeMismatch::ConstantExpressionValueTypeMismatch(expected_type, actual_type) => {
+                write!(f,
+                    "constant expression value data type mismatch, expected type: \"{}\", actual type: \"{}\"",
+                    expected_type, actual_type)
+            }
+            TypeMismatch::ImportedGlobalVariableTypeMismatch(module_name, function_name) => {
+                write!(
+                    f,
+                    "imported function \"{}\" (module \"{}\") type does not match",
+                    function_name, module_name
+                )
+            }
+            TypeMismatch::ImportedMemoryBlockTypeMismatch(module_name, memory_block_name) => {
+                write!(
+                    f,
+                    "imported memory \"{}\" (module \"{}\") type does not match",
+                    memory_block_name, module_name,
+                )
+            }
+            TypeMismatch::ImportedTableTypeMismatch(module_name, table_name) => {
+                write!(
+                    f,
+                    "imported table \"{}\" (module \"{}\") type does not match",
+                    table_name, module_name,
+                )
+            }
+            TypeMismatch::ImportedFunctionTypeMismatch(module_name, global_variable_name) => {
+                write!(
+                    f,
+                    "imported global variable \"{}\" (module \"{}\") type does not match",
+                    global_variable_name, module_name,
+                )
+            }
+            TypeMismatch::SetGlobalVariableValueTypeMismatch(
+                vm_module_index,
+                global_variable_index,
+                expected_type,
+                actual_type,
+            ) => {
+                write!(f, "the data type of value for global variable #{} (module #{}) does not match, expected type: \"{}\", actual type: \"{}\"",
+                    global_variable_index,
+                    vm_module_index,
+                    expected_type,
+                    actual_type)
+            }
+            TypeMismatch::DynamicCallNativeFunctionTypeMismatch(
+                native_module_index,
+                function_index,
+            ) => {
+                write!(
+                    f,
+                    "failed to call native function #{} (module #{}), the type of function does not match",
+                    function_index, native_module_index
+                )
+            }
+            TypeMismatch::DynamicCallFunctionTypeMismatch(vm_module_index, function_index) => {
+                write!(
+                    f,
+                    "failed to call function #{} (module #{}), the type of function does not match",
+                    function_index, vm_module_index
+                )
+            }
+            TypeMismatch::FunctionCallArgumentTypeMismatch {
+                vm_module_index,
+                function_index,
+                parameter_index,
+                parameter_type,
+                value_type,
+            } => {
+                write!(f,
+                    "failed to call function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                    function_index,
+                    vm_module_index,
+                    parameter_index,
+                    parameter_type,
+                    value_type)
+            }
+            TypeMismatch::NativeFunctionCallArgumentTypeMismatch {
+                native_module_index,
+                function_index,
+                parameter_index,
+                parameter_type,
+                value_type,
+            } => {
+                write!(f,
+                    "failed to call native function {} (module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                    function_index,
+                    native_module_index,
+                    parameter_index,
+                    parameter_type,
+                    value_type)
+            }
+            TypeMismatch::BlockCallArgumentTypeMismatch {
+                vm_module_index,
+                function_index,
+                block_index,
+                parameter_index,
+                parameter_type,
+                value_type,
+            } => {
+                write!(f,
+                    "failed to enter block {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                    block_index,
+                    function_index,
+                    vm_module_index,
+                    parameter_index,
+                    parameter_type,
+                    value_type)
+            }
+            TypeMismatch::LoopBlockRecurArgumentTypeMismatch {
+                vm_module_index,
+                function_index,
+                source_block_index,
+                relative_depth,
+                parameter_index,
+                parameter_type,
+                valuetype,
+            } => {
+                write!(f,
+                    "failed to recur block {} to relative depth {} (function {}, module {}). The data type of parameter {} does not match, expected: {}, actual: {}",
+                    source_block_index,
+                    relative_depth,
+                    function_index,
+                    vm_module_index,
+                    parameter_index,
+                    parameter_type,
+                    valuetype)
+            }
+            TypeMismatch::SelectInstructionConsequentTypeMismatch(
+                consequent_value_type,
+                alternate_value_type,
+            ) => {
+                write!(f,
+                    "the operand data type of the alternate \"{}\" of the instruction \"select\" should be the same as consequent \"{}\"",
+                    alternate_value_type, consequent_value_type)
+            }
+            TypeMismatch::FunctionResultTypeMismatch {
+                vm_module_index,
+                function_index,
+                result_index,
+                result_type,
+                value_type,
+            } => {
+                write!(f,
+                    "failed to return result from function {} (module {}), The data type of result {} does not match, expected: {}, actual: {}",
+                    function_index,
+                    vm_module_index,
+                    result_index ,
+                    result_type,
+                    value_type
+                )
+            }
+            TypeMismatch::BlockResultTypeMismatch {
+                vm_module_index,
+                function_index,
+                block_index,
+                result_index,
+                result_type,
+                value_type,
+            } => {
+                write!(f,
+                    "failed to return result from block {} (function {}, module {}), The data type of result {} does not match, expected: {}, actual: {}",
+                    block_index,
+                    function_index,
+                    vm_module_index,
+                    result_index,
+                    result_type,
+                    value_type)
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum InvalidOperation {
+    ImmutableGlobalVariable(
+        /* vm_module_index */ usize,
+        /* global_variable_index */ usize,
+    ),
+    IncorrectFunctionCallArgumentCount {
+        vm_module_index: usize,
+        function_index: usize,
+        parameters_count: usize,
+        values_count: usize,
+    },
+    IncorrectNativeFunctionCallArgumentCount {
+        native_module_index: usize,
+        function_index: usize,
+        parameters_count: usize,
+        values_count: usize,
+    },
+    NotEnoughOperandForNativeFunctionCall {
+        native_module_index: usize,
+        function_index: usize,
+        parameters_count: usize,
+        operands_count: usize,
+    },
+    NotEnoughOperandForFunctionCall {
+        vm_module_index: usize,
+        function_index: usize,
+        parameters_count: usize,
+        operands_count: usize,
+    },
+    NotEnoughOperandForBlockCall {
+        vm_module_index: usize,
+        function_index: usize,
+        block_index: usize,
+        parameters_count: usize,
+        operands_count: usize,
+    },
+    NotEnoughOperandForLoopBlockRecur {
+        vm_module_index: usize,
+        function_index: usize,
+        source_block_index: usize,
+        relative_depth: usize,
+        parameters_count: usize,
+        operands_count: usize,
+    },
+    NotEnoughOperandForFunctionResult {
+        vm_module_index: usize,
+        function_index: usize,
+        results_count: usize,
+        operands_count: usize,
+    },
+    NotEnoughOperandForBlockResult {
+        vm_module_index: usize,
+        function_index: usize,
+        block_index: usize,
+        results_count: usize,
+        operands_count: usize,
+    },
+    NotEnoughOperandForFunctionBreakToResult {
+        vm_module_index: usize,
+        function_index: usize,
+        results_count: usize,
+        operands_count: usize,
+    },
+    NotEnoughOperandForBlockBreakToResult {
+        vm_module_index: usize,
+        function_index: usize,
+        source_block_index: usize,
+        relative_depth: usize,
+        results_count: usize,
+        operands_count: usize,
+    },
+    Unreachable,
+}
+
+impl Display for InvalidOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InvalidOperation::ImmutableGlobalVariable(vm_module_index, global_variable_index) => {
+                write!(
+                    f,
+                    "the specified global variable #{} (module #{}) is immutable",
+                    vm_module_index, global_variable_index
+                )
+            }
+            InvalidOperation::IncorrectFunctionCallArgumentCount {
+                vm_module_index,
+                function_index,
+                parameters_count,
+                values_count,
+            } => {
+                write!(f,
+                    "failed to call function #{} (module #{}). The number of parameters does not match, expected: {}, actual: {}",
+                    function_index,
+                    vm_module_index,
+                    parameters_count,
+                    values_count)
+            }
+            InvalidOperation::IncorrectNativeFunctionCallArgumentCount {
+                native_module_index,
+                function_index,
+                parameters_count,
+                values_count,
+            } => {
+                write!(f,
+                    "failed to call native function #{} (module #{}). The number of parameters does not match, expected: {}, actual: {}",
+                    function_index,
+                    native_module_index,
+                    parameters_count,
+                    values_count)
+            }
+            InvalidOperation::NotEnoughOperandForNativeFunctionCall {
+                native_module_index,
+                function_index,
+                parameters_count,
+                operands_count,
+            } => {
+                write!(f,
+                    "failed to call function #{} (native module #{}), not enough operands, expected: {}, actual: {}",
+                    function_index,
+                    native_module_index,
+                    parameters_count,
+                    operands_count)
+            }
+            InvalidOperation::NotEnoughOperandForFunctionCall {
+                vm_module_index,
+                function_index,
+                parameters_count,
+                operands_count,
+            } => {
+                write!(f,
+                    "failed to call function #{} (module #{}), not enough operands, expected: {}, actual: {}",
+                    function_index,
+                    vm_module_index,
+                    parameters_count,
+                    operands_count)
+            }
+            InvalidOperation::NotEnoughOperandForBlockCall {
+                vm_module_index,
+                function_index,
+                block_index,
+                parameters_count,
+                operands_count,
+            } => {
+                write!(f,
+                    "failed to call block #{} (function #{}, module #{}), not enough operands, expected: {}, actual: {}",
+                    block_index,
+                    function_index,
+                    vm_module_index,
+                    parameters_count,
+                    operands_count)
+            }
+            InvalidOperation::NotEnoughOperandForLoopBlockRecur {
+                vm_module_index,
+                function_index,
+                source_block_index,
+                relative_depth,
+                parameters_count,
+                operands_count,
+            } => {
+                write!(f,
+                    "failed to recur block #{} to relative depth #{} (function #{}, module #{}), not enough operands, expected: {}, actual: {}",
+                    source_block_index,
+                    relative_depth,
+                    function_index,
+                    vm_module_index,
+                    parameters_count,
+                    operands_count)
+            }
+            InvalidOperation::NotEnoughOperandForFunctionResult {
+                vm_module_index,
+                function_index,
+                results_count,
+                operands_count,
+            } => {
+                write!(f,
+                    "failed to return result from function #{} (module #{}), not enough operands, expected: {}, actual: {}",
+                    function_index,
+                    vm_module_index,
+                    results_count,
+                    operands_count)
+            }
+            InvalidOperation::NotEnoughOperandForBlockResult {
+                vm_module_index,
+                function_index,
+                block_index,
+                results_count,
+                operands_count,
+            } => {
+                write!(f,
+                    "failed to return result from block #{} (function #{}, module #{}), not enough operands, expected: {}, actual: {}",
+                    block_index,
+                    function_index,
+                    vm_module_index,
+                    results_count,
+                    operands_count)
+            }
+            InvalidOperation::NotEnoughOperandForFunctionBreakToResult {
+                vm_module_index,
+                function_index,
+                results_count,
+                operands_count,
+            } => {
+                write!(f,
+                    "failed to break function #{} to result (module #{}), not enough operands, expected: {}, actual: {}",
+                    function_index,
+                    vm_module_index,
+                    results_count,
+                    operands_count)
+            }
+            InvalidOperation::NotEnoughOperandForBlockBreakToResult {
+                vm_module_index,
+                function_index,
+                source_block_index,
+                relative_depth,
+                results_count,
+                operands_count,
+            } => {
+                write!(f,
+                    "failed to break block #{} to relative depth {} block (function #{}, module #{}), not enough operands, expected: {}, actual: {}",
+                    source_block_index,
+                    relative_depth,
+                    function_index,
+                    vm_module_index,
+                    results_count,
+                    operands_count)
+            }
+            InvalidOperation::Unreachable => write!(f, "instruction \"unreachable\" is executed"),
         }
     }
 }

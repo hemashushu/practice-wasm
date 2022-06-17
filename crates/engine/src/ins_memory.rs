@@ -108,13 +108,10 @@
 //! - f32.store
 //! - f64.store
 
-use anvm_ast::{instruction::MemoryArgument, types::Value};
+use anvm_ast::{instruction::MemoryArgument, types::Value, types::ValueType};
 
 use crate::{
-    error::{
-        make_invalid_memory_index_engine_error, make_invalid_operand_data_type_engine_error,
-        EngineError,
-    },
+    error::{EngineError, TypeMismatch, Unsupported, make_operand_data_types_mismatch_engine_error},
     vm::VM,
     vm_memory::VMMemory,
     vm_stack::VMStack,
@@ -122,10 +119,13 @@ use crate::{
 
 pub fn memory_size(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineError> {
     if memory_block_index != 0 {
-        return Err(make_invalid_memory_index_engine_error());
+        return Err(EngineError::Unsupported(
+            Unsupported::UnsupportedMultipleMemoryBlock,
+        ));
     }
 
-    let instance_memory_block_index = vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
+    let instance_memory_block_index =
+        vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
     let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
     let page_count = memory_block.get_page_count();
 
@@ -137,13 +137,16 @@ pub fn memory_size(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineErr
 
 pub fn memory_grow(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineError> {
     if memory_block_index != 0 {
-        return Err(make_invalid_memory_index_engine_error());
+        return Err(EngineError::Unsupported(
+            Unsupported::UnsupportedMultipleMemoryBlock,
+        ));
     }
 
     let stack = &mut vm.stack;
     let increase_number = stack.pop();
 
-    let instance_memory_block_index = vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
+    let instance_memory_block_index =
+        vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
     let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
 
     if let Value::I32(value) = increase_number {
@@ -159,9 +162,10 @@ pub fn memory_grow(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineErr
 
         Ok(())
     } else {
-        Err(make_invalid_operand_data_type_engine_error(
+        Err(make_operand_data_types_mismatch_engine_error(
             "memory.grow",
-            "i32",
+            vec![ValueType::I32],
+            vec![&increase_number],
         ))
     }
 }
@@ -171,269 +175,520 @@ pub fn memory_grow(vm: &mut VM, memory_block_index: u32) -> Result<(), EngineErr
 /// 注意，
 /// 因为指令中的 offset 立即数是 u32，而操作数栈弹出的值也是 i32（实际是 u32），
 /// 所以有效地址是一个 33 位（u32 + u32）的无符号整数，实际的值有可能会超出了 u32 的范围。
-fn get_effective_address(
-    stack: &mut VMStack,
-    memory_args: &MemoryArgument,
-) -> Result<usize, EngineError> {
-    // MemoryArg 里头的 align 暂时无用
-    let offset = memory_args.offset;
-    let address = stack.pop();
+fn get_effective_address(immediate_offset: u32, operand_address: i32) -> usize {
+    (immediate_offset + operand_address as u32) as usize
+}
 
-    if let Value::I32(value) = address {
-        Ok((offset + value as u32) as usize)
+fn get_memory_load_access_meterial<'a>(
+    vm: &'a mut VM,
+    memory_args: &MemoryArgument,
+) -> Result<(&'a mut VMMemory, &'a mut VMStack, usize), Value> {
+    let stack = &mut vm.stack;
+    let instance_memory_block_index =
+        vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
+    let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
+
+    // MemoryArg 里头的 align 暂时无用
+    let immediate_offset = memory_args.offset;
+    let address_value = stack.pop();
+
+    if let Value::I32(address) = address_value {
+        let effective_address = get_effective_address(immediate_offset, address);
+        Ok((memory_block, stack, effective_address))
     } else {
-        Err(EngineError::InvalidOperation(
-            "the data type of the memory offset value of the memory access instruction should be \"i32\"".to_string(),
-        ))
+        // 参数错误时，返回参数值
+        Err(address_value)
     }
 }
 
-fn get_load_access_meterial<'a>(
+fn get_memory_store_access_meterial<'a>(
     vm: &'a mut VM,
     memory_args: &MemoryArgument,
-) -> Result<(&'a mut VMMemory, &'a mut VMStack, usize), EngineError> {
+) -> Result<(&'a mut VMMemory, usize, Value), (Value, Value)> {
     let stack = &mut vm.stack;
-    let instance_memory_block_index = vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
+    let instance_memory_block_index =
+        vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
     let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
 
-    let address = get_effective_address(stack, memory_args)?;
-    Ok((memory_block, stack, address))
+    // 待储存的数据
+    let data_value = stack.pop();
+
+    // MemoryArg 里头的 align 暂时无用
+    let immediate_offset = memory_args.offset;
+    let address_value = stack.pop();
+
+    if let Value::I32(address) = address_value {
+        let effective_address = get_effective_address(immediate_offset, address);
+        Ok((memory_block, effective_address, data_value))
+    } else {
+        // 参数错误时，返回参数值
+        Err((data_value, address_value))
+    }
 }
 
-fn get_store_access_meterial<'a>(
-    vm: &'a mut VM,
-    memory_args: &MemoryArgument,
-) -> Result<(&'a mut VMMemory, usize, Value), EngineError> {
-    let stack = &mut vm.stack;
-    let instance_memory_block_index = vm.resource.vm_modules[vm.status.vm_module_index].memory_index;
-    let memory_block = &mut vm.resource.memory_blocks[instance_memory_block_index];
+fn make_memory_load_operand_data_type_mismatch_engine_error(
+    instruction_name: &str,
+    address_value: &Value,
+) -> EngineError {
+    EngineError::TypeMismatch(TypeMismatch::OperandDataTypeMismatch(
+        instruction_name.to_owned(),
+        vec![ValueType::I32],
+        vec![address_value.get_type()],
+    ))
+}
 
-    let operand = stack.pop();
-    let address = get_effective_address(stack, memory_args)?;
-    Ok((memory_block, address, operand))
+fn make_memory_store_operand_data_type_mismatch_engine_error(
+    instruction_name: &str,
+    expected_data_type: ValueType,
+    data_value: &Value,
+) -> EngineError {
+    EngineError::TypeMismatch(TypeMismatch::OperandDataTypeMismatch(
+        instruction_name.to_owned(),
+        vec![expected_data_type, ValueType::I32],
+        vec![data_value.get_type(), ValueType::I32],
+    ))
+}
+
+fn make_memory_store_operand_data_types_mismatch_engine_error(
+    instruction_name: &str,
+    expected_data_type: ValueType,
+    data_value: &Value,
+    address_value: &Value,
+) -> EngineError {
+    EngineError::TypeMismatch(TypeMismatch::OperandDataTypeMismatch(
+        instruction_name.to_owned(),
+        vec![expected_data_type, ValueType::I32],
+        vec![data_value.get_type(), address_value.get_type()],
+    ))
 }
 
 // i32 load
 
 pub fn i32_load(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i32(address);
-    stack.push(Value::I32(value));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i32(address);
+            stack.push(Value::I32(value));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i32_load",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i32_load16_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i16(address);
-    stack.push(Value::I32(value as i32));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i16(address);
+            stack.push(Value::I32(value as i32));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i32_load16_s",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i32_load16_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i16(address);
-    stack.push(Value::I32((value as u16) as i32));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i16(address);
+            stack.push(Value::I32((value as u16) as i32));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i32_load16_u",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i32_load8_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i8(address);
-    stack.push(Value::I32(value as i32));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i8(address);
+            stack.push(Value::I32(value as i32));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i32_load8_s",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i32_load8_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i8(address);
-    stack.push(Value::I32((value as u8) as i32));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i8(address);
+            stack.push(Value::I32((value as u8) as i32));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i32_load8_u",
+            &address_value,
+        )),
+    }
 }
 
 // i64 load
 
 pub fn i64_load(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i64(address);
-    stack.push(Value::I64(value));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i64(address);
+            stack.push(Value::I64(value));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i64_load",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i64_load32_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i32(address);
-    stack.push(Value::I64(value as i64));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i32(address);
+            stack.push(Value::I64(value as i64));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i64_load32_s",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i64_load32_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i32(address);
-    stack.push(Value::I64((value as u32) as i64));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i32(address);
+            stack.push(Value::I64((value as u32) as i64));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i64_load32_u",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i64_load16_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i16(address);
-    stack.push(Value::I64(value as i64));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i16(address);
+            stack.push(Value::I64(value as i64));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i64_load16_s",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i64_load16_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i16(address);
-    stack.push(Value::I64((value as u16) as i64));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i16(address);
+            stack.push(Value::I64((value as u16) as i64));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i64_load16_u",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i64_load8_s(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i8(address);
-    stack.push(Value::I64(value as i64));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i8(address);
+            stack.push(Value::I64(value as i64));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i64_load8_s",
+            &address_value,
+        )),
+    }
 }
 
 pub fn i64_load8_u(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_i8(address);
-    stack.push(Value::I64((value as u8) as i64));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_i8(address);
+            stack.push(Value::I64((value as u8) as i64));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "i64_load8_u",
+            &address_value,
+        )),
+    }
 }
 
 // float load
 
 pub fn f32_load(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_f32(address);
-    stack.push(Value::F32(value));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_f32(address);
+            stack.push(Value::F32(value));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "f32_load",
+            &address_value,
+        )),
+    }
 }
 
 pub fn f64_load(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, stack, address) = get_load_access_meterial(vm, memory_args)?;
-    let value = memory_block.read_f64(address);
-    stack.push(Value::F64(value));
-    Ok(())
+    match get_memory_load_access_meterial(vm, memory_args) {
+        Ok((memory_block, stack, address)) => {
+            let value = memory_block.read_f64(address);
+            stack.push(Value::F64(value));
+            Ok(())
+        }
+        Err(address_value) => Err(make_memory_load_operand_data_type_mismatch_engine_error(
+            "f64_load",
+            &address_value,
+        )),
+    }
 }
 
 // i32 store
 
 pub fn i32_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::I32(value) = operand {
-        memory_block.write_i32(address, value);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i32.store",
-            "i32",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::I32(value) = data_value {
+                memory_block.write_i32(address, value);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "i32.store",
+                    ValueType::I32,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "i32.store",
+                ValueType::I32,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
 
 pub fn i32_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::I32(value) = operand {
-        memory_block.write_i16(address, value as i16);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i32.store_16",
-            "i32",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::I32(value) = data_value {
+                memory_block.write_i16(address, value as i16);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "i32.store_16",
+                    ValueType::I32,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "i32.store_16",
+                ValueType::I32,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
 
 pub fn i32_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::I32(value) = operand {
-        memory_block.write_i8(address, value as i8);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i32.store_8",
-            "i32",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::I32(value) = data_value {
+                memory_block.write_i8(address, value as i8);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "i32.store_8",
+                    ValueType::I32,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "i32.store_8",
+                ValueType::I32,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
 
 pub fn i64_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::I64(value) = operand {
-        memory_block.write_i64(address, value);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i64.store",
-            "i64",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::I64(value) = data_value {
+                memory_block.write_i64(address, value);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "i64.store",
+                    ValueType::I64,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "i64.store",
+                ValueType::I64,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
 
 pub fn i64_store_32(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::I64(value) = operand {
-        memory_block.write_i32(address, value as i32);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i64.store_32",
-            "i64",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::I64(value) = data_value {
+                memory_block.write_i32(address, value as i32);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "i64.store_32",
+                    ValueType::I64,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "i64.store_32",
+                ValueType::I64,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
 
 pub fn i64_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::I64(value) = operand {
-        memory_block.write_i16(address, value as i16);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i64.store_16",
-            "i64",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::I64(value) = data_value {
+                memory_block.write_i16(address, value as i16);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "i64.store_16",
+                    ValueType::I64,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "i64.store_16",
+                ValueType::I64,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
 
 pub fn i64_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::I64(value) = operand {
-        memory_block.write_i8(address, value as i8);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "i64.store_8",
-            "i64",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::I64(value) = data_value {
+                memory_block.write_i8(address, value as i8);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "i64.store_8",
+                    ValueType::I64,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "i64.store_8",
+                ValueType::I64,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
 
 // float store
 
 pub fn f32_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::F32(value) = operand {
-        memory_block.write_f32(address, value);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f32.store",
-            "f32",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::F32(value) = data_value {
+                memory_block.write_f32(address, value);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "f32.store",
+                    ValueType::F32,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "f32.store",
+                ValueType::F32,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
 
 pub fn f64_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
-    let (memory_block, address, operand) = get_store_access_meterial(vm, memory_args)?;
-    if let Value::F64(value) = operand {
-        memory_block.write_f64(address, value);
-        Ok(())
-    } else {
-        Err(make_invalid_operand_data_type_engine_error(
-            "f64.store",
-            "f64",
-        ))
+    match get_memory_store_access_meterial(vm, memory_args) {
+        Ok((memory_block, address, data_value)) => {
+            if let Value::F64(value) = data_value {
+                memory_block.write_f64(address, value);
+                Ok(())
+            } else {
+                Err(make_memory_store_operand_data_type_mismatch_engine_error(
+                    "f64.store",
+                    ValueType::F64,
+                    &data_value,
+                ))
+            }
+        }
+        Err((data_value, address_value)) => {
+            Err(make_memory_store_operand_data_types_mismatch_engine_error(
+                "f64.store",
+                ValueType::F64,
+                &data_value,
+                &address_value,
+            ))
+        }
     }
 }
