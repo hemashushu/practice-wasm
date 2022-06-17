@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::rc::Rc;
+
 use crate::{
     decoder::decode_constant_expression,
     error::{EngineError, ObjectNotFound, TypeMismatch, Unsupported},
@@ -55,7 +57,7 @@ impl BlockLocation {
 ///
 /// 返回各个 AST Module 对应的函数信息列表。
 pub fn link_functions(
-    native_modules: &[NativeModule],
+    native_modules: &[Rc<NativeModule>],
     named_ast_modules: &[NamedAstModule],
 ) -> Result<Vec<Vec<FunctionItem>>, EngineError> {
     // 第 1 步：
@@ -459,7 +461,7 @@ pub fn get_function_block_items(
 }
 
 fn get_module_names(
-    native_modules: &[NativeModule],
+    native_modules: &[Rc<NativeModule>],
     named_ast_modules: &[NamedAstModule],
 ) -> Vec<String> {
     let native_module_names = native_modules
@@ -829,9 +831,7 @@ fn resolve_ast_module_memory_block(
 /// - Vec<Vec<usize>> 是每个 AST Module 对应的全局变量实例的索引列表
 ///   注：一个 Module 可以有多个全局变量
 pub fn link_global_variables(
-    // native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
-    // interpreter: &Interpreter,
 ) -> Result<(Vec<VMGlobalVariable>, Vec<Vec<usize>>), EngineError> {
     // "AST 模块 - 全局变量实例的索引" 的临时映射表
     let mut module_to_global_variables_list: Vec<Vec<Option<usize>>> = vec![];

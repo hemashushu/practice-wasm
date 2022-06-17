@@ -107,7 +107,7 @@ function index is also supported, e.g.
         named_ast_modules[vm_module_index].name, function_index
     );
 
-    let mut vm = create_instance(vec![], &named_ast_modules).map_err(|e| e.to_string())?;
+    let mut vm = create_instance(&vec![], &named_ast_modules).map_err(|e| e.to_string())?;
     let results = vm
         .eval_function_by_index(vm_module_index, function_index, function_arguments)
         .map_err(|e| format!("execute function error: {}", e.to_string()))?;

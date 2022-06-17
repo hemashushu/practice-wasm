@@ -482,6 +482,8 @@ pub fn decode_constant_expression(
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use super::{decode, NamedAstModule};
     use crate::{
         error::{EngineError, NativeError},
@@ -569,7 +571,7 @@ mod tests {
     }
 
     fn link_and_decode_function_instructions(
-        native_modules: &[NativeModule],
+        native_modules: &[Rc<NativeModule>],
         named_ast_modules: &[NamedAstModule],
     ) -> Result<Vec<Vec<Instruction>>, EngineError> {
         let function_items_list: Vec<Vec<FunctionItem>> =
@@ -579,7 +581,6 @@ mod tests {
 
     #[test]
     fn test_instruction_link() {
-        let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![
             create_simple_test_ast_module(
                 "m0",
@@ -640,8 +641,7 @@ mod tests {
             ),
         ];
 
-        let actual =
-            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&vec![], &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 Instruction::Sequence(instruction::Instruction::I32Const(1)),
@@ -666,7 +666,6 @@ mod tests {
 
     #[test]
     fn test_blocks() {
-        let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
             "m0",
             vec![TypeItem::FunctionType(FunctionType {
@@ -840,8 +839,7 @@ mod tests {
             ],
         )];
 
-        let actual =
-            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&vec![], &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)),
@@ -1253,7 +1251,6 @@ mod tests {
 
     #[test]
     fn test_block_branch_if() {
-        let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
             "m0",
             vec![TypeItem::FunctionType(FunctionType {
@@ -1292,8 +1289,7 @@ mod tests {
             }],
         )];
 
-        let actual =
-            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&vec![], &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1346,7 +1342,6 @@ mod tests {
 
     #[test]
     fn test_block_branch() {
-        let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
             "m0",
             vec![TypeItem::FunctionType(FunctionType {
@@ -1383,8 +1378,7 @@ mod tests {
             }],
         )];
 
-        let actual =
-            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&vec![], &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1427,7 +1421,6 @@ mod tests {
 
     #[test]
     fn test_function_call_module_internal() {
-        let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![create_simple_test_ast_module(
             "m0",
             vec![TypeItem::FunctionType(FunctionType {
@@ -1475,8 +1468,7 @@ mod tests {
             ],
         )];
 
-        let actual =
-            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&vec![], &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![vec![
             // function 0
             Instruction::Sequence(instruction::Instruction::I32Const(0)), // #00
@@ -1520,7 +1512,6 @@ mod tests {
 
     #[test]
     fn test_function_call_module_external() {
-        let native_modules: Vec<NativeModule> = vec![];
         let named_ast_modules: Vec<NamedAstModule> = vec![
             create_test_ast_module(
                 "m0",
@@ -1613,8 +1604,7 @@ mod tests {
             ),
         ];
 
-        let actual =
-            link_and_decode_function_instructions(&native_modules, &named_ast_modules).unwrap();
+        let actual = link_and_decode_function_instructions(&vec![], &named_ast_modules).unwrap();
         let expected: Vec<Vec<Instruction>> = vec![
             vec![
                 // function 0
@@ -1690,7 +1680,7 @@ mod tests {
 
     #[test]
     fn test_function_call_module_native() {
-        let native_modules: Vec<NativeModule> = vec![create_test_native_module()];
+        let native_modules = vec![Rc::new(create_test_native_module())];
 
         let named_ast_modules: Vec<NamedAstModule> = vec![create_test_ast_module(
             "m1",
@@ -1801,7 +1791,7 @@ mod tests {
         //      然后导出了 add, bottom, middle
         // - m3 为普通模块，从 m2 导入了 3 个函数，定义了函数 test
 
-        let native_modules: Vec<NativeModule> = vec![create_test_native_module()];
+        let native_modules = vec![Rc::new(create_test_native_module())];
 
         let named_ast_modules: Vec<NamedAstModule> = vec![
             create_test_ast_module(

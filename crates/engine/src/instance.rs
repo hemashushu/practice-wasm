@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::rc::Rc;
+
 use anvm_ast::{
     ast::{self, FunctionType, TypeItem},
     types::{Value, ValueType},
@@ -21,12 +23,12 @@ use crate::{
 };
 
 pub fn create_instance(
-    native_modules: Vec<NativeModule>,
+    native_modules: &[Rc<NativeModule>],
     named_ast_modules: &[NamedAstModule],
 ) -> Result<VM, EngineError> {
     // 获取指令列表
     // 指令列表跟 AST 模块列表是一一对应的，所以无需映射表
-    let mut function_items_list = link_functions(&native_modules, named_ast_modules)?;
+    let mut function_items_list = link_functions(native_modules, named_ast_modules)?;
     let mut instructions_list = decode(named_ast_modules, &function_items_list)?;
 
     // 获取 "表" 实例列表，以及 "AST 模块 - 表" 映射表
@@ -77,8 +79,6 @@ pub fn create_instance(
             })
             .collect::<Vec<Vec<ValueType>>>();
 
-        // let internal_function_names = get_internal_function_names(ast_module);
-
         let vm_module = VMModule::new(
             name,
             table_index,
@@ -88,7 +88,6 @@ pub fn create_instance(
             internal_function_local_variable_types_list,
             function_items,
             instructions,
-            // internal_function_names,
         );
 
         vm_modules.push(vm_module);
@@ -105,7 +104,10 @@ pub fn create_instance(
         memory_blocks,
         tables,
         global_variables,
-        native_modules,
+        native_modules
+            .iter()
+            .map(|m| Rc::clone(m))
+            .collect::<Vec<Rc<NativeModule>>>(),
         vm_modules,
     );
 
@@ -299,6 +301,8 @@ mod tests {
 
     use super::create_instance;
 
+    use std::rc::Rc;
+
     // 辅助方法
     fn get_test_binary_resource(filename: &str) -> Vec<u8> {
         let mut path_buf = env::current_dir().unwrap();
@@ -373,7 +377,7 @@ mod tests {
     ) -> Result<Vec<Value>, EngineError> {
         let ast_module = get_test_ast_module(filename);
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
+        let mut vm = create_instance(&vec![], &vec![named_ast_module])?;
 
         vm.eval_function_by_index(0, function_index, args)
     }
@@ -386,7 +390,7 @@ mod tests {
     ) -> Result<Vec<Value>, EngineError> {
         let ast_module = get_test_ast_module(filename);
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
+        let mut vm = create_instance(&vec![], &vec![named_ast_module])?;
 
         vm.resource.memory_blocks[0].write_bytes(0, initial_memory_data);
         vm.eval_function_by_index(0, function_index, args)
@@ -401,7 +405,7 @@ mod tests {
     ) -> Result<(Vec<Value>, Vec<u8>), EngineError> {
         let ast_module = get_test_ast_module(filename);
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
+        let mut vm = create_instance(&vec![], &vec![named_ast_module])?;
 
         let result = vm.eval_function_by_index(0, function_index, args)?;
         let data = vm.resource.memory_blocks[0]
@@ -432,7 +436,7 @@ mod tests {
         );
 
         let mut vm = create_instance(
-            vec![native_module],
+            &vec![Rc::new(native_module)],
             &vec![
                 named_ast_module_callee,
                 named_ast_module_callee_intermediate,
