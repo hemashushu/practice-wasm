@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::any::Any;
+
 use anvm_ast::{
     ast::FunctionType,
     types::{Value, ValueType},
@@ -11,7 +13,7 @@ use anvm_ast::{
 
 use crate::error::NativeError;
 
-pub type NativeFunction = fn(&[Value]) -> Result<Vec<Value>, NativeError>;
+pub type NativeFunction = fn(&mut NativeModule, &[Value]) -> Result<Vec<Value>, NativeError>;
 
 /// 本地函数的本地模块
 ///
@@ -33,12 +35,19 @@ pub struct NativeModule {
     // 函数列表
     pub function_to_type_index_list: Vec<usize>,
     pub native_functions: Vec<NativeFunction>,
+
     pub function_names: Vec<String>,
     pub local_variable_names: Vec<Vec<String>>,
+
+    pub module_context: Box<dyn ModuleContext>,
+}
+
+pub trait ModuleContext {
+    fn as_any(&self) -> &dyn Any;
 }
 
 impl NativeModule {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, module_context: Box<dyn ModuleContext>) -> Self {
         Self {
             name: name.to_string(),
             function_types: vec![],
@@ -47,6 +56,8 @@ impl NativeModule {
             native_functions: vec![],
             function_names: vec![],
             local_variable_names: vec![],
+
+            module_context,
         }
     }
 
@@ -106,5 +117,21 @@ impl NativeModule {
             self.function_types.push(function_type);
             count
         }
+    }
+}
+
+pub struct EmptyModuleContext {
+    //
+}
+
+impl ModuleContext for EmptyModuleContext {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EmptyModuleContext {
+    pub fn new() -> Self {
+        Self {}
     }
 }

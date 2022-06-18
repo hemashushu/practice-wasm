@@ -4,8 +4,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::rc::Rc;
-
 use crate::{
     decoder::decode_constant_expression,
     error::{EngineError, ObjectNotFound, TypeMismatch, Unsupported},
@@ -57,7 +55,7 @@ impl BlockLocation {
 ///
 /// 返回各个 AST Module 对应的函数信息列表。
 pub fn link_functions(
-    native_modules: &[Rc<NativeModule>],
+    native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
 ) -> Result<Vec<Vec<FunctionItem>>, EngineError> {
     // 第 1 步：
@@ -461,7 +459,7 @@ pub fn get_function_block_items(
 }
 
 fn get_module_names(
-    native_modules: &[Rc<NativeModule>],
+    native_modules: &[NativeModule],
     named_ast_modules: &[NamedAstModule],
 ) -> Vec<String> {
     let native_module_names = native_modules

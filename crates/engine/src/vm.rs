@@ -4,8 +4,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::rc::Rc;
-
 use anvm_ast::{
     instruction::{self, BlockType},
     types::{check_value_types, Value, ValueType, ValueTypeCheckError},
@@ -123,7 +121,7 @@ pub struct Resource {
     pub tables: Vec<VMTable>,
     pub global_variables: Vec<VMGlobalVariable>,
 
-    pub native_modules: Vec<Rc<NativeModule>>,
+    pub native_modules: Vec<NativeModule>,
     pub vm_modules: Vec<VMModule>,
 }
 
@@ -132,7 +130,7 @@ impl Resource {
         memory_blocks: Vec<VMMemory>,
         tables: Vec<VMTable>,
         global_variables: Vec<VMGlobalVariable>,
-        native_modules: Vec<Rc<NativeModule>>,
+        native_modules: Vec<NativeModule>,
         vm_modules: Vec<VMModule>,
     ) -> Self {
         Self {
@@ -379,7 +377,10 @@ impl VM {
             }
         }
 
-        let result = native_function(&arguments);
+        let result = {
+            let native_module = &mut self.resource.native_modules[native_module_index];
+            native_function(native_module, &arguments)
+        };
 
         match result {
             Ok(result_values) => Ok(result_values),

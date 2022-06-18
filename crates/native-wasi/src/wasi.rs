@@ -8,6 +8,10 @@
 //!
 //! WASI 标准的详细文档见：
 //! https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md
+//!
+//! 注意上面的链接是版本 snapshot-01
+//! 跟最新版本的文档是不同的：
+//! https://github.com/WebAssembly/WASI/blob/main/phases/snapshot/docs.md
 
 //! # ABI 实现的顺序
 //!
@@ -89,23 +93,37 @@
 //! - sock_send
 //! - sock_shutdown
 
+use std::io;
+
 use anvm_ast::types::{Value, ValueType};
 use anvm_engine::{error::NativeError, native_module::NativeModule};
 
-use crate::types::MODULE_NAME;
+use crate::{
+    filesystem_context::FileSystemContext, types::MODULE_NAME,
+    wasi_module_context::WASIModuleContext,
+};
 
-/// fd_fdstat_get
-/// (func $fd_fdstat_get (param $fd i32) (param $result_offset i32) (result (;errno;) i32)))
-fn fd_fdstat_get(args: &[Value]) -> Result<Vec<Value>, NativeError> {
-    // 这里不需要检查参数的数量和数据类型，因为 engine 在调用本地函数时已经检查过，
-    // 下面的本地函数均相同。
-    todo!()
-}
+pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
+    let filesystem_context = FileSystemContext::new();
 
-pub fn new_wasi_module() -> NativeModule {
-    let mut module = NativeModule::new(MODULE_NAME);
+    // NOTE::
+    // 测试用的 module context
+    let module_context = WASIModuleContext::new(
+        "demo",
+        vec!["-l".to_string(), "123".to_string()],
+        vec![
+            ("USER".to_string(), "YANG".to_string()),
+            ("EDITOR".to_string(), "vim".to_string()),
+        ],
+        Box::new(io::stdin()),
+        Box::new(io::stdout()),
+        Box::new(io::stderr()),
+        filesystem_context,
+    );
 
-    module.add_native_function(
+    let mut native_module = NativeModule::new(MODULE_NAME, Box::new(module_context));
+
+    native_module.add_native_function(
         "fd_fdstat_get",
         vec![ValueType::I32, ValueType::I32],
         vec!["fd", "result_offset"],
@@ -113,5 +131,16 @@ pub fn new_wasi_module() -> NativeModule {
         fd_fdstat_get,
     );
 
-    module
+    native_module
+}
+
+/// fd_fdstat_get
+/// (func $fd_fdstat_get (param $fd i32) (param $result_offset i32) (result (;errno;) i32)))
+fn fd_fdstat_get(
+    _native_module: &mut NativeModule,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeError> {
+    // 这里不需要检查参数的数量和数据类型，因为 engine 在调用本地函数时已经检查过，
+    // 下面的本地函数均相同。
+    todo!()
 }

@@ -89,7 +89,7 @@ pub fn execute_function_by_modules(
                 (target_module_index, target_function_index as usize)
             }
         } else {
-            // 用户没有指定入口模块和函数，需要搜索 ast module 当中 `start` 段的值或者名称为 `main` 的导出函数
+            // 用户没有指定入口模块和函数，需要搜索 ast module 当中 `start` 段的值或者名称为 `_start` 的导出函数
             get_entry_module_and_function_index(&named_ast_modules).ok_or("\
 cannot find the entry function.
 please specify the name of the entry module and function on the command line, e.g.
@@ -107,7 +107,7 @@ function index is also supported, e.g.
         named_ast_modules[vm_module_index].name, function_index
     );
 
-    let mut vm = create_instance(&vec![], &named_ast_modules).map_err(|e| e.to_string())?;
+    let mut vm = create_instance(vec![], &named_ast_modules).map_err(|e| e.to_string())?;
     let results = vm
         .eval_function_by_index(vm_module_index, function_index, function_arguments)
         .map_err(|e| format!("execute function error: {}", e.to_string()))?;

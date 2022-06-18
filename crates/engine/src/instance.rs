@@ -4,8 +4,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::rc::Rc;
-
 use anvm_ast::{
     ast::{self, FunctionType, TypeItem},
     types::{Value, ValueType},
@@ -23,12 +21,12 @@ use crate::{
 };
 
 pub fn create_instance(
-    native_modules: &[Rc<NativeModule>],
+    native_modules: Vec<NativeModule>,
     named_ast_modules: &[NamedAstModule],
 ) -> Result<VM, EngineError> {
     // 获取指令列表
     // 指令列表跟 AST 模块列表是一一对应的，所以无需映射表
-    let mut function_items_list = link_functions(native_modules, named_ast_modules)?;
+    let mut function_items_list = link_functions(&native_modules, named_ast_modules)?;
     let mut instructions_list = decode(named_ast_modules, &function_items_list)?;
 
     // 获取 "表" 实例列表，以及 "AST 模块 - 表" 映射表
@@ -104,10 +102,7 @@ pub fn create_instance(
         memory_blocks,
         tables,
         global_variables,
-        native_modules
-            .iter()
-            .map(|m| Rc::clone(m))
-            .collect::<Vec<Rc<NativeModule>>>(),
+        native_modules,
         vm_modules,
     );
 
@@ -196,7 +191,7 @@ pub fn create_instance(
 }
 
 /// 从 named_ast_modules 的最后一个元素开始，寻找 ast module 当中
-/// `start` 段指定的函数或者导出名称为 `main` 的函数的索引。
+/// `start` 段指定的函数或者导出名称为 `_start` 的函数的索引。
 pub fn get_entry_module_and_function_index(
     named_ast_modules: &[NamedAstModule],
 ) -> Option<(usize, usize)> {
@@ -207,8 +202,8 @@ pub fn get_entry_module_and_function_index(
         if let Some(i) = ast_module.start_function_index {
             option_mod_and_func_index = Some((module_index, i as usize));
             break;
-        } else if let Some(i) = find_ast_module_export_function(ast_module, "main") {
-            // 查找导出函数当中，名字为 `main` 的函数的索引
+        } else if let Some(i) = find_ast_module_export_function(ast_module, "_start") {
+            // 查找导出函数当中，名字为 `_start` 的函数的索引
             option_mod_and_func_index = Some((module_index, i as usize));
             break;
         }
@@ -228,59 +223,6 @@ pub fn find_ast_module_export_function(ast_module: &ast::Module, export_name: &s
         })
 }
 
-// fn get_internal_function_names(ast_module: &ast::Module) -> HashMap<usize, String> {
-//     let name_collections = ast_module.get_module_name_collections();
-//
-//     // 统计导入的函数的数量
-//     let internal_function_index_offset = ast_module
-//         .import_items
-//         .iter()
-//         .filter(|item| match item.import_descriptor {
-//             ImportDescriptor::FunctionTypeIndex(_) => true,
-//             _ => false,
-//         })
-//         .count();
-//
-//     // 对象 `name_set` 用于去除重复的函数名
-//     // 使用 cargo 编译 Rust 程序到 wasm32-wasi 时会出现
-//     // 重复函数名称的情况（在 custom 段里），为了避免函数调用错误，
-//     // 需要把重复的函数名称移除。
-//     //
-//     // P.S.
-//     // wasm-tools (https://github.com/bytecodealliance/wasm-tools) 采用的是重命名的
-//     // 解决方案，比如遇到重复的函数名 dummy，则函数声明行会更改为 `(func $#func010<dummy> (@name dummy) ...`
-//     // 其中 `#func010<dummy>` 为新名称，`010` 是函数的索引，`@name` 是
-//     // WebAssembly Annotation (https://github.com/WebAssembly/annotations)
-//     let mut name_set: HashSet<String> = HashSet::new();
-//
-//     name_collections
-//         .iter()
-//         .filter_map(|item| match item {
-//             NameCollection::FunctionNames(pairs) => Some(pairs),
-//             _ => None,
-//         })
-//         .flatten()
-//         .map(|item| (item.index as usize, item.name.to_owned()))
-//         .filter(|(_, name)| {
-//             // 去除重复函数名
-//             if name_set.contains(name) {
-//                 false
-//             } else {
-//                 name_set.insert(name.to_owned());
-//                 true
-//             }
-//         })
-//         .filter_map(|(index, name)| {
-//             // 去除导入的函数，并且把 "模块全范围的函数索引值" 转换为 "内部函数的索引值"
-//             if index < internal_function_index_offset {
-//                 None
-//             } else {
-//                 Some((index - internal_function_index_offset, name))
-//             }
-//         })
-//         .collect::<HashMap<usize, String>>()
-// }
-
 #[cfg(test)]
 mod tests {
     use std::{env, fs};
@@ -295,13 +237,11 @@ mod tests {
 
     use crate::{
         error::{EngineError, NativeError},
-        native_module::NativeModule,
+        native_module::{EmptyModuleContext, NativeModule},
         object::NamedAstModule,
     };
 
     use super::create_instance;
-
-    use std::rc::Rc;
 
     // 辅助方法
     fn get_test_binary_resource(filename: &str) -> Vec<u8> {
@@ -334,14 +274,20 @@ mod tests {
         parser::parse(&bytes).unwrap()
     }
 
-    fn native_function_add_i32(params: &[Value]) -> Result<Vec<Value>, NativeError> {
+    fn native_function_add_i32(
+        _native_module: &mut NativeModule,
+        params: &[Value],
+    ) -> Result<Vec<Value>, NativeError> {
         match (params[0], params[1]) {
             (Value::I32(left), Value::I32(right)) => Ok(vec![Value::I32(left + right)]),
             _ => panic!("incorrect data type of the native function arguments"),
         }
     }
 
-    fn native_function_sub_i32(params: &[Value]) -> Result<Vec<Value>, NativeError> {
+    fn native_function_sub_i32(
+        _native_module: &mut NativeModule,
+        params: &[Value],
+    ) -> Result<Vec<Value>, NativeError> {
         match (params[0], params[1]) {
             (Value::I32(left), Value::I32(right)) => Ok(vec![Value::I32(left - right)]),
             _ => panic!("incorrect data type of the native function arguments"),
@@ -349,7 +295,8 @@ mod tests {
     }
 
     fn get_test_native_module() -> NativeModule {
-        let mut native_module = NativeModule::new("math");
+        let empty_module_context = EmptyModuleContext::new();
+        let mut native_module = NativeModule::new("math", Box::new(empty_module_context));
 
         native_module.add_native_function(
             "add",
@@ -377,7 +324,7 @@ mod tests {
     ) -> Result<Vec<Value>, EngineError> {
         let ast_module = get_test_ast_module(filename);
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let mut vm = create_instance(&vec![], &vec![named_ast_module])?;
+        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
         vm.eval_function_by_index(0, function_index, args)
     }
@@ -390,7 +337,7 @@ mod tests {
     ) -> Result<Vec<Value>, EngineError> {
         let ast_module = get_test_ast_module(filename);
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let mut vm = create_instance(&vec![], &vec![named_ast_module])?;
+        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
         vm.resource.memory_blocks[0].write_bytes(0, initial_memory_data);
         vm.eval_function_by_index(0, function_index, args)
@@ -405,7 +352,7 @@ mod tests {
     ) -> Result<(Vec<Value>, Vec<u8>), EngineError> {
         let ast_module = get_test_ast_module(filename);
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let mut vm = create_instance(&vec![], &vec![named_ast_module])?;
+        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
         let result = vm.eval_function_by_index(0, function_index, args)?;
         let data = vm.resource.memory_blocks[0]
@@ -436,7 +383,7 @@ mod tests {
         );
 
         let mut vm = create_instance(
-            &vec![Rc::new(native_module)],
+            vec![native_module],
             &vec![
                 named_ast_module_callee,
                 named_ast_module_callee_intermediate,

@@ -30,7 +30,7 @@
 
     (start $main)
 
-    (export "main" (func $main))
+    (export "_start" (func $main))
     (export "fib" (func $fib))
 
     ;; 我使用几个自制的解析器分别测试 fib 函数的运行速度，测试结果挺有趣的：

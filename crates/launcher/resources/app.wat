@@ -13,4 +13,5 @@
     )
 
     (start $main)
+    (export "_start" (func $main))
 )

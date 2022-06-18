@@ -286,7 +286,10 @@ pub fn call_native(
     }
 
     // 调用本地函数
-    let result = native_function(&arguments);
+    let result = {
+        let native_module = &mut vm.resource.native_modules[native_module_index];
+        native_function(native_module, &arguments)
+    };
 
     match result {
         Ok(result_values) => {

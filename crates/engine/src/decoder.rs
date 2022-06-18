@@ -482,13 +482,11 @@ pub fn decode_constant_expression(
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
-
     use super::{decode, NamedAstModule};
     use crate::{
         error::{EngineError, NativeError},
         linker,
-        native_module::NativeModule,
+        native_module::{EmptyModuleContext, NativeModule},
         object::{BranchTarget, Control, FunctionItem, Instruction},
     };
     use anvm_ast::{
@@ -538,18 +536,25 @@ mod tests {
         create_test_ast_module(name, type_items, function_list, vec![], vec![], code_items)
     }
 
-    fn test_native_function_add(_params: &[Value]) -> Result<Vec<Value>, NativeError> {
+    fn test_native_function_add(
+        _native_module: &mut NativeModule,
+        _params: &[Value],
+    ) -> Result<Vec<Value>, NativeError> {
         // 返回值不是单元测试的检测项目，所以随便返回一个常量
         Ok(vec![Value::I32(10)])
     }
 
-    fn test_native_function_sub(_params: &[Value]) -> Result<Vec<Value>, NativeError> {
+    fn test_native_function_sub(
+        _native_module: &mut NativeModule,
+        _params: &[Value],
+    ) -> Result<Vec<Value>, NativeError> {
         // 返回值不是单元测试的检测项目，所以随便返回一个常量
         Ok(vec![Value::I32(10)])
     }
 
     fn create_test_native_module() -> NativeModule {
-        let mut module = NativeModule::new("m0");
+        let empty_module_context = EmptyModuleContext::new();
+        let mut module = NativeModule::new("m0", Box::new(empty_module_context));
 
         module.add_native_function(
             "add",
@@ -571,7 +576,7 @@ mod tests {
     }
 
     fn link_and_decode_function_instructions(
-        native_modules: &[Rc<NativeModule>],
+        native_modules: &[NativeModule],
         named_ast_modules: &[NamedAstModule],
     ) -> Result<Vec<Vec<Instruction>>, EngineError> {
         let function_items_list: Vec<Vec<FunctionItem>> =
@@ -1680,7 +1685,7 @@ mod tests {
 
     #[test]
     fn test_function_call_module_native() {
-        let native_modules = vec![Rc::new(create_test_native_module())];
+        let native_modules = vec![create_test_native_module()];
 
         let named_ast_modules: Vec<NamedAstModule> = vec![create_test_ast_module(
             "m1",
@@ -1791,7 +1796,7 @@ mod tests {
         //      然后导出了 add, bottom, middle
         // - m3 为普通模块，从 m2 导入了 3 个函数，定义了函数 test
 
-        let native_modules = vec![Rc::new(create_test_native_module())];
+        let native_modules = vec![create_test_native_module()];
 
         let named_ast_modules: Vec<NamedAstModule> = vec![
             create_test_ast_module(

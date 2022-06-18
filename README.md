@@ -108,7 +108,7 @@ XiaoXuan VM 支持 [WASI](https://github.com/WebAssembly/WASI) 接口，即支�
 
 ### 指定起始函数及其参数
 
-WebAssembly 模块当中有一个 `start` 段，该段所指向的函数将会作为 WASM 应用程序的入口（即起始函数），如果模块不存在 `start` 段，则 XiaoXuan VM 会尝试寻找模块当中名称为 `main` 的导出函数，如果找到则它将会作为程序的入口；如果找不到，则 XiaoXuan VM 会因为找不到入口而无法运行 WASM 应用程序。
+WebAssembly 模块当中有一个 `start` 段，该段所指向的函数将会作为 WASM 应用程序的入口（即起始函数），如果模块不存在 `start` 段，则 XiaoXuan VM 会尝试寻找模块当中名称为 `_start` 的导出函数，如果找到则它将会作为程序的入口；如果找不到，则 XiaoXuan VM 会因为找不到入口而无法运行 WASM 应用程序。
 
 你可以手动指定 WASM 应用程序的起始函数，假设有 WASM 应用程序 `lib.wasm`，其中有一个名称为 `pow` 的导出函数，如果想执行它，则可以运行如下命令：
 
