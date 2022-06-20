@@ -488,6 +488,7 @@ mod tests {
         linker,
         native_module::{EmptyModuleContext, NativeModule},
         object::{BranchTarget, Control, FunctionItem, Instruction},
+        vm::VM,
     };
     use anvm_ast::{
         ast::{self, CodeItem, ExportItem, FunctionType, ImportItem, TypeItem},
@@ -537,7 +538,8 @@ mod tests {
     }
 
     fn test_native_function_add(
-        _native_module: &mut NativeModule,
+        _vm: &mut VM,
+        _native_module_index: usize,
         _params: &[Value],
     ) -> Result<Vec<Value>, NativeError> {
         // 返回值不是单元测试的检测项目，所以随便返回一个常量
@@ -545,7 +547,8 @@ mod tests {
     }
 
     fn test_native_function_sub(
-        _native_module: &mut NativeModule,
+        _vm: &mut VM,
+        _native_module_index: usize,
         _params: &[Value],
     ) -> Result<Vec<Value>, NativeError> {
         // 返回值不是单元测试的检测项目，所以随便返回一个常量

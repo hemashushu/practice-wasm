@@ -25,7 +25,7 @@
 // `strlen("abc")` 的值是 3，
 // 尽管字面量 "abc" 在编译时，会转为 "abc\0" 来储存，但函数 strlen 只统计 `\0` 之前的字符。
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 
 use anvm_engine::native_module::ModuleContext;
 
@@ -34,9 +34,6 @@ use crate::filesystem_context::FileSystemContext;
 pub struct WASIModuleContext {
     pub arguments: Vec<String>,
     pub environments: Vec<(String, String)>,
-    pub stdin: Box<dyn Read>,
-    pub stdout: Box<dyn Write>,
-    pub stderr: Box<dyn Write>,
 
     // walltime,
     // nanotime,
@@ -45,7 +42,7 @@ pub struct WASIModuleContext {
 }
 
 impl ModuleContext for WASIModuleContext {
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&mut self) -> &mut dyn std::any::Any {
         self
     }
 }
@@ -61,19 +58,31 @@ impl WASIModuleContext {
         stdin: Box<dyn Read>,
         stdout: Box<dyn Write>,
         stderr: Box<dyn Write>,
-        filesystem_context: FileSystemContext,
     ) -> Self {
         // 合并 arguments 到 app_path_name
         let mut arguments: Vec<String> = vec![];
         arguments.push(app_path_name.to_owned());
         arguments.extend(app_arguments);
 
+        let filesystem_context = FileSystemContext::new(stdin, stdout, stderr);
+
         Self {
             arguments,
             environments,
-            stdin,
-            stdout,
-            stderr,
+            filesystem_context,
+        }
+    }
+
+    pub fn new_minimal() -> Self {
+        let filesystem_context = FileSystemContext::new(
+            Box::new(io::empty()),
+            Box::new(io::sink()),
+            Box::new(io::sink()),
+        );
+
+        Self {
+            arguments: vec![],
+            environments: vec![],
             filesystem_context,
         }
     }

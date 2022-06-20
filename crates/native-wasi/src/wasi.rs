@@ -96,18 +96,19 @@
 use std::io;
 
 use anvm_ast::types::{Value, ValueType};
-use anvm_engine::{error::NativeError, native_module::NativeModule};
+use anvm_engine::{error::NativeError, native_module::NativeModule, vm::VM};
 
 use crate::{
-    filesystem_context::FileSystemContext, types::MODULE_NAME,
+    error::Errno,
+    native_fd,
+    types::{Whence, MODULE_NAME},
     wasi_module_context::WASIModuleContext,
 };
 
 pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
-    let filesystem_context = FileSystemContext::new();
-
     // NOTE::
-    // 测试用的 module context
+    // ===============================================================
+    // 测试用的 module context ---------------------------------------\\
     let module_context = WASIModuleContext::new(
         "demo",
         vec!["-l".to_string(), "123".to_string()],
@@ -118,29 +119,143 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
         Box::new(io::stdin()),
         Box::new(io::stdout()),
         Box::new(io::stderr()),
-        filesystem_context,
     );
+    // 测试用的 module context ---------------------------------------//
+    // ===============================================================
 
     let mut native_module = NativeModule::new(MODULE_NAME, Box::new(module_context));
 
     native_module.add_native_function(
         "fd_fdstat_get",
         vec![ValueType::I32, ValueType::I32],
-        vec!["fd", "result_offset"],
+        vec!["fd", "result.fdstat"],
         vec![ValueType::I32],
         fd_fdstat_get,
+    );
+
+    native_module.add_native_function(
+        "fd_seek",
+        vec![
+            ValueType::I32,
+            ValueType::I64,
+            ValueType::I32,
+            ValueType::I32,
+        ],
+        vec!["fd", "offset", "whence", "result.newoffset"],
+        vec![ValueType::I32],
+        fd_seek,
     );
 
     native_module
 }
 
 /// fd_fdstat_get
-/// (func $fd_fdstat_get (param $fd i32) (param $result_offset i32) (result (;errno;) i32)))
+/// https://github.com/WebAssembly/WASI/blob/main/phases/snapshot/docs.md#-fd_fdstat_getfd-fd---resultfdstat-errno
+///
+/// (func $wasi.fd_fdstat_get (param $fd i32) (param $result.fdstat i32) (result (;errno;) i32)))
+///
+/// `$result.fdstat` 是指函数正确运行之后得到的结果 `fdstat` 储存在内存的位置（地址）
 fn fd_fdstat_get(
-    _native_module: &mut NativeModule,
+    vm: &mut VM,
+    native_module_index: usize,
     args: &[Value],
 ) -> Result<Vec<Value>, NativeError> {
     // 这里不需要检查参数的数量和数据类型，因为 engine 在调用本地函数时已经检查过，
     // 下面的本地函数均相同。
-    todo!()
+
+    let fd = if let Value::I32(fd) = args[0] {
+        fd as u32
+    } else {
+        unreachable!()
+    };
+
+    let result_fdstat_offset = if let Value::I32(result_fdstat_offset) = args[1] {
+        result_fdstat_offset
+    } else {
+        unreachable!()
+    };
+
+    match native_fd::fd_fdstat_get(get_wasi_module_context(vm, native_module_index), fd) {
+        Ok(fd_stat) => {
+            // todo::
+            // 写 fdstat 到内存指定位置 `result_fdstat_offset`
+            //
+
+            make_success_result()
+        }
+        Err(errno) => make_error_result(errno),
+    }
+}
+
+/// fd_seek
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_seekfd-fd-offset-filedelta-whence-whence---errno-filesize
+///
+/// `(func $wasi.fd_seek (param $fd i32) (param $offset i64) (param $whence i32) (param $result.newoffset i32) (result (;errno;) i32)))`
+///
+/// `$result.newoffset` 是指函数正确运行之后得到的结果 `newoffset` 储存在内存的位置（地址）
+fn fd_seek(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeError> {
+    let fd = if let Value::I32(fd) = args[0] {
+        fd as u32
+    } else {
+        unreachable!()
+    };
+
+    let offset = if let Value::I64(offset) = args[1] {
+        offset
+    } else {
+        unreachable!()
+    };
+
+    let whence_i32 = if let Value::I32(whence) = args[2] {
+        whence
+    } else {
+        unreachable!()
+    };
+
+    let result_newoffset_offset = if let Value::I32(result_newoffset_offset) = args[1] {
+        result_newoffset_offset
+    } else {
+        unreachable!()
+    };
+
+    let result_whence = Whence::try_from(whence_i32 as u8);
+
+    if let Ok(whence) = result_whence {
+        match native_fd::fd_seek(
+            get_wasi_module_context(vm, native_module_index),
+            fd,
+            offset,
+            whence,
+        ) {
+            Ok(newoffset) => {
+                let mem = &mut vm.resource.memory_blocks[0];
+                mem.write_i64(result_newoffset_offset as usize, newoffset as i64);
+
+                make_success_result()
+            }
+            Err(errno) => make_error_result(errno),
+        }
+    } else {
+        make_error_result(Errno::Invalid)
+    }
+}
+
+fn get_wasi_module_context(vm: &mut VM, native_module_index: usize) -> &mut WASIModuleContext {
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    any_module_context
+        .as_any()
+        .downcast_mut::<WASIModuleContext>()
+        .unwrap()
+}
+
+fn make_success_result() -> Result<Vec<Value>, NativeError> {
+    Ok(vec![Value::I32(u16::from(Errno::Success) as i32)])
+}
+
+fn make_error_result(errno: Errno) -> Result<Vec<Value>, NativeError> {
+    Ok(vec![Value::I32(u16::from(errno) as i32)])
 }

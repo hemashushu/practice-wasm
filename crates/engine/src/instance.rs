@@ -239,6 +239,7 @@ mod tests {
         error::{EngineError, NativeError},
         native_module::{EmptyModuleContext, NativeModule},
         object::NamedAstModule,
+        vm::VM,
     };
 
     use super::create_instance;
@@ -275,7 +276,8 @@ mod tests {
     }
 
     fn native_function_add_i32(
-        _native_module: &mut NativeModule,
+        _vm: &mut VM,
+        _native_module_index: usize,
         params: &[Value],
     ) -> Result<Vec<Value>, NativeError> {
         match (params[0], params[1]) {
@@ -285,7 +287,8 @@ mod tests {
     }
 
     fn native_function_sub_i32(
-        _native_module: &mut NativeModule,
+        _vm: &mut VM,
+        _native_module_index: usize,
         params: &[Value],
     ) -> Result<Vec<Value>, NativeError> {
         match (params[0], params[1]) {

@@ -32,6 +32,11 @@
 //! 详细见：
 //! https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#supertypes
 
+use crate::error::{Errno, WASIError};
+
+/// 当前版本的模块名称
+///
+/// 正式版的名称将会是 `wasi`
 pub const MODULE_NAME: &str = "wasi_snapshot_preview1";
 
 /// clockid: Enum(u32)
@@ -41,6 +46,17 @@ pub enum ClockID {
     Monotonic, // The store-wide monotonic clock, which is defined as a clock measuring real time, whose value cannot be adjusted and which cannot have negative clock jumps. The epoch of this clock is undefined. The absolute time value of this clock therefore has no meaning.
     ProcessCputimeId, // The CPU-time clock associated with the current process.
     ThreadCputimeId, // The CPU-time clock associated with the current thread.
+}
+
+impl From<ClockID> for u32 {
+    fn from(clock_id: ClockID) -> Self {
+        match clock_id {
+            ClockID::Realtime => 0,
+            ClockID::Monotonic => 1,
+            ClockID::ProcessCputimeId => 2,
+            ClockID::ThreadCputimeId => 3,
+        }
+    }
 }
 
 /// rights: Flags(u64)
@@ -78,6 +94,7 @@ pub mod rights {
     pub const PATH_UNLINK_FILE: u64 = 1 << 26; // The right to invoke path_unlink_file.
     pub const POLL_FD_READWRITE: u64 = 1 << 27; // If rights::fd_read is set, includes the right to invoke poll_oneoff to subscribe to eventtype::fd_read. If rights::fd_write is set, includes the right to invoke poll_oneoff to subscribe to eventtype::fd_write.
     pub const SOCK_SHUTDOWN: u64 = 1 << 28; // The right to invoke sock_shutdown.
+    pub const SOCK_ACCEPT: u64 = 1 << 29; // The right to invoke sock_accept.
 }
 
 /// filetype: Enum(u8)
@@ -85,7 +102,7 @@ pub mod rights {
 /// Size: 1
 /// Alignment: 1
 /// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#filetype
-pub enum FileType {
+pub enum Filetype {
     Unknown, // The type of the file descriptor or file is unknown or is different from any of the other types specified.
     BlockDevice, // The file descriptor or file refers to a block device inode.
     CharacterDevice, // The file descriptor or file refers to a character device inode.
@@ -96,73 +113,76 @@ pub enum FileType {
     SymbolicLink, // The file refers to a symbolic link inode.
 }
 
-/// fdflags: Flags(u16)
-/// File descriptor flags.
-/// Size: 2
-/// Alignment: 2
-/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#fdflags
-pub mod fd_flags {
-    pub const APPEND: u16 = 1 << 0; // Append mode: Data written to the file is always appended to the file's end.
-    pub const DSYNC: u16 = 1 << 1; // Write according to synchronized I/O data integrity completion. Only the data stored in the file is synchronized.
-    pub const NONBLOCK: u16 = 1 << 2; // Non-blocking mode.
-    pub const RSYNC: u16 = 1 << 3; // Synchronized read I/O operations.
-    pub const SYNC: u16 = 1 << 4; // Write according to synchronized I/O file integrity completion. In addition to synchronizing the data stored in the file, the implementation may also synchronously update the file's metadata.
+impl From<Filetype> for u8 {
+    fn from(file_type: Filetype) -> u8 {
+        match file_type {
+            Filetype::Unknown => 0,
+            Filetype::BlockDevice => 1,
+            Filetype::CharacterDevice => 2,
+            Filetype::Directory => 3,
+            Filetype::RegularFile => 4,
+            Filetype::SocketDgram => 5,
+            Filetype::SocketStream => 6,
+            Filetype::SymbolicLink => 7,
+        }
+    }
 }
 
 /// fdstat: Struct
 /// File descriptor attributes.
 /// Size: 24
 /// Alignment: 8
+/// Struct members
+/// - fs_filetype: filetype File type.
+///   Offset: 0
+/// - fs_flags: fdflags File descriptor flags.
+///   Offset: 2
+/// - fs_rights_base: rights Rights that apply to this file descriptor.
+///   Offset: 8
+/// - fs_rights_inheriting: rights Maximum set of rights that may be installed on new file descriptors that are created through this file descriptor, e.g., through path_open.
+///   Offset: 16
 /// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#fdstat
 pub struct FdStat {
-    pub fs_filetype: FileType,
-    pub fd_flags: u16,
+    pub fs_filetype: Filetype,
+    pub fs_flags: u16,
     pub fs_rights_base: u64,
     pub fs_rights_inheriting: u64,
 }
 
-// ### iovec: Struct
-//
-// A region of memory for scatter/gather reads.
-// Size: 8
-// Alignment: 4
-// Struct members
-// - buf: Pointer<u8> The address of the buffer to be filled.
-//   Offset: 0
-// - buf_len: size The length of the buffer to be filled.
-//   Offset: 4
-//
-// ### ciovec: Struct
-//
-// A region of memory for scatter/gather writes.
-// Size: 8
-// Alignment: 4
-// Struct members
-// - buf: ConstPointer<u8> The address of the buffer to be written.
-//   Offset: 0
-// - buf_len: size The length of the buffer to be written.
-//   Offset: 4
-//
-// ### iovec_array: Array<iovec>
-// Size: 8
-// Alignment: 4
-//
-// ### ciovec_array: Array<ciovec>
-// Size: 8
-// Alignment: 4
-//
-// ### filedelta: s64
-//
-// Relative offset within a file.
-// Size: 8
-// Alignment: 8
-//
-// ### whence: Enum(u8)
-//
-// The position relative to which to set the offset of the file descriptor.
-// Size: 1
-// Alignment: 1
-// Variants
-// - set: Seek relative to start-of-file.
-// - cur: Seek relative to current position.
-// - end: Seek relative to end-of-file.
+/// ### whence: Enum(u8)
+/// The position relative to which to set the offset of the file descriptor.
+/// Size: 1
+/// Alignment: 1
+/// Variants
+/// - set: Seek relative to start-of-file.
+/// - cur: Seek relative to current position.
+/// - end: Seek relative to end-of-file.
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-whence-enumu8
+pub enum Whence {
+    Set,
+    Current,
+    End,
+}
+
+impl From<Whence> for u8 {
+    fn from(whence: Whence) -> Self {
+        match whence {
+            Whence::Set => 0,
+            Whence::Current => 1,
+            Whence::End => 2,
+        }
+    }
+}
+
+impl TryFrom<u8> for Whence {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Whence::Set),
+            1 => Ok(Whence::Current),
+            2 => Ok(Whence::End),
+            _ => Err(()),
+        }
+    }
+}

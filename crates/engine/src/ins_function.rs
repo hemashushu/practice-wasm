@@ -286,10 +286,7 @@ pub fn call_native(
     }
 
     // 调用本地函数
-    let result = {
-        let native_module = &mut vm.resource.native_modules[native_module_index];
-        native_function(native_module, &arguments)
-    };
+    let result = native_function(vm, native_module_index, &arguments);
 
     match result {
         Ok(result_values) => {
@@ -371,13 +368,19 @@ pub fn call_indirect(
 
             if let Err(_) = check_types(&expected_function_type.params, &function_type.params) {
                 return Err(EngineError::TypeMismatch(
-                    TypeMismatch::DynamicCallFunctionTypeMismatch(*vm_module_index, *function_index),
+                    TypeMismatch::DynamicCallFunctionTypeMismatch(
+                        *vm_module_index,
+                        *function_index,
+                    ),
                 ));
             }
 
             if let Err(_) = check_types(&expected_function_type.results, &function_type.results) {
                 return Err(EngineError::TypeMismatch(
-                    TypeMismatch::DynamicCallFunctionTypeMismatch(*vm_module_index, *function_index),
+                    TypeMismatch::DynamicCallFunctionTypeMismatch(
+                        *vm_module_index,
+                        *function_index,
+                    ),
                 ));
             }
         }
@@ -391,13 +394,19 @@ pub fn call_indirect(
 
             if let Err(_) = check_types(&expected_function_type.params, &function_type.params) {
                 return Err(EngineError::TypeMismatch(
-                    TypeMismatch::DynamicCallNativeFunctionTypeMismatch(*native_module_index, *function_index),
+                    TypeMismatch::DynamicCallNativeFunctionTypeMismatch(
+                        *native_module_index,
+                        *function_index,
+                    ),
                 ));
             }
 
             if let Err(_) = check_types(&expected_function_type.results, &function_type.results) {
                 return Err(EngineError::TypeMismatch(
-                    TypeMismatch::DynamicCallNativeFunctionTypeMismatch(*native_module_index, *function_index),
+                    TypeMismatch::DynamicCallNativeFunctionTypeMismatch(
+                        *native_module_index,
+                        *function_index,
+                    ),
                 ));
             }
         }

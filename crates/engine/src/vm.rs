@@ -377,10 +377,7 @@ impl VM {
             }
         }
 
-        let result = {
-            let native_module = &mut self.resource.native_modules[native_module_index];
-            native_function(native_module, &arguments)
-        };
+        let result = native_function(self, native_module_index, &arguments);
 
         match result {
             Ok(result_values) => Ok(result_values),

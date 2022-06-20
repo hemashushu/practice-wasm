@@ -4,16 +4,17 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::any::Any;
+use std::{any::Any, cell::RefCell};
 
 use anvm_ast::{
     ast::FunctionType,
     types::{Value, ValueType},
 };
 
-use crate::error::NativeError;
+use crate::{error::NativeError, vm::VM};
 
-pub type NativeFunction = fn(&mut NativeModule, &[Value]) -> Result<Vec<Value>, NativeError>;
+pub type NativeFunction =
+    fn(&mut VM, native_module_index: usize, &[Value]) -> Result<Vec<Value>, NativeError>;
 
 /// 本地函数的本地模块
 ///
@@ -43,7 +44,7 @@ pub struct NativeModule {
 }
 
 pub trait ModuleContext {
-    fn as_any(&self) -> &dyn Any;
+    fn as_any(&mut self) -> &mut dyn Any;
 }
 
 impl NativeModule {
@@ -57,7 +58,7 @@ impl NativeModule {
             function_names: vec![],
             local_variable_names: vec![],
 
-            module_context,
+            module_context: module_context,
         }
     }
 
@@ -125,7 +126,7 @@ pub struct EmptyModuleContext {
 }
 
 impl ModuleContext for EmptyModuleContext {
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&mut self) -> &mut dyn Any {
         self
     }
 }

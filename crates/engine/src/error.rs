@@ -29,6 +29,11 @@ pub fn make_operand_data_types_mismatch_engine_error(
     ))
 }
 
+/// 引擎程序自身的错误
+///
+/// 注意应用程序所产生的错误不属于引擎错误，不过为了便于调试应用程序，
+/// 应用程序的模块结构以及指令的错误会经由 EngineError 抛出。
+/// 而应用程序的业务逻辑错误则不在此范围。
 #[derive(Debug)]
 pub enum EngineError {
     OutOfRange(OutOfRange),
