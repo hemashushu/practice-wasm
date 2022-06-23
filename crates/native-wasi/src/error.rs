@@ -9,7 +9,7 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use anvm_engine::error::{InternalError, NativeError};
+use anvm_engine::error::{InternalError, NativeTerminate};
 
 use crate::{types::MODULE_NAME};
 
@@ -36,20 +36,20 @@ impl Display for WASIError {
     }
 }
 
-impl WASIError {
-    pub fn new(message: &str) -> Self {
-        Self {
-            message: message.to_owned(),
-        }
-    }
-
-    pub fn to_native_error(self) -> NativeError {
-        NativeError {
-            internal_error: Box::new(self),
-            module_name: MODULE_NAME.to_owned(),
-        }
-    }
-}
+// impl WASIError {
+//     pub fn new(message: &str) -> Self {
+//         Self {
+//             message: message.to_owned(),
+//         }
+//     }
+//
+//     pub fn to_native_error(self) -> NativeError {
+//         NativeError {
+//             internal_error: Box::new(self),
+//             module_name: MODULE_NAME.to_owned(),
+//         }
+//     }
+// }
 
 /// 函数返回的错误类型
 ///

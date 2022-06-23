@@ -10,6 +10,7 @@ use std::path::Path;
 use anvm_ast::types::Value;
 use anvm_binary_parser::parser;
 use anvm_disassembly::disassembler::module_to_text;
+use anvm_engine::error::{EngineError, NativeTerminate, NativeError};
 use anvm_engine::instance::{
     create_instance, find_ast_module_export_function, get_entry_module_and_function_index,
 };
@@ -44,11 +45,15 @@ pub fn execute_function(
     application_arguments: &[String],
 ) -> Result<(Vec<Value>, i32), String> {
     let named_ast_modules = load_ast_modules(module_filepaths)?;
-    execute_function_by_modules(&named_ast_modules, entry_module_function_name, function_arguments, application_arguments)
-    // todo::
-    // 将错误信息转换为可读的文本
+    execute_function_by_modules(
+        &named_ast_modules,
+        entry_module_function_name,
+        function_arguments,
+        application_arguments,
+    )
 }
 
+/// 返回 (return_values, exit_code)
 pub fn execute_function_by_modules(
     named_ast_modules: &[NamedAstModule],
     entry_module_function_name: Option<(String, String)>,
@@ -108,11 +113,22 @@ function index is also supported, e.g.
     );
 
     let mut vm = create_instance(vec![], &named_ast_modules).map_err(|e| e.to_string())?;
-    let results = vm
-        .eval_function_by_index(vm_module_index, function_index, function_arguments)
-        .map_err(|e| format!("execute function error: {}", e.to_string()))?;
-
-    Ok((results, 0))
+    match vm.eval_function_by_index(vm_module_index, function_index, function_arguments) {
+        Ok(results) => Ok((results, 0)),
+        Err(e) => {
+            match e {
+                EngineError::NativeTerminate(ne) => match &ne.native_error {
+                    NativeError::Exit(exit_code) => Ok((vec![], *exit_code)),
+                    NativeError::Internal(internal_error) => Err(internal_error.to_string()),
+                },
+                _ => {
+                    // todo::
+                    // 将错误信息转换为可读的文本
+                    Err(e.to_string())
+                }
+            }
+        }
+    }
 }
 
 fn load_ast_modules(module_filepaths: &[String]) -> Result<Vec<NamedAstModule>, String> {

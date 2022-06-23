@@ -484,7 +484,7 @@ pub fn decode_constant_expression(
 mod tests {
     use super::{decode, NamedAstModule};
     use crate::{
-        error::{EngineError, NativeError},
+        error::{EngineError, NativeTerminate},
         linker,
         native_module::{EmptyModuleContext, NativeModule},
         object::{BranchTarget, Control, FunctionItem, Instruction},
@@ -541,7 +541,7 @@ mod tests {
         _vm: &mut VM,
         _native_module_index: usize,
         _params: &[Value],
-    ) -> Result<Vec<Value>, NativeError> {
+    ) -> Result<Vec<Value>, NativeTerminate> {
         // 返回值不是单元测试的检测项目，所以随便返回一个常量
         Ok(vec![Value::I32(10)])
     }
@@ -550,7 +550,7 @@ mod tests {
         _vm: &mut VM,
         _native_module_index: usize,
         _params: &[Value],
-    ) -> Result<Vec<Value>, NativeError> {
+    ) -> Result<Vec<Value>, NativeTerminate> {
         // 返回值不是单元测试的检测项目，所以随便返回一个常量
         Ok(vec![Value::I32(10)])
     }

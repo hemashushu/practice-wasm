@@ -297,7 +297,7 @@ pub fn call_native(
             // 执行下一个指令即可。
             Ok(ControlResult::Sequence)
         }
-        Err(e) => Err(EngineError::NativeError(e)),
+        Err(e) => Err(EngineError::NativeTerminate(e)),
     }
 }
 

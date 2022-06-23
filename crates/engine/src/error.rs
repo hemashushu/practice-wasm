@@ -42,7 +42,7 @@ pub enum EngineError {
     Unsupported(Unsupported),
     TypeMismatch(TypeMismatch),
     InvalidOperation(InvalidOperation),
-    NativeError(NativeError),
+    NativeTerminate(NativeTerminate),
 }
 
 impl Display for EngineError {
@@ -54,7 +54,7 @@ impl Display for EngineError {
             EngineError::Unsupported(s) => write!(f, "{}", s),
             EngineError::TypeMismatch(s) => write!(f, "{}", s),
             EngineError::InvalidOperation(s) => write!(f, "{}", s),
-            EngineError::NativeError(s) => write!(f, "{}", s),
+            EngineError::NativeTerminate(s) => write!(f, "{}", s),
         }
     }
 }
@@ -746,31 +746,35 @@ impl Display for InvalidOperation {
 }
 
 #[derive(Debug)]
-pub struct NativeError {
-    pub internal_error: Box<dyn InternalError>,
+pub struct NativeTerminate {
     pub module_name: String,
+    pub native_error: NativeError,
+}
+
+#[derive(Debug)]
+pub enum NativeError {
+    Exit(i32),
+    Internal(Box<dyn InternalError>),
 }
 
 pub trait InternalError: Debug + Display {
     fn as_any(&self) -> &dyn Any;
 }
 
-impl NativeError {
-    pub fn new(internal_error: Box<dyn InternalError>, module_name: &str) -> Self {
-        NativeError {
-            internal_error: internal_error,
-            module_name: module_name.to_owned(),
-        }
-    }
-}
-
-impl Display for NativeError {
+impl Display for NativeTerminate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "native module \"{}\" error: {}",
-            self.module_name,
-            self.internal_error.to_string()
-        )
+        match &self.native_error {
+            NativeError::Exit(exit_code) => {
+                write!(f, "application terminate with code: {}", exit_code)
+            }
+            NativeError::Internal(internal_error) => {
+                write!(
+                    f,
+                    "native module \"{}\" error: {}",
+                    self.module_name,
+                    internal_error.to_string()
+                )
+            }
+        }
     }
 }

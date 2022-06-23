@@ -236,7 +236,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        error::{EngineError, NativeError},
+        error::{EngineError, NativeTerminate},
         native_module::{EmptyModuleContext, NativeModule},
         object::NamedAstModule,
         vm::VM,
@@ -279,7 +279,7 @@ mod tests {
         _vm: &mut VM,
         _native_module_index: usize,
         params: &[Value],
-    ) -> Result<Vec<Value>, NativeError> {
+    ) -> Result<Vec<Value>, NativeTerminate> {
         match (params[0], params[1]) {
             (Value::I32(left), Value::I32(right)) => Ok(vec![Value::I32(left + right)]),
             _ => panic!("incorrect data type of the native function arguments"),
@@ -290,7 +290,7 @@ mod tests {
         _vm: &mut VM,
         _native_module_index: usize,
         params: &[Value],
-    ) -> Result<Vec<Value>, NativeError> {
+    ) -> Result<Vec<Value>, NativeTerminate> {
         match (params[0], params[1]) {
             (Value::I32(left), Value::I32(right)) => Ok(vec![Value::I32(left - right)]),
             _ => panic!("incorrect data type of the native function arguments"),

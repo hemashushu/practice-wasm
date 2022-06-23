@@ -381,7 +381,7 @@ impl VM {
 
         match result {
             Ok(result_values) => Ok(result_values),
-            Err(e) => Err(EngineError::NativeError(e)),
+            Err(e) => Err(EngineError::NativeTerminate(e)),
         }
     }
 

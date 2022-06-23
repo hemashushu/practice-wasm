@@ -11,10 +11,10 @@ use anvm_ast::{
     types::{Value, ValueType},
 };
 
-use crate::{error::NativeError, vm::VM};
+use crate::{error::NativeTerminate, vm::VM};
 
 pub type NativeFunction =
-    fn(&mut VM, native_module_index: usize, &[Value]) -> Result<Vec<Value>, NativeError>;
+    fn(&mut VM, native_module_index: usize, &[Value]) -> Result<Vec<Value>, NativeTerminate>;
 
 /// 本地函数的本地模块
 ///

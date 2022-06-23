@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.toy": "javascript",
+        "cstdlib": "c",
+        "future": "c",
+        "unistd.h": "c"
+    }
+}

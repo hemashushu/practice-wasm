@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::env;
+use std::{env, process};
 
 use anvm_ast::types::Value;
 use anvm_launcher::{disassembly, execute_function};
@@ -155,12 +155,6 @@ Unexpected VM launcher argument: \"{}\"
         &application_arguments,
     ) {
         Ok((results, exit_code)) => {
-            println!(
-                "\
-program exit normally with code: {}",
-                exit_code
-            );
-
             if results.len() > 0 {
                 println!(
                     "\
@@ -177,6 +171,17 @@ function return values: [{}]",
 function has no return values."
                 );
             }
+
+            if exit_code > 0 {
+                println!(
+                    "\
+program exit normally with code: {}",
+                    exit_code
+                );
+
+                process::exit(exit_code);
+            }
+
         }
         Err(e) => {
             println!(
@@ -185,7 +190,6 @@ program terminated unexpectedly, error message: {}",
                 e
             )
             // TODO::
-            // 打印可读的错误信息
             // 打印 call stack、最后栈帧的内容（局部变量、操作数）、错误的位置（pc）
         }
     }

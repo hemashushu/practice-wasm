@@ -34,24 +34,24 @@
 //! - fd_seek
 //! - fd_close
 //!
-//! 在此基础上，要读取程序的 args，则需要 API：
-//!
-//! - args_get
-//! - args_sizes_get
-//!
-//! 要读取环境变量，则需要 API：
-//!
-//! - environ_get
-//! - environ_sizes_get
-//!
 //! 通常 C 程序的 main 函数会返回一个整数，作为程序退出的代码（exit code），
-//! 通常 0 表示正常退出，非 0 表示非正常退出，为实现该功能，则需要 API：
+//! 通常 0 表示正常退出，非 0 表示非正常退出，为实现该功能，需要 API：
 //!
 //! - proc_exit
 //!
 //! 涉及读文件时，需要 API：
 //!
 //! - fd_read
+//!
+//! 要读取程序的 args，需要 API：
+//!
+//! - args_get
+//! - args_sizes_get
+//!
+//! 要读取环境变量，需要 API：
+//!
+//! - environ_get
+//! - environ_sizes_get
 //!
 //! 涉及打开文件系统的文件时，需要 API：
 //!
@@ -105,7 +105,7 @@
 
 use anvm_ast::types::{Value, ValueType};
 use anvm_engine::{
-    error::NativeError,
+    error::{NativeError, NativeTerminate},
     native_module::{ModuleContext, NativeModule},
     vm::VM,
 };
@@ -162,6 +162,14 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
         fd_close,
     );
 
+    native_module.add_native_function(
+        "proc_exit",
+        vec![ValueType::I32],
+        vec!["exit_code"],
+        vec![],
+        fd_close,
+    );
+
     native_module
 }
 
@@ -177,7 +185,7 @@ fn fd_write(
     vm: &mut VM,
     native_module_index: usize,
     args: &[Value],
-) -> Result<Vec<Value>, NativeError> {
+) -> Result<Vec<Value>, NativeTerminate> {
     let fd = if let Value::I32(fd) = args[0] {
         fd as u32
     } else {
@@ -249,7 +257,7 @@ fn fd_fdstat_get(
     vm: &mut VM,
     native_module_index: usize,
     args: &[Value],
-) -> Result<Vec<Value>, NativeError> {
+) -> Result<Vec<Value>, NativeTerminate> {
     // 这里不需要检查参数的数量和数据类型，因为 engine 在调用本地函数时已经检查过，
     // 下面的本地函数均相同。
 
@@ -294,7 +302,7 @@ fn fd_seek(
     vm: &mut VM,
     native_module_index: usize,
     args: &[Value],
-) -> Result<Vec<Value>, NativeError> {
+) -> Result<Vec<Value>, NativeTerminate> {
     let fd = if let Value::I32(fd) = args[0] {
         fd as u32
     } else {
@@ -351,7 +359,7 @@ fn fd_close(
     vm: &mut VM,
     native_module_index: usize,
     args: &[Value],
-) -> Result<Vec<Value>, NativeError> {
+) -> Result<Vec<Value>, NativeTerminate> {
     let fd = if let Value::I32(fd) = args[0] {
         fd as u32
     } else {
@@ -363,6 +371,33 @@ fn fd_close(
         Ok(_) => make_success_result(),
         Err(errno) => make_error_result(errno),
     }
+}
+
+/// # proc_exit
+///
+/// `(func $wasi.proc_exit (param $exit_code i32)))`
+///
+/// - exit_code: 程序的退出码
+///   linux shell 得到的是 (exit_code % 256)，比如 exit(456)，实际得到的返回码是：456 % 256 = 200。
+///   https://doc.rust-lang.org/stable/std/process/fn.exit.html
+fn proc_exit(
+    _vm: &mut VM,
+    _native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let exit_code = if let Value::I32(exit_code) = args[0] {
+        exit_code
+    } else {
+        unreachable!()
+    };
+
+    // todo
+    // 关闭所有已打开的文件
+
+    Err(NativeTerminate {
+        module_name: MODULE_NAME.to_owned(),
+        native_error: NativeError::Exit(exit_code),
+    })
 }
 
 fn get_wasi_module_context(
@@ -377,11 +412,11 @@ fn get_wasi_module_context(
         .unwrap()
 }
 
-fn make_success_result() -> Result<Vec<Value>, NativeError> {
+fn make_success_result() -> Result<Vec<Value>, NativeTerminate> {
     Ok(vec![Value::I32(u16::from(Errno::Success) as i32)])
 }
 
-fn make_error_result(errno: Errno) -> Result<Vec<Value>, NativeError> {
+fn make_error_result(errno: Errno) -> Result<Vec<Value>, NativeTerminate> {
     Ok(vec![Value::I32(u16::from(errno) as i32)])
 }
 
@@ -397,13 +432,13 @@ mod tests {
     use anvm_ast::{ast, types::Value};
     use anvm_binary_parser::parser;
     use anvm_engine::{
-        error::EngineError,
+        error::{EngineError, NativeError, NativeTerminate},
         instance::{create_instance, find_ast_module_export_function},
         native_module::NativeModule,
         object::NamedAstModule,
     };
 
-    use crate::wasi_module_context::WASIModuleContext;
+    use crate::{types::MODULE_NAME, wasi_module_context::WASIModuleContext};
 
     use super::new_wasi_module;
     use pretty_assertions::assert_eq;
@@ -542,9 +577,9 @@ mod tests {
     }
 
     #[test]
-    fn test_hello_world() {
+    fn test_stdout_write_c() {
         // 该模块是由 C 语言程序编译而来
-        let module_name = "test-hello-world.wasm";
+        let module_name = "test-stdout-write-c.wasm";
 
         // 测试函数 `write_string`
         let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
@@ -565,5 +600,52 @@ mod tests {
         let expected1 = "Hello world!\n";
         assert_eq!(output_str1, expected1);
         assert_eq!(result1, vec![]);
+    }
+
+    #[test]
+    fn test_stderr() {
+        // 该模块是由 C 语言程序编译而来
+        let module_name = "test-stderr.wasm";
+
+        // 测试函数 `write_string`
+        let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let stderr1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+
+        let clone_stdout1 = Rc::clone(&stdout1);
+        let clone_stderr1 = Rc::clone(&stderr1);
+
+        let result1 = eval(
+            module_name,
+            "_start",
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout1,
+            stderr1,
+        );
+
+        let output_data1 = &clone_stdout1.as_ref().borrow()[..];
+        let output_str1 = std::str::from_utf8(output_data1).unwrap();
+
+        let error_data1 = &clone_stderr1.as_ref().borrow()[..];
+        let error_str1 = std::str::from_utf8(error_data1).unwrap();
+
+        assert_eq!(output_str1, "number: 123, string: foo\nend of stdout");
+        assert_eq!(error_str1, "number: 456, string: bar\nend of stderr");
+
+        matches!(
+            result1,
+            Err(EngineError::NativeTerminate(NativeTerminate {
+                module_name: _,
+                native_error: NativeError::Exit(66)
+            }))
+        );
+    }
+
+    fn test_args() {
+        //
+    }
+
+    fn test_envs() {
+        //
     }
 }
