@@ -1980,7 +1980,7 @@ mod tests {
 
     #[test]
     fn test_parse_module_section_3() {
-        let binary = get_test_binary_resource("test-section-3.wasm");
+        let binary = get_test_binary_resource("test-section-general.wasm");
         let module = parse(&binary).unwrap();
         let expected = Module {
             custom_items: vec![CustomItem::NameCollections(vec![

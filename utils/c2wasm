@@ -28,6 +28,6 @@ if (!filePath.endsWith('.c')) {
 let pos = filePath.lastIndexOf('.');
 let outputFile = filePath.substring(0, pos) + '.wasm';
 
-await $`clang --target=wasm32 -c --no-standard-libraries "${filePath}" -o "${outputFile}"`
+await $`clang --target=wasm32 -O3 -flto --no-standard-libraries -Wl,--no-entry -Wl,--export-all -Wl,--lto-O3 "${filePath}" -o "${outputFile}"`
 
 console.log(`output: ${outputFile}`);

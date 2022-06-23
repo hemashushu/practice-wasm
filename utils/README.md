@@ -66,6 +66,15 @@
 
 ### 编译单独一个 Rust 源代码文件
 
+导出的函数需要加上 `#[no_mangle]` 标注，例如：
+
+```rust
+#[no_mangle]
+pub extern "C" fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+```
+
 `$ rustc demo.rs --target wasm32-unknown-unknown -C lto -O --crate-type=cdylib -o demo.wasm`
 
 ### 编译一个 Cargo 项目
@@ -96,7 +105,17 @@ crate-type = ["cdylib"]
 
 先安装 Clang（LLVM），然后使用 `clang` 命令编译：
 
-`$ clang demo.c --target=wasm32 -c --no-standard-libraries -o demo.wasm`
+```bash
+$ clang demo.c \
+    --target=wasm32 \
+    -O3 \               # Agressive optimizations
+    -flto \             # Add metadata for link-time optimizations
+    -nostdlib \         # --no-standard-libraries
+    -Wl,--no-entry \
+    -Wl,--export-all \
+    -Wl,--lto-O3 \      # Aggressive link-time optimizations
+    -o demo.wasm
+```
 
 ## 编译 C 到 WASI
 

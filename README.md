@@ -6,10 +6,12 @@ A zero-dependency WebAssembly VM with a full-featured Web UI debugger implemente
 
 Features
 
-- [x] Run multi-module WASM applications
-- [x] Disassemble WASM applications
-- [ ] Supports WASI interface to run WASM applications compiled from C/C++ and Rust
+- [x] Run multi-module WASM applications.
+- [x] Disassemble WASM applications.
 - [ ] Web UI debugging interface, support step-by-step tracing, set breakpoints, and view memory and call stack data.
+- [x] Supports WASI interface, can run applications compiled from C/C++ and Rust.
+- [ ] Support for loading application images, providing Docker-like container features.
+- [ ] Support for state persistence, 0-time cold startup, providing Serverless and Function-as-a-Service (FaaS) services.
 
 <!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
 
@@ -36,10 +38,12 @@ Features
 
 ## 功能
 
-- [x] 运行多模块 WASM 应用程序
-- [x] 反汇编 WASM 应用程序
-- [ ] 支持 WASI 接口，能运行由 C/C++ 和 Rust 编译而得的 WASM 程序
-- [ ] Web UI 调试界面，支持逐步跟踪、设置断点，能直观地查看内存、调用栈的数据。
+- [x] 运行多模块 WASM 应用程序；
+- [x] 反汇编 WASM 应用程序；
+- [ ] Web UI 调试界面，支持逐步跟踪、设置断点，能直观地查看内存、调用栈的数据；
+- [ ] 支持 WASI 接口，能运行 C/C++ 和 Rust 编译的程序；
+- [ ] 支持加载应用程序映像，实现类似 Docker 的容器功能；
+- [ ] 支持状态持久化，支持 0 时间冷启动，实现 Serverless 和 Function-as-a-Service (FaaS) 功能；
 
 ## 获取 VM 程序
 

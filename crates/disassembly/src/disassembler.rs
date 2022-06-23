@@ -176,10 +176,10 @@ mod tests {
     }
 
     #[test]
-    fn test_module_to_text_3() {
-        let m = get_test_ast_module("test-section-3.wasm");
+    fn test_module_to_text_general() {
+        let m = get_test_ast_module("test-section-general.wasm");
         let t = module_to_text(&m);
-        let e = get_test_text_resource("test-section-3.expect.wat");
+        let e = get_test_text_resource("test-section-general.expect.wat");
         assert_eq!(t, e);
     }
 

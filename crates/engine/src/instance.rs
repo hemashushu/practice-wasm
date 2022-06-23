@@ -213,12 +213,17 @@ pub fn get_entry_module_and_function_index(
 }
 
 /// 在指定的模块当中查找指定名字的导出函数的索引
-pub fn find_ast_module_export_function(ast_module: &ast::Module, export_name: &str) -> Option<u32> {
+pub fn find_ast_module_export_function(
+    ast_module: &ast::Module,
+    export_function_name: &str,
+) -> Option<u32> {
     ast_module
         .export_items
         .iter()
         .find_map(|item| match &item.export_descriptor {
-            ast::ExportDescriptor::FunctionIndex(i) if item.name == export_name => Some(*i),
+            ast::ExportDescriptor::FunctionIndex(i) if item.name == export_function_name => {
+                Some(*i)
+            }
             _ => None,
         })
 }
@@ -242,7 +247,7 @@ mod tests {
         vm::VM,
     };
 
-    use super::create_instance;
+    use super::{create_instance, find_ast_module_export_function};
 
     // 辅助方法
     fn get_test_binary_resource(filename: &str) -> Vec<u8> {
@@ -330,6 +335,21 @@ mod tests {
         let mut vm = create_instance(vec![], &vec![named_ast_module])?;
 
         vm.eval_function_by_index(0, function_index, args)
+    }
+
+    fn eval_by_export_function_name(
+        filename: &str,
+        export_function_name: &str,
+        args: &[Value],
+    ) -> Result<Vec<Value>, EngineError> {
+        let ast_module = get_test_ast_module(filename);
+        let function_index = find_ast_module_export_function(&ast_module, export_function_name)
+            .expect("function not found");
+
+        let named_ast_module = NamedAstModule::new("test", ast_module);
+        let mut vm = create_instance(vec![], &vec![named_ast_module])?;
+
+        vm.eval_function_by_index(0, function_index as usize, args)
     }
 
     fn eval_with_initial_memory_data(
@@ -1140,6 +1160,8 @@ mod tests {
         // 测试 if
         assert_eq!(eval(module_name, 0, &vec![]).unwrap(), vec![Value::I32(2)]);
         assert_eq!(eval(module_name, 1, &vec![]).unwrap(), vec![Value::I32(1)]);
+
+        // todo:: 进一步检查有无 `else` 分支的栈帧情况
     }
 
     #[test]
@@ -1172,6 +1194,40 @@ mod tests {
         assert_eq!(
             eval(module_name, 0, &vec![Value::I32(5)]).unwrap(),
             vec![Value::I32(55)]
+        );
+    }
+
+    #[test]
+    fn test_lib_c() {
+        let module_name = "test-lib-c.wasm";
+
+        assert_eq!(
+            eval_by_export_function_name(module_name, "add", &vec![Value::I32(22), Value::I32(33)])
+                .unwrap(),
+            vec![Value::I32(55)]
+        );
+
+        assert_eq!(
+            eval_by_export_function_name(module_name, "mul", &vec![Value::I32(22), Value::I32(33)])
+                .unwrap(),
+            vec![Value::I32(726)]
+        );
+    }
+
+    #[test]
+    fn test_lib_rust() {
+        let module_name = "test-lib-rust.wasm";
+
+        assert_eq!(
+            eval_by_export_function_name(module_name, "add", &vec![Value::I32(22), Value::I32(33)])
+                .unwrap(),
+            vec![Value::I32(55)]
+        );
+
+        assert_eq!(
+            eval_by_export_function_name(module_name, "mul", &vec![Value::I32(22), Value::I32(33)])
+                .unwrap(),
+            vec![Value::I32(726)]
         );
     }
 }
