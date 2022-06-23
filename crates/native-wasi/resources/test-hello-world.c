@@ -10,6 +10,7 @@
 
 int main()
 {
+    // puts 函数在输出时会在末尾添加 '\n'
     puts("Hello world!");
     return 0;
 }

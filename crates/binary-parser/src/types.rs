@@ -4,7 +4,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-
 /// 二进制模块以一个 4 个字节的幻数 `0x00 0x61 0x73 0x6d` 开始。
 /// 转成 ascii 则是 `0x00` 和 `asm`
 pub const MAGIC_NUMBER: u32 = 0x6d736100;
@@ -14,18 +13,19 @@ pub const MAGIC_NUMBER: u32 = 0x6d736100;
 pub const VERSION: u32 = 0x00000001;
 
 /// 二进制各个段（section）的 id
-pub const SECTION_CUSTOM_ID: u8 = 0; // 0
-pub const SECTION_TYPE_ID: u8 = 1; // 1
-pub const SECTION_IMPORT_ID: u8 = 2; // 2
-pub const SECTION_FUNCTION_ID: u8 = 3; // 3
-pub const SECTION_TABLE_ID: u8 = 4; // 4
-pub const SECTION_MEMORY_ID: u8 = 5; // 5
-pub const SECTION_GLOBAL_ID: u8 = 6; // 6
-pub const SECTION_EXPORT_ID: u8 = 7; // 7
-pub const SECTION_START_ID: u8 = 8; // 8
-pub const SECTION_ELEMENT_ID: u8 = 9; // 9
-pub const SECTION_CODE_ID: u8 = 10; // 10
-pub const SECTION_DATA_ID: u8 = 11; // 11
+pub const SECTION_CUSTOM_ID: u8 = 0;
+pub const SECTION_TYPE_ID: u8 = 1;
+pub const SECTION_IMPORT_ID: u8 = 2;
+pub const SECTION_FUNCTION_ID: u8 = 3;
+pub const SECTION_TABLE_ID: u8 = 4;
+pub const SECTION_MEMORY_ID: u8 = 5;
+pub const SECTION_GLOBAL_ID: u8 = 6;
+pub const SECTION_EXPORT_ID: u8 = 7;
+pub const SECTION_START_ID: u8 = 8;
+pub const SECTION_ELEMENT_ID: u8 = 9;
+pub const SECTION_CODE_ID: u8 = 10;
+pub const SECTION_DATA_ID: u8 = 11;
+pub const SECTION_DATA_COUNT_ID: u8 = 12;
 
 /// 在 `函数类型段` 里的 `类型项` 的 tag 值目前只能是 `0x60`
 pub const FUNCTION_TYPE_TAG: u8 = 0x60;

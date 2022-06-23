@@ -211,6 +211,13 @@ pub fn exec_instruction(
                     ins_memory::memory_grow(vm, *memory_block_index)
                 }
 
+                Instruction::MemoryInit(data_index, memory_block_index) => todo!(),
+                Instruction::DataDrop(data_index) => todo!(),
+                Instruction::MemoryCopy(source_memory_block_index, dest_memory_block_index) => {
+                    todo!()
+                }
+                Instruction::MemoryFill(memory_block_index) => todo!(),
+
                 Instruction::I32Load(memory_args) => ins_memory::i32_load(vm, memory_args),
                 Instruction::I32Load16S(memory_args) => ins_memory::i32_load16_s(vm, memory_args),
                 Instruction::I32Load16U(memory_args) => ins_memory::i32_load16_u(vm, memory_args),
@@ -238,6 +245,16 @@ pub fn exec_instruction(
 
                 Instruction::F32Store(memory_args) => ins_memory::f32_store(vm, memory_args),
                 Instruction::F64Store(memory_args) => ins_memory::f64_store(vm, memory_args),
+
+                // 表指令
+                Instruction::TableGet(table_index) => todo!(),
+                Instruction::TableSet(table_index) => todo!(),
+                Instruction::TableInit(element_index, table_index) => todo!(),
+                Instruction::ElementDrop(element_index) => todo!(),
+                Instruction::TableCopy(source_table_index, dest_table_index) => todo!(),
+                Instruction::TableGrow(table_index) => todo!(),
+                Instruction::TableSize(table_index) => todo!(),
+                Instruction::TableFill(table_index) => todo!(),
 
                 // 其他指令已经被替换成 Instruction::Control，所以
                 // 程序不应该来到这个分支
@@ -309,7 +326,7 @@ pub fn exec_instruction(
                     *option_alternate_address,
                     *end_address,
                 ),
-                Control::Jump(address) => ins_block::jump(vm, *address),
+                Control::JumpWithinBlock(address) => ins_block::jump_within_block(vm, *address),
 
                 Control::Break {
                     option_block_index,
@@ -400,7 +417,7 @@ pub fn exec_instruction(
 
                     Ok(false)
                 }
-                Ok(ControlResult::JumpWithinBlock { address }) => {
+                Ok(ControlResult::JumpWithinBlock(address)) => {
                     // 更新虚拟机的 pc 值
                     let status = &mut vm.status;
                     status.address = address;

@@ -84,8 +84,22 @@ pub enum Instruction {
     I64Store8(MemoryArgument),
     I64Store16(MemoryArgument),
     I64Store32(MemoryArgument),
-    MemorySize(u32), // params: (memory_block_index)
-    MemoryGrow(u32), // params: (memory_block_index)
+
+    MemorySize(u32),      // params: (memory_block_index)
+    MemoryGrow(u32),      // params: (memory_block_index)
+    MemoryInit(u32, u32), // params: (data_index, memory_block_index)
+    DataDrop(u32),        // params: (data_index)
+    MemoryCopy(u32, u32), // params: (source_memory_block_index, dest_memory_block_index)
+    MemoryFill(u32),      // params: (memory_block_index)
+
+    TableGet(u32),       // params: (table_index)
+    TableSet(u32),       // params: (table_index)
+    TableInit(u32, u32), // params: (element_index, table_index)
+    ElementDrop(u32),    // params: (element_index)
+    TableCopy(u32, u32), // params: (source_table_index, dest_table_index)
+    TableGrow(u32),      // params: (table_index)
+    TableSize(u32),      // params: (table_index)
+    TableFill(u32),      // params: (table_index)
 
     I32Const(i32), // params: (immediate_number_value)
     I64Const(i64), // params: (immediate_number_value)

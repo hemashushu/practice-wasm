@@ -39,6 +39,11 @@ pub const LOCAL_TEE: u8 = 0x22;
 pub const GLOBAL_GET: u8 = 0x23;
 pub const GLOBAL_SET: u8 = 0x24;
 //
+// ### 表类指令
+//
+pub const TABLE_GET: u8 = 0x25;
+pub const TABLE_SET: u8 = 0x26;
+//
 // ### 内存类指令
 //
 pub const I32_LOAD: u8 = 0x28;
@@ -202,19 +207,37 @@ pub const I64_EXTEND8_S: u8 = 0xC2;
 pub const I64_EXTEND16_S: u8 = 0xC3;
 pub const I64_EXTEND32_S: u8 = 0xC4;
 
-// ## 扩展指令码
+// ## 扩展指令
 //
-pub const EXTENSION: u8 = 0xFC;
+// 注意，为了跟 WASM 规范文档保持一致，
+// 下面的数值是十进制，而不是十六进制。
 //
-// ### `饱和截断` 指令的次操作码
+// ### 表类扩展指令
 //
-// `饱和截断` 指令由一个主操作码 `0xFC` 和一个次操作码（同样是 u8 类型）组成
+pub const TABLE_INIT: u32 = 12;
+pub const ELEMENT_DROP: u32 = 13;
+pub const TABLE_COPY: u32 = 14;
+pub const TABLE_GROW: u32 = 15;
+pub const TABLE_SIZE: u32 = 16;
+pub const TABLE_FILL: u32 = 17;
 //
-pub const I32_TRUNC_SAT_F32_S: u8 = 0x0;
-pub const I32_TRUNC_SAT_F32_U: u8 = 0x1;
-pub const I32_TRUNC_SAT_F64_S: u8 = 0x2;
-pub const I32_TRUNC_SAT_F64_U: u8 = 0x3;
-pub const I64_TRUNC_SAT_F32_S: u8 = 0x4;
-pub const I64_TRUNC_SAT_F32_U: u8 = 0x5;
-pub const I64_TRUNC_SAT_F64_S: u8 = 0x6;
-pub const I64_TRUNC_SAT_F64_U: u8 = 0x7;
+// ### 内存类扩展指令
+//
+pub const MEMORY_INIT: u32 = 8;
+pub const DATA_DROP: u32 = 9;
+pub const MEMORY_COPY: u32 = 10;
+pub const MEMORY_FILL: u32 = 11;
+//
+// ### 数值类扩展指令 —— `饱和截断` 指令
+//
+pub const I32_TRUNC_SAT_F32_S: u32 = 0;
+pub const I32_TRUNC_SAT_F32_U: u32 = 1;
+pub const I32_TRUNC_SAT_F64_S: u32 = 2;
+pub const I32_TRUNC_SAT_F64_U: u32 = 3;
+pub const I64_TRUNC_SAT_F32_S: u32 = 4;
+pub const I64_TRUNC_SAT_F32_U: u32 = 5;
+pub const I64_TRUNC_SAT_F64_S: u32 = 6;
+pub const I64_TRUNC_SAT_F64_U: u32 = 7;
+
+// ## 扩展指令码 0xFC
+pub const EXTENSION_0XFC: u8 = 0xFC;

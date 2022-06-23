@@ -105,10 +105,10 @@ pub enum Control {
         end_address: usize,
     },
 
-    /// 无条件跳到指定位置
+    /// 无条件跳到同一个 block 层的指定位置
     ///
     /// 原 `else 指令`
-    Jump(/* address */ usize),
+    JumpWithinBlock(/* address */ usize),
 
     /// 跳转到指定的地址
     /// 其中 relative_depth 为当前栈帧距离目标栈帧的层次数量，当数量为 0 时，表示

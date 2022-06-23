@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn test_stdout() {
+    fn test_stdout_write() {
         let module_name = "test-stdout-write.wasm";
 
         // 测试函数 `write_string`
@@ -501,7 +501,7 @@ mod tests {
             Rc::new(RefCell::new(io::sink())),
         )
         .unwrap();
-        let output_data1 = &clone_stdout1.as_ref().borrow()[0..11];
+        let output_data1 = &clone_stdout1.as_ref().borrow()[..];
         let expected_data1 = "hello world".as_bytes();
         assert_eq!(output_data1, expected_data1);
         assert_eq!(result1, vec![Value::I32(0), Value::I32(11)]);
@@ -518,7 +518,7 @@ mod tests {
             Rc::new(RefCell::new(io::sink())),
         )
         .unwrap();
-        let output_data2 = &clone_stdout2.as_ref().borrow()[0..15];
+        let output_data2 = &clone_stdout2.as_ref().borrow()[..];
         let expected_data2 = "你好，世界".as_bytes();
         assert_eq!(output_data2, expected_data2);
         assert_eq!(result2, vec![Value::I32(0), Value::I32(15)]);
@@ -535,9 +535,35 @@ mod tests {
             Rc::new(RefCell::new(io::sink())),
         )
         .unwrap();
-        let output_data3 = &clone_stdout3.as_ref().borrow()[0..12];
+        let output_data3 = &clone_stdout3.as_ref().borrow()[..];
         let expected_data3 = "part1\npart2\n".as_bytes();
         assert_eq!(output_data3, expected_data3);
         assert_eq!(result3, vec![Value::I32(0), Value::I32(12)]);
+    }
+
+    #[test]
+    fn test_hello_world() {
+        // 该模块是由 C 语言程序编译而来
+        let module_name = "test-hello-world.wasm";
+
+        // 测试函数 `write_string`
+        let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout1 = Rc::clone(&stdout1);
+        let result1 = eval(
+            module_name,
+            "_start",
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout1,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+        let output_data1 = &clone_stdout1.as_ref().borrow()[..];
+        let output_str1 = std::str::from_utf8(output_data1).unwrap();
+
+        // C std 的 puts 函数在输出时会在末尾添加 '\n'
+        let expected1 = "Hello world!\n";
+        assert_eq!(output_str1, expected1);
+        assert_eq!(result1, vec![]);
     }
 }

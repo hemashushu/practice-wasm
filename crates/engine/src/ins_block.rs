@@ -114,30 +114,38 @@ pub fn block_and_jump_when_eq_zero(
 
     // 执行完 `if 指令` 之后，如果刚才栈顶的数值是：
     //
-    // - true，则下一个指令应该是 `if 指令` 的下一个指令；
-    // - false，则下一个指令应该是：
-    //   - 存在 `else 指令` 的话，则跳到 `else 指令` 的下一个指令
+    // - true：
+    //   则压入一个栈帧，下一个指令应该是 `if 指令` 的下一个指令；
+    // - false：
+    //   - 如果存在 `else 指令` ，则压入一个栈帧，
+    //     跳到 `else 指令` 的下一个指令。
     //     注意不要跳到 `else 指令` 本身，因为 `else 指令` 已经被
     //     转换为 `jump 控制指令`，该指令的效果是直接跳到 if 结构块的结束位置
-    //   - 不存在 `else 指令` 的话，则跳到结构块之外，即跳到if 结构块的
-    //     最后一条 `end 指令` 的下一个指令
-    let next_instruction_address = if testing {
-        vm.status.address + 1
+    //   - 不存在 `else 指令` 的话，则 **不要压入一个栈帧**，
+    //     并跳到结构块之外，即跳到if 结构块的最后一条 `end 指令` 的下一个指令，
+    //     就当作普通的 jump 指令一样。
+    let push_control_frame = if testing {
+        Ok(vm.status.address + 1)
     } else {
         if let Some(alternate_address) = option_alternate_address {
-            alternate_address + 1
+            Ok(alternate_address + 1)
         } else {
-            end_address + 1
+            Err(end_address + 1)
         }
     };
 
-    continue_process_block(
-        vm,
-        block_type,
-        block_index,
-        next_instruction_address,
-        return_address,
-    )
+    match push_control_frame {
+        Ok(next_instruction_address) => continue_process_block(
+            vm,
+            block_type,
+            block_index,
+            next_instruction_address,
+            return_address,
+        ),
+        Err(post_block_address) => Ok(ControlResult::JumpWithinBlock(
+            /* address: */ post_block_address,
+        )),
+    }
 }
 
 fn continue_process_block(
@@ -226,8 +234,8 @@ fn continue_process_block(
     Ok(control_result)
 }
 
-pub fn jump(_vm: &mut VM, address: usize) -> Result<ControlResult, EngineError> {
-    Ok(ControlResult::JumpWithinBlock { address })
+pub fn jump_within_block(_vm: &mut VM, address: usize) -> Result<ControlResult, EngineError> {
+    Ok(ControlResult::JumpWithinBlock(address))
 }
 
 pub fn process_break(
@@ -238,7 +246,7 @@ pub fn process_break(
 ) -> Result<ControlResult, EngineError> {
     if relative_depth == 0 {
         // 本层的跳转，只需简单地改变下一个指令的地址为结构块的 `end 指令` 位置即可
-        Ok(ControlResult::JumpWithinBlock { address })
+        Ok(ControlResult::JumpWithinBlock(address))
     } else {
         // 跨层跳转，需要将当前栈帧的操作数作为目标层的返回值，具体步骤：
         // 1. 根据目标层返回值的数量，暂存当前栈帧相应数量的操作数；
@@ -344,9 +352,9 @@ pub fn recur(
 ) -> Result<ControlResult, EngineError> {
     if relative_depth == 0 {
         // 本层的跳转，只需简单地改变下一个指令的地址为结构块的 `loop 指令` 的下一个指令位置即可
-        Ok(ControlResult::JumpWithinBlock {
-            address: address + 1,
-        })
+        Ok(ControlResult::JumpWithinBlock(
+            /* address: */ address + 1,
+        ))
     } else {
         // 跨层跳转，需要将当前栈帧的操作数作为目标层的参数，具体步骤：
         // 1. 根据目标层参数的数量，暂存当前栈帧相应数量的操作数；

@@ -97,6 +97,8 @@ pub struct Module {
 
     /// 内存的初始化数据，（section id 11）
     pub data_items: Vec<DataItem>,
+
+    // pub data_count: u32,
 }
 
 /// # 自定义项

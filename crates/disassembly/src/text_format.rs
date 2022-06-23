@@ -365,14 +365,14 @@ impl TextFormat for BlockType {
 
         match self {
             // 内置的数据类型
-            Self::ResultI32 => write!(f, "(result i32)"),
-            Self::ResultI64 => write!(f, "(result i64)"),
-            Self::ResultF32 => write!(f, "(result f32)"),
-            Self::ResultF64 => write!(f, "(result f64)"),
-            Self::ResultEmpty => write!(f, ""),
+            BlockType::ResultI32 => write!(f, "(result i32)"),
+            BlockType::ResultI64 => write!(f, "(result i64)"),
+            BlockType::ResultF32 => write!(f, "(result f32)"),
+            BlockType::ResultF64 => write!(f, "(result f64)"),
+            BlockType::ResultEmpty => write!(f, ""),
 
             // 来自类型表的类型
-            Self::TypeIndex(type_index) => {
+            BlockType::TypeIndex(type_index) => {
                 if let Some(type_name) = name_package.get_type_name(type_index) {
                     write!(f, "(type ${})", type_name)
                 } else {
@@ -411,9 +411,9 @@ impl TextFormat for Instruction {
         // call $func0
         // end
         match self {
-            Self::Unreachable => write!(f, "unreachable"),
-            Self::Nop => write!(f, "nop"),
-            Self::Block(block_type, block_index) => {
+            Instruction::Unreachable => write!(f, "unreachable"),
+            Instruction::Nop => write!(f, "nop"),
+            Instruction::Block(block_type, block_index) => {
                 let mut text_fragments: Vec<String> = vec![];
                 text_fragments.push("block".to_string());
 
@@ -432,7 +432,7 @@ impl TextFormat for Instruction {
 
                 write!(f, "{}", text_fragments.join(" "))
             }
-            Self::Loop(block_type, block_index) => {
+            Instruction::Loop(block_type, block_index) => {
                 let mut text_fragments: Vec<String> = vec![];
                 text_fragments.push("loop".to_string());
 
@@ -451,7 +451,7 @@ impl TextFormat for Instruction {
 
                 write!(f, "{}", text_fragments.join(" "))
             }
-            Self::If(block_type, block_index) => {
+            Instruction::If(block_type, block_index) => {
                 let mut text_fragments: Vec<String> = vec![];
                 text_fragments.push("if".to_string());
 
@@ -470,15 +470,15 @@ impl TextFormat for Instruction {
 
                 write!(f, "{}", text_fragments.join(" "))
             }
-            Self::Else => write!(f, "else"),
-            Self::End => write!(f, "end"),
-            Self::Br(relative_deepth) => {
+            Instruction::Else => write!(f, "else"),
+            Instruction::End => write!(f, "end"),
+            Instruction::Br(relative_deepth) => {
                 write!(f, "br {}", relative_deepth)
             }
-            Self::BrIf(relative_deepth) => {
+            Instruction::BrIf(relative_deepth) => {
                 write!(f, "br_if {}", relative_deepth)
             }
-            Self::BrTable(relative_depths, default_relative_depth) => {
+            Instruction::BrTable(relative_depths, default_relative_depth) => {
                 let depths = relative_depths
                     .iter()
                     .map(|i| i.to_string())
@@ -486,15 +486,15 @@ impl TextFormat for Instruction {
                     .join(" ");
                 write!(f, "br_table {} {}", depths, default_relative_depth)
             }
-            Self::Return => write!(f, "return"),
-            Self::Call(function_index) => {
+            Instruction::Return => write!(f, "return"),
+            Instruction::Call(function_index) => {
                 if let Some(function_name) = name_package.get_function_name(function_index) {
                     write!(f, "call ${}", function_name)
                 } else {
                     write!(f, "call {}", function_index)
                 }
             }
-            Self::CallIndirect(type_index, _table_index) => {
+            Instruction::CallIndirect(type_index, _table_index) => {
                 // table_index 暂时用不上
                 if let Some(type_name) = name_package.get_type_name(type_index) {
                     write!(f, "call_indirect (type ${})", type_name)
@@ -503,10 +503,10 @@ impl TextFormat for Instruction {
                 }
             }
 
-            Self::Drop => write!(f, "drop"),
-            Self::Select => write!(f, "select"),
+            Instruction::Drop => write!(f, "drop"),
+            Instruction::Select => write!(f, "select"),
 
-            Self::LocalGet(local_variable_index) => {
+            Instruction::LocalGet(local_variable_index) => {
                 let option_variable_name = {
                     if let Some(function_index) = option_item_index {
                         name_package.get_local_variable_name(&function_index, local_variable_index)
@@ -521,7 +521,7 @@ impl TextFormat for Instruction {
                     write!(f, "local.get {}", local_variable_index)
                 }
             }
-            Self::LocalSet(local_variable_index) => {
+            Instruction::LocalSet(local_variable_index) => {
                 let option_variable_name = {
                     if let Some(function_index) = option_item_index {
                         name_package.get_local_variable_name(&function_index, local_variable_index)
@@ -536,7 +536,7 @@ impl TextFormat for Instruction {
                     write!(f, "local.set {}", local_variable_index)
                 }
             }
-            Self::LocalTee(local_variable_index) => {
+            Instruction::LocalTee(local_variable_index) => {
                 let option_variable_name = {
                     if let Some(function_index) = option_item_index {
                         name_package.get_local_variable_name(&function_index, local_variable_index)
@@ -551,7 +551,7 @@ impl TextFormat for Instruction {
                     write!(f, "local.tee {}", local_variable_index)
                 }
             }
-            Self::GlobalGet(global_variable_index) => {
+            Instruction::GlobalGet(global_variable_index) => {
                 if let Some(variable_name) =
                     name_package.get_global_variable_name(global_variable_index)
                 {
@@ -560,7 +560,7 @@ impl TextFormat for Instruction {
                     write!(f, "global.get {}", global_variable_index)
                 }
             }
-            Self::GlobalSet(global_variable_index) => {
+            Instruction::GlobalSet(global_variable_index) => {
                 if let Some(variable_name) =
                     name_package.get_global_variable_name(global_variable_index)
                 {
@@ -570,277 +570,299 @@ impl TextFormat for Instruction {
                 }
             }
 
-            Self::I32Load(memory_argument) => write!(
+            Instruction::I32Load(memory_argument) => write!(
                 f,
                 "i32.load {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Load(memory_argument) => write!(
+            Instruction::I64Load(memory_argument) => write!(
                 f,
                 "i64.load {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::F32Load(memory_argument) => write!(
+            Instruction::F32Load(memory_argument) => write!(
                 f,
                 "f32.load {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::F64Load(memory_argument) => write!(
+            Instruction::F64Load(memory_argument) => write!(
                 f,
                 "f64.load {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I32Load8S(memory_argument) => write!(
+            Instruction::I32Load8S(memory_argument) => write!(
                 f,
                 "i32.load8_s {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I32Load8U(memory_argument) => write!(
+            Instruction::I32Load8U(memory_argument) => write!(
                 f,
                 "i32.load8_u {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I32Load16S(memory_argument) => write!(
+            Instruction::I32Load16S(memory_argument) => write!(
                 f,
                 "i32.load16_s {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I32Load16U(memory_argument) => write!(
+            Instruction::I32Load16U(memory_argument) => write!(
                 f,
                 "i32.load16_u {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Load8S(memory_argument) => write!(
+            Instruction::I64Load8S(memory_argument) => write!(
                 f,
                 "i64.load8_s {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Load8U(memory_argument) => write!(
+            Instruction::I64Load8U(memory_argument) => write!(
                 f,
                 "i64.load8_u {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Load16S(memory_argument) => write!(
+            Instruction::I64Load16S(memory_argument) => write!(
                 f,
                 "i64.load16_s {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Load16U(memory_argument) => write!(
+            Instruction::I64Load16U(memory_argument) => write!(
                 f,
                 "i64.load16_u {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Load32S(memory_argument) => write!(
+            Instruction::I64Load32S(memory_argument) => write!(
                 f,
                 "i64.load32_s {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Load32U(memory_argument) => write!(
+            Instruction::I64Load32U(memory_argument) => write!(
                 f,
                 "i64.load32_u {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I32Store(memory_argument) => write!(
+            Instruction::I32Store(memory_argument) => write!(
                 f,
                 "i32.store {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Store(memory_argument) => write!(
+            Instruction::I64Store(memory_argument) => write!(
                 f,
                 "i64.store {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::F32Store(memory_argument) => write!(
+            Instruction::F32Store(memory_argument) => write!(
                 f,
                 "f32.store {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::F64Store(memory_argument) => write!(
+            Instruction::F64Store(memory_argument) => write!(
                 f,
                 "f64.store {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I32Store8(memory_argument) => write!(
+            Instruction::I32Store8(memory_argument) => write!(
                 f,
                 "i32.store8 {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I32Store16(memory_argument) => write!(
+            Instruction::I32Store16(memory_argument) => write!(
                 f,
                 "i32.store16 {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Store8(memory_argument) => write!(
+            Instruction::I64Store8(memory_argument) => write!(
                 f,
                 "i64.store8 {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Store16(memory_argument) => write!(
+            Instruction::I64Store16(memory_argument) => write!(
                 f,
                 "i64.store16 {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::I64Store32(memory_argument) => write!(
+            Instruction::I64Store32(memory_argument) => write!(
                 f,
                 "i64.store32 {}",
                 memory_argument.to_text(name_package, option_item_index)
             ),
-            Self::MemorySize(_memory_block_index) => write!(f, "memory.size"), // memory_block_index 暂时用不上
-            Self::MemoryGrow(_memory_block_index) => write!(f, "memory.grow"), // memory_block_index 暂时用不上
+            Instruction::MemorySize(_memory_block_index) => write!(f, "memory.size"), // memory_block_index 暂时用不上
+            Instruction::MemoryGrow(_memory_block_index) => write!(f, "memory.grow"), // memory_block_index 暂时用不上
+            Instruction::MemoryInit(data_index, _memory_block_index) => {
+                write!(f, "memory.init {}", data_index)
+            } // memory_block_index 暂时用不上
+            Instruction::DataDrop(data_index) => write!(f, "data.drop {}", data_index),
+            Instruction::MemoryCopy(_source_memory_block_index, _dest_memory_block_index) => {
+                // memory_block_index 暂时用不上
+                write!(f, "memory.copy")
+            }
+            Instruction::MemoryFill(_memory_block_index) => write!(f, "memory.fill"), // memory_block_index 暂时用不上
 
-            Self::I32Const(immediate_number) => write!(f, "i32.const {}", immediate_number),
-            Self::I64Const(immediate_number) => write!(f, "i64.const {}", immediate_number),
-            Self::F32Const(immediate_number) => write!(f, "f32.const {}", immediate_number),
-            Self::F64Const(immediate_number) => write!(f, "f64.const {}", immediate_number),
+            Instruction::TableGet(table_index) => write!(f, "table.get {}", table_index),
+            Instruction::TableSet(table_index) => write!(f, "table.set {}", table_index),
+            Instruction::TableInit(element_index, table_index) => {
+                write!(f, "table.init {} {}", element_index, table_index)
+            }
+            Instruction::ElementDrop(element_index) => write!(f, "elem.drop {}", element_index),
+            Instruction::TableCopy(source_table_index, dest_table_index) => {
+                write!(f, "table.copy {} {}", source_table_index, dest_table_index)
+            }
+            Instruction::TableGrow(table_index) => write!(f, "table.grow {}", table_index),
+            Instruction::TableSize(table_index) => write!(f, "table.size {}", table_index),
+            Instruction::TableFill(table_index) => write!(f, "table.fill {}", table_index),
 
-            Self::I32Eqz => write!(f, "i32.eqz"),
-            Self::I32Eq => write!(f, "i32.eq"),
-            Self::I32Ne => write!(f, "i32.ne"),
-            Self::I32LtS => write!(f, "i32.lt_s"),
-            Self::I32LtU => write!(f, "i32.lt_u"),
-            Self::I32GtS => write!(f, "i32.gt_s"),
-            Self::I32GtU => write!(f, "i32.gt_u"),
-            Self::I32LeS => write!(f, "i32.le_s"),
-            Self::I32LeU => write!(f, "i32.le_u"),
-            Self::I32GeS => write!(f, "i32.ge_s"),
-            Self::I32GeU => write!(f, "i32.ge_u"),
+            Instruction::I32Const(immediate_number) => write!(f, "i32.const {}", immediate_number),
+            Instruction::I64Const(immediate_number) => write!(f, "i64.const {}", immediate_number),
+            Instruction::F32Const(immediate_number) => write!(f, "f32.const {}", immediate_number),
+            Instruction::F64Const(immediate_number) => write!(f, "f64.const {}", immediate_number),
 
-            Self::I64Eqz => write!(f, "i64.eqz"),
-            Self::I64Eq => write!(f, "i64.eq"),
-            Self::I64Ne => write!(f, "i64.ne"),
-            Self::I64LtS => write!(f, "i64.lt_s"),
-            Self::I64LtU => write!(f, "i64.lt_u"),
-            Self::I64GtS => write!(f, "i64.gt_s"),
-            Self::I64GtU => write!(f, "i64.gt_u"),
-            Self::I64LeS => write!(f, "i64.le_s"),
-            Self::I64LeU => write!(f, "i64.le_u"),
-            Self::I64GeS => write!(f, "i64.ge_s"),
-            Self::I64GeU => write!(f, "i64.ge_u"),
+            Instruction::I32Eqz => write!(f, "i32.eqz"),
+            Instruction::I32Eq => write!(f, "i32.eq"),
+            Instruction::I32Ne => write!(f, "i32.ne"),
+            Instruction::I32LtS => write!(f, "i32.lt_s"),
+            Instruction::I32LtU => write!(f, "i32.lt_u"),
+            Instruction::I32GtS => write!(f, "i32.gt_s"),
+            Instruction::I32GtU => write!(f, "i32.gt_u"),
+            Instruction::I32LeS => write!(f, "i32.le_s"),
+            Instruction::I32LeU => write!(f, "i32.le_u"),
+            Instruction::I32GeS => write!(f, "i32.ge_s"),
+            Instruction::I32GeU => write!(f, "i32.ge_u"),
 
-            Self::F32Eq => write!(f, "f32.eq"),
-            Self::F32Ne => write!(f, "f32.ne"),
-            Self::F32Lt => write!(f, "f32.lt"),
-            Self::F32Gt => write!(f, "f32.gt"),
-            Self::F32Le => write!(f, "f32.le"),
-            Self::F32Ge => write!(f, "f32.ge"),
+            Instruction::I64Eqz => write!(f, "i64.eqz"),
+            Instruction::I64Eq => write!(f, "i64.eq"),
+            Instruction::I64Ne => write!(f, "i64.ne"),
+            Instruction::I64LtS => write!(f, "i64.lt_s"),
+            Instruction::I64LtU => write!(f, "i64.lt_u"),
+            Instruction::I64GtS => write!(f, "i64.gt_s"),
+            Instruction::I64GtU => write!(f, "i64.gt_u"),
+            Instruction::I64LeS => write!(f, "i64.le_s"),
+            Instruction::I64LeU => write!(f, "i64.le_u"),
+            Instruction::I64GeS => write!(f, "i64.ge_s"),
+            Instruction::I64GeU => write!(f, "i64.ge_u"),
 
-            Self::F64Eq => write!(f, "f64.eq"),
-            Self::F64Ne => write!(f, "f64.ne"),
-            Self::F64Lt => write!(f, "f64.lt"),
-            Self::F64Gt => write!(f, "f64.gt"),
-            Self::F64Le => write!(f, "f64.le"),
-            Self::F64Ge => write!(f, "f64.ge"),
+            Instruction::F32Eq => write!(f, "f32.eq"),
+            Instruction::F32Ne => write!(f, "f32.ne"),
+            Instruction::F32Lt => write!(f, "f32.lt"),
+            Instruction::F32Gt => write!(f, "f32.gt"),
+            Instruction::F32Le => write!(f, "f32.le"),
+            Instruction::F32Ge => write!(f, "f32.ge"),
 
-            Self::I32Clz => write!(f, "i32.clz"),
-            Self::I32Ctz => write!(f, "i32.ctz"),
-            Self::I32PopCnt => write!(f, "i32.popcnt"),
+            Instruction::F64Eq => write!(f, "f64.eq"),
+            Instruction::F64Ne => write!(f, "f64.ne"),
+            Instruction::F64Lt => write!(f, "f64.lt"),
+            Instruction::F64Gt => write!(f, "f64.gt"),
+            Instruction::F64Le => write!(f, "f64.le"),
+            Instruction::F64Ge => write!(f, "f64.ge"),
 
-            Self::I32Add => write!(f, "i32.add"),
-            Self::I32Sub => write!(f, "i32.sub"),
-            Self::I32Mul => write!(f, "i32.mul"),
-            Self::I32DivS => write!(f, "i32.div_s"),
-            Self::I32DivU => write!(f, "i32.div_u"),
-            Self::I32RemS => write!(f, "i32.rem_s"),
-            Self::I32RemU => write!(f, "i32.rem_u"),
-            Self::I32And => write!(f, "i32.and"),
-            Self::I32Or => write!(f, "i32.or"),
-            Self::I32Xor => write!(f, "i32.xor"),
-            Self::I32Shl => write!(f, "i32.shl"),
-            Self::I32ShrS => write!(f, "i32.shr_s"),
-            Self::I32ShrU => write!(f, "i32.shr_u"),
-            Self::I32Rotl => write!(f, "i32.rotl"),
-            Self::I32Rotr => write!(f, "i32.rotr"),
+            Instruction::I32Clz => write!(f, "i32.clz"),
+            Instruction::I32Ctz => write!(f, "i32.ctz"),
+            Instruction::I32PopCnt => write!(f, "i32.popcnt"),
 
-            Self::I64Clz => write!(f, "i64.clz"),
-            Self::I64Ctz => write!(f, "i64.ctz"),
-            Self::I64PopCnt => write!(f, "i64.popcnt"),
+            Instruction::I32Add => write!(f, "i32.add"),
+            Instruction::I32Sub => write!(f, "i32.sub"),
+            Instruction::I32Mul => write!(f, "i32.mul"),
+            Instruction::I32DivS => write!(f, "i32.div_s"),
+            Instruction::I32DivU => write!(f, "i32.div_u"),
+            Instruction::I32RemS => write!(f, "i32.rem_s"),
+            Instruction::I32RemU => write!(f, "i32.rem_u"),
+            Instruction::I32And => write!(f, "i32.and"),
+            Instruction::I32Or => write!(f, "i32.or"),
+            Instruction::I32Xor => write!(f, "i32.xor"),
+            Instruction::I32Shl => write!(f, "i32.shl"),
+            Instruction::I32ShrS => write!(f, "i32.shr_s"),
+            Instruction::I32ShrU => write!(f, "i32.shr_u"),
+            Instruction::I32Rotl => write!(f, "i32.rotl"),
+            Instruction::I32Rotr => write!(f, "i32.rotr"),
 
-            Self::I64Add => write!(f, "i64.add"),
-            Self::I64Sub => write!(f, "i64.sub"),
-            Self::I64Mul => write!(f, "i64.mul"),
-            Self::I64DivS => write!(f, "i64.div_s"),
-            Self::I64DivU => write!(f, "i64.div_u"),
-            Self::I64RemS => write!(f, "i64.rem_s"),
-            Self::I64RemU => write!(f, "i64.rem_u"),
-            Self::I64And => write!(f, "i64.and"),
-            Self::I64Or => write!(f, "i64.or"),
-            Self::I64Xor => write!(f, "i64.xor"),
-            Self::I64Shl => write!(f, "i64.shl"),
-            Self::I64ShrS => write!(f, "i64.shr_s"),
-            Self::I64ShrU => write!(f, "i64.shr_u"),
-            Self::I64Rotl => write!(f, "i64.rotl"),
-            Self::I64Rotr => write!(f, "i64.rotr"),
+            Instruction::I64Clz => write!(f, "i64.clz"),
+            Instruction::I64Ctz => write!(f, "i64.ctz"),
+            Instruction::I64PopCnt => write!(f, "i64.popcnt"),
 
-            Self::F32Abs => write!(f, "f32.abs"),
-            Self::F32Neg => write!(f, "f32.neg"),
-            Self::F32Ceil => write!(f, "f32.ceil"),
-            Self::F32Floor => write!(f, "f32.floor"),
-            Self::F32Trunc => write!(f, "f32.trunc"),
-            Self::F32Nearest => write!(f, "f32.nearest"),
-            Self::F32Sqrt => write!(f, "f32.sqrt"),
-            Self::F32Add => write!(f, "f32.add"),
-            Self::F32Sub => write!(f, "f32.sub"),
-            Self::F32Mul => write!(f, "f32.mul"),
-            Self::F32Div => write!(f, "f32.div"),
-            Self::F32Min => write!(f, "f32.min"),
-            Self::F32Max => write!(f, "f32.max"),
-            Self::F32CopySign => write!(f, "f32.copysign"),
+            Instruction::I64Add => write!(f, "i64.add"),
+            Instruction::I64Sub => write!(f, "i64.sub"),
+            Instruction::I64Mul => write!(f, "i64.mul"),
+            Instruction::I64DivS => write!(f, "i64.div_s"),
+            Instruction::I64DivU => write!(f, "i64.div_u"),
+            Instruction::I64RemS => write!(f, "i64.rem_s"),
+            Instruction::I64RemU => write!(f, "i64.rem_u"),
+            Instruction::I64And => write!(f, "i64.and"),
+            Instruction::I64Or => write!(f, "i64.or"),
+            Instruction::I64Xor => write!(f, "i64.xor"),
+            Instruction::I64Shl => write!(f, "i64.shl"),
+            Instruction::I64ShrS => write!(f, "i64.shr_s"),
+            Instruction::I64ShrU => write!(f, "i64.shr_u"),
+            Instruction::I64Rotl => write!(f, "i64.rotl"),
+            Instruction::I64Rotr => write!(f, "i64.rotr"),
 
-            Self::F64Abs => write!(f, "f64.abs"),
-            Self::F64Neg => write!(f, "f64.neg"),
-            Self::F64Ceil => write!(f, "f64.ceil"),
-            Self::F64Floor => write!(f, "f64.floor"),
-            Self::F64Trunc => write!(f, "f64.trunc"),
-            Self::F64Nearest => write!(f, "f64.nearest"),
-            Self::F64Sqrt => write!(f, "f64.sqrt"),
-            Self::F64Add => write!(f, "f64.add"),
-            Self::F64Sub => write!(f, "f64.sub"),
-            Self::F64Mul => write!(f, "f64.mul"),
-            Self::F64Div => write!(f, "f64.div"),
-            Self::F64Min => write!(f, "f64.min"),
-            Self::F64Max => write!(f, "f64.max"),
-            Self::F64CopySign => write!(f, "f64.copysign"),
+            Instruction::F32Abs => write!(f, "f32.abs"),
+            Instruction::F32Neg => write!(f, "f32.neg"),
+            Instruction::F32Ceil => write!(f, "f32.ceil"),
+            Instruction::F32Floor => write!(f, "f32.floor"),
+            Instruction::F32Trunc => write!(f, "f32.trunc"),
+            Instruction::F32Nearest => write!(f, "f32.nearest"),
+            Instruction::F32Sqrt => write!(f, "f32.sqrt"),
+            Instruction::F32Add => write!(f, "f32.add"),
+            Instruction::F32Sub => write!(f, "f32.sub"),
+            Instruction::F32Mul => write!(f, "f32.mul"),
+            Instruction::F32Div => write!(f, "f32.div"),
+            Instruction::F32Min => write!(f, "f32.min"),
+            Instruction::F32Max => write!(f, "f32.max"),
+            Instruction::F32CopySign => write!(f, "f32.copysign"),
 
-            Self::I32WrapI64 => write!(f, "i32.wrap_i64"),
-            Self::I32TruncF32S => write!(f, "i32.trunc_f32_s"),
-            Self::I32TruncF32U => write!(f, "i32.trunc_f32_u"),
-            Self::I32TruncF64S => write!(f, "i32.trunc_f64_s"),
-            Self::I32TruncF64U => write!(f, "i32.trunc_f64_u"),
-            Self::I64ExtendI32S => write!(f, "i64.extend_i32_s"),
-            Self::I64ExtendI32U => write!(f, "i64.extend_i32_u"),
-            Self::I64TruncF32S => write!(f, "i64.trunc_f32_s"),
-            Self::I64TruncF32U => write!(f, "i64.trunc_f32_u"),
-            Self::I64TruncF64S => write!(f, "i64.trunc_f64_s"),
-            Self::I64TruncF64U => write!(f, "i64.trunc_f64_u"),
-            Self::F32ConvertI32S => write!(f, "f32.convert_i32_s"),
-            Self::F32ConvertI32U => write!(f, "f32.convert_i32_u"),
-            Self::F32ConvertI64S => write!(f, "f32.convert_i64_s"),
-            Self::F32ConvertI64U => write!(f, "f32.convert_i64_u"),
-            Self::F32DemoteF64 => write!(f, "f32.demote_f64"),
-            Self::F64ConvertI32S => write!(f, "f64.convert_i32_s"),
-            Self::F64ConvertI32U => write!(f, "f64.convert_i32_u"),
-            Self::F64ConvertI64S => write!(f, "f64.convert_i64_s"),
-            Self::F64ConvertI64U => write!(f, "f64.convert_i64_u"),
-            Self::F64PromoteF32 => write!(f, "f64.promote_f32"),
-            Self::I32ReinterpretF32 => write!(f, "i32.reinterpret_f32"),
-            Self::I64ReinterpretF64 => write!(f, "i64.reinterpret_f64"),
-            Self::F32ReinterpretI32 => write!(f, "f32.reinterpret_i32"),
-            Self::F64ReinterpretI64 => write!(f, "f64.reinterpret_i64"),
+            Instruction::F64Abs => write!(f, "f64.abs"),
+            Instruction::F64Neg => write!(f, "f64.neg"),
+            Instruction::F64Ceil => write!(f, "f64.ceil"),
+            Instruction::F64Floor => write!(f, "f64.floor"),
+            Instruction::F64Trunc => write!(f, "f64.trunc"),
+            Instruction::F64Nearest => write!(f, "f64.nearest"),
+            Instruction::F64Sqrt => write!(f, "f64.sqrt"),
+            Instruction::F64Add => write!(f, "f64.add"),
+            Instruction::F64Sub => write!(f, "f64.sub"),
+            Instruction::F64Mul => write!(f, "f64.mul"),
+            Instruction::F64Div => write!(f, "f64.div"),
+            Instruction::F64Min => write!(f, "f64.min"),
+            Instruction::F64Max => write!(f, "f64.max"),
+            Instruction::F64CopySign => write!(f, "f64.copysign"),
 
-            Self::I32Extend8S => write!(f, "i32.extend8_s"),
-            Self::I32Extend16S => write!(f, "i32.extend16_s"),
-            Self::I64Extend8S => write!(f, "i64.extend8_s"),
-            Self::I64Extend16S => write!(f, "i64.extend16_s"),
-            Self::I64Extend32S => write!(f, "i64.extend32_s"),
+            Instruction::I32WrapI64 => write!(f, "i32.wrap_i64"),
+            Instruction::I32TruncF32S => write!(f, "i32.trunc_f32_s"),
+            Instruction::I32TruncF32U => write!(f, "i32.trunc_f32_u"),
+            Instruction::I32TruncF64S => write!(f, "i32.trunc_f64_s"),
+            Instruction::I32TruncF64U => write!(f, "i32.trunc_f64_u"),
+            Instruction::I64ExtendI32S => write!(f, "i64.extend_i32_s"),
+            Instruction::I64ExtendI32U => write!(f, "i64.extend_i32_u"),
+            Instruction::I64TruncF32S => write!(f, "i64.trunc_f32_s"),
+            Instruction::I64TruncF32U => write!(f, "i64.trunc_f32_u"),
+            Instruction::I64TruncF64S => write!(f, "i64.trunc_f64_s"),
+            Instruction::I64TruncF64U => write!(f, "i64.trunc_f64_u"),
+            Instruction::F32ConvertI32S => write!(f, "f32.convert_i32_s"),
+            Instruction::F32ConvertI32U => write!(f, "f32.convert_i32_u"),
+            Instruction::F32ConvertI64S => write!(f, "f32.convert_i64_s"),
+            Instruction::F32ConvertI64U => write!(f, "f32.convert_i64_u"),
+            Instruction::F32DemoteF64 => write!(f, "f32.demote_f64"),
+            Instruction::F64ConvertI32S => write!(f, "f64.convert_i32_s"),
+            Instruction::F64ConvertI32U => write!(f, "f64.convert_i32_u"),
+            Instruction::F64ConvertI64S => write!(f, "f64.convert_i64_s"),
+            Instruction::F64ConvertI64U => write!(f, "f64.convert_i64_u"),
+            Instruction::F64PromoteF32 => write!(f, "f64.promote_f32"),
+            Instruction::I32ReinterpretF32 => write!(f, "i32.reinterpret_f32"),
+            Instruction::I64ReinterpretF64 => write!(f, "i64.reinterpret_f64"),
+            Instruction::F32ReinterpretI32 => write!(f, "f32.reinterpret_i32"),
+            Instruction::F64ReinterpretI64 => write!(f, "f64.reinterpret_i64"),
 
-            Self::I32TruncSatF32S => write!(f, "i32.trunc_sat_f32_s"),
-            Self::I32TruncSatF32U => write!(f, "i32.trunc_sat_f32_u"),
-            Self::I32TruncSatF64S => write!(f, "i32.trunc_sat_f64_s"),
-            Self::I32TruncSatF64U => write!(f, "i32.trunc_sat_f64_u"),
-            Self::I64TruncSatF32S => write!(f, "i64.trunc_sat_f32_s"),
-            Self::I64TruncSatF32U => write!(f, "i64.trunc_sat_f32_u"),
-            Self::I64TruncSatF64S => write!(f, "i64.trunc_sat_64_s"),
-            Self::I64TruncSatF64U => write!(f, "i64.trunc_sat_64_u"),
+            Instruction::I32Extend8S => write!(f, "i32.extend8_s"),
+            Instruction::I32Extend16S => write!(f, "i32.extend16_s"),
+            Instruction::I64Extend8S => write!(f, "i64.extend8_s"),
+            Instruction::I64Extend16S => write!(f, "i64.extend16_s"),
+            Instruction::I64Extend32S => write!(f, "i64.extend32_s"),
+
+            Instruction::I32TruncSatF32S => write!(f, "i32.trunc_sat_f32_s"),
+            Instruction::I32TruncSatF32U => write!(f, "i32.trunc_sat_f32_u"),
+            Instruction::I32TruncSatF64S => write!(f, "i32.trunc_sat_f64_s"),
+            Instruction::I32TruncSatF64U => write!(f, "i32.trunc_sat_f64_u"),
+            Instruction::I64TruncSatF32S => write!(f, "i64.trunc_sat_f32_s"),
+            Instruction::I64TruncSatF32U => write!(f, "i64.trunc_sat_f32_u"),
+            Instruction::I64TruncSatF64S => write!(f, "i64.trunc_sat_64_s"),
+            Instruction::I64TruncSatF64U => write!(f, "i64.trunc_sat_64_u"),
         }
     }
 }

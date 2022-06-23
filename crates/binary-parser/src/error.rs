@@ -40,6 +40,9 @@ pub enum ParseError {
     ///
     /// 解析一个函数或者常量表达式时，找不到 end 指令。
     UnexpectedEnd,
+
+    /// 验证失败
+    Invalid,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -55,7 +58,7 @@ pub enum Unsupported {
     UnsupportMultipleMemoryBlock,
 
     UnsupportedInstructionOpcode(/* opcode */ u8),
-    UnsupportedInstructionExtensionCode(/* opcode */ u8, /* extension_code */ u8),
+    UnsupportedInstructionExtensionCode(/* opcode */ u8, /* extension_code */ u32),
 
     UnsupportedExportTag(/* tag */ u8),
 }
@@ -175,6 +178,7 @@ impl Display for ParseError {
             }
             ParseError::DecodingError => write!(f, "{}", "decoding error"),
             ParseError::UnexpectedEnd => write!(f, "{}", "unexpected end"),
+            ParseError::Invalid => write!(f, "{}", "verification failure"),
         }
     }
 }

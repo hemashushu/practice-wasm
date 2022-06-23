@@ -18,9 +18,8 @@ use anvm_ast::{
 };
 
 use crate::{
-    types,
     error::{ParseError, SyntaxError, Unsupported},
-    leb128decoder,
+    leb128decoder, types,
 };
 
 pub fn parse(source: &[u8]) -> Result<Module, ParseError> {
@@ -79,6 +78,7 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
         data_items: vec![],
     };
 
+    let mut option_module_data_count: Option<u32> = None;
     let mut remains = source;
 
     // 一个模块里的段的数量是未知的，所以需要不断地消耗（consume）段数据，直到
@@ -134,6 +134,17 @@ fn parse_sections(source: &[u8]) -> Result<Module, ParseError> {
             }
             types::SECTION_DATA_ID => {
                 module.data_items = parse_data_section(section_data)?;
+
+                // 验证 data_items 的条目数量
+                if let Some(module_data_count) = option_module_data_count {
+                    if module.data_items.len() != module_data_count as usize {
+                        return Err(ParseError::Invalid);
+                    }
+                }
+            }
+            types::SECTION_DATA_COUNT_ID => {
+                let data_count = parse_data_count_section(section_data)?;
+                option_module_data_count = Some(data_count);
             }
             _ => {
                 return Err(ParseError::SyntaxError(SyntaxError::InvalidSectionId(
@@ -751,7 +762,6 @@ fn continue_parse_expression(source: &[u8]) -> Result<(Vec<Instruction>, &[u8]),
 /// 结构块，作为初始值应该传入 0，然后在当前函数的返回值的第三个值获得下一个结构块的开始索引。
 fn continue_parse_instruction_item(
     source: &[u8],
-    // location_start: usize,
     block_index: u32,
 ) -> Result<(Instruction, &[u8], u32), ParseError> {
     let mut remains = source;
@@ -829,31 +839,31 @@ fn continue_parse_instruction_item(
 
         // 变量指令
         opcode::LOCAL_GET => {
-            // local.get = opcode_local.get + local_index:u32
+            // local.get = opcode_local_get + local_index:u32
             let (local_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::LocalGet(local_index)
         }
         opcode::LOCAL_SET => {
-            // local.set = opcode_local.set + local_index:u32
+            // local.set = opcode_local_set + local_index:u32
             let (local_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::LocalSet(local_index)
         }
         opcode::LOCAL_TEE => {
-            // local.tee = opcode_local.tee + local_index:u32
+            // local.tee = opcode_local_tee + local_index:u32
             let (local_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::LocalTee(local_index)
         }
         opcode::GLOBAL_GET => {
-            // global.get = opcode_global.get + global_index:u32
+            // global.get = opcode_global_get + global_index:u32
             let (global_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::GlobalGet(global_index)
         }
         opcode::GLOBAL_SET => {
-            // global.set = opcode_global.set + global_index:u32
+            // global.set = opcode_global_set + global_index:u32
             let (global_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::GlobalSet(global_index)
@@ -861,7 +871,7 @@ fn continue_parse_instruction_item(
 
         // 内存指令
         opcode::I32_LOAD => {
-            // i32.load = opcode_i32.load + memory_argument
+            // i32.load = opcode_i32_load + memory_argument
             let (memory_argument, post_memory_argument) =
                 continue_parse_memory_load_and_store_argument(remains)?;
             remains = post_memory_argument;
@@ -1000,39 +1010,51 @@ fn continue_parse_instruction_item(
             Instruction::I64Store32(memory_argument)
         }
         opcode::MEMORY_SIZE => {
-            // memory.size = opcode_memory.size + memory_block_index:u32
+            // memory.size = opcode_memory_size + memory_block_index:u32
             let (memory_block_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::MemorySize(memory_block_index)
         }
         opcode::MEMORY_GROW => {
-            // memory.grow = opcode_memory.grow + memory_block_index:u32
+            // memory.grow = opcode_memory_grow + memory_block_index:u32
             let (memory_block_index, post_index) = read_u32(remains)?;
             remains = post_index;
             Instruction::MemoryGrow(memory_block_index)
         }
 
+        // 表指令
+        opcode::TABLE_GET => {
+            let (table_index, post_index) = read_u32(remains)?;
+            remains = post_index;
+            Instruction::TableGet(table_index)
+        }
+        opcode::TABLE_SET => {
+            let (table_index, post_index) = read_u32(remains)?;
+            remains = post_index;
+            Instruction::TableSet(table_index)
+        }
+
         // 常量指令
         opcode::I32_CONST => {
-            // i32.const = opcode_i32.const + number:(signed)i32
+            // i32.const = opcode_i32_const + number:(signed)i32
             let (number, post_number) = read_i32(remains)?;
             remains = post_number;
             Instruction::I32Const(number)
         }
         opcode::I64_CONST => {
-            // i64.const = opcode_i64.const + number:(signed)i64
+            // i64.const = opcode_i64_const + number:(signed)i64
             let (number, post_number) = read_i64(remains)?;
             remains = post_number;
             Instruction::I64Const(number)
         }
         opcode::F32_CONST => {
-            // f32.const = opcode_f32.const + number:(signed)f32
+            // f32.const = opcode_f32_const + number:(signed)f32
             let (number, post_number) = read_f32(remains)?;
             remains = post_number;
             Instruction::F32Const(number)
         }
         opcode::F64_CONST => {
-            // f64.const = opcode_f64.const + number:(signed)f64
+            // f64.const = opcode_f64_const + number:(signed)f64
             let (number, post_number) = read_f64(remains)?;
             remains = post_number;
             Instruction::F64Const(number)
@@ -1167,11 +1189,15 @@ fn continue_parse_instruction_item(
         opcode::I64_EXTEND8_S => Instruction::I64Extend8S,
         opcode::I64_EXTEND16_S => Instruction::I64Extend16S,
         opcode::I64_EXTEND32_S => Instruction::I64Extend32S,
-        opcode::EXTENSION => {
-            let (sub_opcode, post_sub_opcode) = read_byte(remains)?;
-            remains = post_sub_opcode;
-
-            continue_parse_extension_instructions(opcode::EXTENSION, sub_opcode)?
+        opcode::EXTENSION_0XFC => {
+            let (sub_opcode, post_sub_opcode) = read_u32(remains)?;
+            let (extension_instruction, post_extension) = continue_parse_extension_instructions(
+                opcode::EXTENSION_0XFC,
+                sub_opcode,
+                post_sub_opcode,
+            )?;
+            remains = post_extension;
+            extension_instruction
         }
         _ => {
             return Err(ParseError::Unsupported(
@@ -1193,22 +1219,88 @@ fn continue_parse_instruction_item(
 
 fn continue_parse_extension_instructions(
     opcode: u8,
-    extension_code: u8,
-) -> Result<Instruction, ParseError> {
-    match extension_code {
-        // trunc_sat = opcode_trunc_sat:byte + opcode_trunc_sat_sub_opcode:byte
-        opcode::I32_TRUNC_SAT_F32_S => Ok(Instruction::I32TruncSatF32S),
-        opcode::I32_TRUNC_SAT_F32_U => Ok(Instruction::I32TruncSatF32U),
-        opcode::I32_TRUNC_SAT_F64_S => Ok(Instruction::I32TruncSatF64S),
-        opcode::I32_TRUNC_SAT_F64_U => Ok(Instruction::I32TruncSatF64U),
-        opcode::I64_TRUNC_SAT_F32_S => Ok(Instruction::I64TruncSatF32S),
-        opcode::I64_TRUNC_SAT_F32_U => Ok(Instruction::I64TruncSatF32U),
-        opcode::I64_TRUNC_SAT_F64_S => Ok(Instruction::I64TruncSatF64S),
-        opcode::I64_TRUNC_SAT_F64_U => Ok(Instruction::I64TruncSatF64U),
-        _ => Err(ParseError::Unsupported(
-            Unsupported::UnsupportedInstructionExtensionCode(opcode, extension_code),
-        )),
-    }
+    extension_code: u32,
+    source: &[u8],
+) -> Result<(Instruction, &[u8]), ParseError> {
+    let mut remains = source;
+
+    let instruction = match extension_code {
+        // 数值类指令扩展指令
+        opcode::I32_TRUNC_SAT_F32_S => Instruction::I32TruncSatF32S,
+        opcode::I32_TRUNC_SAT_F32_U => Instruction::I32TruncSatF32U,
+        opcode::I32_TRUNC_SAT_F64_S => Instruction::I32TruncSatF64S,
+        opcode::I32_TRUNC_SAT_F64_U => Instruction::I32TruncSatF64U,
+        opcode::I64_TRUNC_SAT_F32_S => Instruction::I64TruncSatF32S,
+        opcode::I64_TRUNC_SAT_F32_U => Instruction::I64TruncSatF32U,
+        opcode::I64_TRUNC_SAT_F64_S => Instruction::I64TruncSatF64S,
+        opcode::I64_TRUNC_SAT_F64_U => Instruction::I64TruncSatF64U,
+
+        // 内存类指令扩展指令
+        opcode::MEMORY_INIT => {
+            let (data_index, post_data_index) = read_u32(remains)?;
+            let (memory_block_index, post_memory_block_index) = read_u32(post_data_index)?;
+            remains = post_memory_block_index;
+            Instruction::MemoryInit(data_index, memory_block_index)
+        }
+        opcode::DATA_DROP => {
+            let (data_index, post_data_index) = read_u32(remains)?;
+            remains = post_data_index;
+            Instruction::DataDrop(data_index)
+        }
+        opcode::MEMORY_COPY => {
+            let (source_memory_block_index, post_source_memory_block_index) = read_u32(remains)?;
+            let (dest_memory_block_index, post_dest_memory_block_index) = read_u32(post_source_memory_block_index)?;
+            remains = post_dest_memory_block_index;
+            Instruction::MemoryCopy(source_memory_block_index, dest_memory_block_index)
+        }
+        opcode::MEMORY_FILL => {
+            let (memory_block_index, post_memory_block_index) = read_u32(remains)?;
+            remains = post_memory_block_index;
+            Instruction::MemoryFill(memory_block_index)
+        }
+
+        // 表类指令扩展指令
+        opcode::TABLE_INIT => {
+            let (element_index, post_element_index) = read_u32(remains)?;
+            let (table_index, post_table_index) = read_u32(post_element_index)?;
+            remains = post_table_index;
+            Instruction::TableInit(element_index, table_index)
+        }
+        opcode::ELEMENT_DROP => {
+            let (element_index, post_element_index) = read_u32(remains)?;
+            remains = post_element_index;
+            Instruction::ElementDrop(element_index)
+        }
+        opcode::TABLE_COPY => {
+            let (source_table_index, post_source_table_index) = read_u32(remains)?;
+            let (dest_table_index, post_dest_table_index) = read_u32(post_source_table_index)?;
+            remains = post_dest_table_index;
+            Instruction::TableCopy(source_table_index, dest_table_index)
+        }
+        opcode::TABLE_GROW => {
+            let (table_index, post_table_index) = read_u32(remains)?;
+            remains = post_table_index;
+            Instruction::TableGrow(table_index)
+        }
+        opcode::TABLE_SIZE => {
+            let (table_index, post_table_index) = read_u32(remains)?;
+            remains = post_table_index;
+            Instruction::TableSize(table_index)
+        }
+        opcode::TABLE_FILL => {
+            let (table_index, post_table_index) = read_u32(remains)?;
+            remains = post_table_index;
+            Instruction::TableFill(table_index)
+        }
+
+        _ => {
+            return Err(ParseError::Unsupported(
+                Unsupported::UnsupportedInstructionExtensionCode(opcode, extension_code),
+            ));
+        }
+    };
+
+    Ok((instruction, remains))
 }
 
 /// 将流程控制结构块的返回类型转换为函数返回类型
@@ -1353,7 +1445,7 @@ fn parse_element_section(source: &[u8]) -> Result<Vec<ElementItem>, ParseError> 
 /// element_item = table_index:u32 + offset_expression + <function_index>
 /// offset_expression = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn continue_parse_element_item(source: &[u8]) -> Result<(ElementItem, &[u8]), ParseError> {
-    let (table_index, post_index) = read_u32(source)?; // table index 总是为 0
+    let (table_index, post_index) = read_u32(source)?;
     let (offset_instruction_items, post_instruction_items) = continue_parse_expression(post_index)?;
     let (function_indices, post_indices) = read_u32_vec(post_instruction_items)?;
 
@@ -1489,7 +1581,7 @@ fn parse_data_section(source: &[u8]) -> Result<Vec<DataItem>, ParseError> {
 /// data_item = memory_block_index:u32 + offset_expression + data:byte{*}
 /// offset_expression = = byte{*} + 0x0B  // 表达式（指令列表）以 0x0B 结尾
 fn continue_parse_data_item(source: &[u8]) -> Result<(DataItem, &[u8]), ParseError> {
-    let (memory_block_index, post_index) = read_u32(source)?; // memory index 总是为 0
+    let (memory_block_index, post_index) = read_u32(source)?;
     let (offset_instruction_items, post_instruction_items) = continue_parse_expression(post_index)?;
     let (data, post_data) = read_byte_vec(post_instruction_items)?;
 
@@ -1500,6 +1592,18 @@ fn continue_parse_data_item(source: &[u8]) -> Result<(DataItem, &[u8]), ParseErr
     };
 
     Ok((data_item, post_data))
+}
+
+/// # 解析数据条目段
+///
+/// start_section: 0x0c + content_length:u32 + data_count:u32
+fn parse_data_count_section(source: &[u8]) -> Result<u32, ParseError> {
+    let (data_count, post_data_count) = read_u32(source)?;
+    if post_data_count.len() != 0 {
+        Err(ParseError::UnexpectedData("data_count".to_string(), None))
+    } else {
+        Ok(data_count as u32)
+    }
 }
 
 // 辅助函数

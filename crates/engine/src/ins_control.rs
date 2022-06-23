@@ -54,7 +54,7 @@ pub enum ControlResult {
     },
 
     /// 结构块内跳转
-    JumpWithinBlock { address: usize },
+    JumpWithinBlock(/* address */ usize),
 
     /// 程序已结束
     ProgramEnd,

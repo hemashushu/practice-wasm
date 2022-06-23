@@ -215,7 +215,7 @@ pub fn decode(
                         } else {
                             unreachable!("should be \"if\" structure")
                         };
-                        Instruction::Control(Control::Jump(function_start_address + end_address))
+                        Instruction::Control(Control::JumpWithinBlock(function_start_address + end_address))
                     }
                     instruction::Instruction::Br(relative_depth) => {
                         let result = get_branch_target(
@@ -1085,7 +1085,7 @@ mod tests {
                 address: 85,
             }), // #58
             Instruction::Control(Control::End(Some(5))),                  // #59 - block 5 end
-            Instruction::Control(Control::Jump(73)),                      // #60 - else
+            Instruction::Control(Control::JumpWithinBlock(73)),                      // #60 - else
             Instruction::Control(Control::Break {
                 option_block_index: Some(4),
                 relative_depth: 0,
