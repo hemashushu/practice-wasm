@@ -9,3 +9,4 @@ anvm-engine = { path = "../engine" }
 
 [dev-dependencies]
 anvm-binary-parser = { path = "../binary-parser" }
+pretty_assertions = "1.2.1"

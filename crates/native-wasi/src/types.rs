@@ -6,38 +6,45 @@
 
 //! # 数据类型
 //!
-//! ## 基本类型
+//! WASI 的 API 规范在设计上跟 POSIX 较为接近，包括结构体的名称、标记（flag）及
+//! 常量的名称等，但标记和常量的值跟 POSIX 不同，WASI 已重新编排了这些数据的值，
+//! 比如 Errno 的值根据 API 规范文档所列出的顺序，从 0 开始编排。
 //!
 //! https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#types
-//!
-//! - size: u32
-//! - filesize: u64
-//!   Non-negative file size or length of a region within a file.
-//! - timestamp: u64
-//!   Timestamp in nanoseconds.
-//! - clockid: Enum/u32
-//!   Identifiers for clocks.
-//! - errno: Enum(u16)
-//!   Error codes returned by functions. Not all of these error codes
-//!   are returned by the functions provided by this API;
-//!   some are used in higher-level library layers, and others are provided
-//!   merely for alignment with POSIX.
-//! - rights: Flags(u64)
-//!   File descriptor rights, determining which actions may be performed.
-//! - fd: u32
-//!   A file descriptor handle.
-//!
-//! ## 复合类型
-//!
-//! 详细见：
 //! https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#supertypes
+//!
+//! 简单来说，这些数据的值跟我们熟悉的 "/usr/include/error.h" 和 "/usr/include/fcntl.h" 并没有关系，
+//! 仅部分名称相同而已。
+//! 甚至有些常量是 WASI 独有（新增）的，比如 Errno::NotCapable，这个常量是 "error.h" 不具有的。
+//!
+//! C/C++/Rust 等编译器通过使用 WASI 的 [wasi-libc](https://github.com/WebAssembly/wasi-libc)
+//! 实现这些数值的重定义，所以需注意，如果有（c/c++）程序使用了硬编码的数值，
+//! 则编译后的程序大概率无法正确运行。
 
-use crate::error::{Errno, WASIError};
+use std::io::Write;
 
-/// 当前版本的模块名称
+/// 当前版本的 WASI 模块的名称
 ///
 /// 正式版的名称将会是 `wasi`
 pub const MODULE_NAME: &str = "wasi_snapshot_preview1";
+
+pub trait Serialize {
+    fn get_serialize_size(&self) -> usize;
+
+    fn serialize(&self) -> Vec<u8> {
+        let size = self.get_serialize_size();
+        let mut buffer = Vec::<u8>::with_capacity(size);
+        self.write(&mut buffer);
+        buffer
+    }
+
+    fn write(&self, writer: &mut dyn Write);
+}
+
+pub trait Deserialize {
+    fn get_deserialize_size() -> usize;
+    fn deserialize(data: &[u8]) -> Self;
+}
 
 /// clockid: Enum(u32)
 /// Identifiers for clocks.
@@ -97,6 +104,7 @@ pub mod rights {
     pub const SOCK_ACCEPT: u64 = 1 << 29; // The right to invoke sock_accept.
 }
 
+#[derive(Debug, PartialEq, Clone)]
 /// filetype: Enum(u8)
 /// The type of a file descriptor or file.
 /// Size: 1
@@ -114,7 +122,7 @@ pub enum Filetype {
 }
 
 impl From<Filetype> for u8 {
-    fn from(file_type: Filetype) -> u8 {
+    fn from(file_type: Filetype) -> Self {
         match file_type {
             Filetype::Unknown => 0,
             Filetype::BlockDevice => 1,
@@ -125,6 +133,18 @@ impl From<Filetype> for u8 {
             Filetype::SocketStream => 6,
             Filetype::SymbolicLink => 7,
         }
+    }
+}
+
+impl Serialize for Filetype {
+    fn get_serialize_size(&self) -> usize {
+        1
+    }
+
+    fn write(&self, writer: &mut dyn Write) {
+        let value = u8::from(self.to_owned());
+        let data = u8::to_le_bytes(value);
+        writer.write(&data).unwrap();
     }
 }
 
@@ -147,6 +167,25 @@ pub struct FdStat {
     pub fs_flags: u16,
     pub fs_rights_base: u64,
     pub fs_rights_inheriting: u64,
+}
+
+impl Serialize for FdStat {
+    fn get_serialize_size(&self) -> usize {
+        24
+    }
+
+    fn write(&self, writer: &mut dyn Write) {
+        self.fs_filetype.write(writer); // 1 byte
+        writer.write(&[0, 1]).unwrap(); // 1 byte (padding)
+        writer.write(&u16::to_le_bytes(self.fs_flags)).unwrap(); // 2 bytes
+        writer.write(&[0, 4]).unwrap(); // 4 bytes (padding)
+        writer
+            .write(&u64::to_le_bytes(self.fs_rights_base))
+            .unwrap(); // 8 bytes
+        writer
+            .write(&u64::to_le_bytes(self.fs_rights_inheriting))
+            .unwrap(); // 8 bytes
+    }
 }
 
 /// ### whence: Enum(u8)
@@ -183,6 +222,41 @@ impl TryFrom<u8> for Whence {
             1 => Ok(Whence::Current),
             2 => Ok(Whence::End),
             _ => Err(()),
+        }
+    }
+}
+
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-ciovec-struct
+///
+/// ciovec: Struct
+/// A region of memory for scatter/gather writes.
+///
+/// Size: 8
+/// Alignment: 4
+/// Struct members
+/// - buf: ConstPointer<u8> The address of the buffer to be written.
+///   Offset: 0
+/// - buf_len: size The length of the buffer to be written.
+///   Offset: 4
+pub struct CIOVec {
+    /// 数据在内存中的开始位置（地址）
+    pub buf_offset: u32,
+
+    /// 有效数据的长度
+    pub buf_len: u32,
+}
+
+impl Deserialize for CIOVec {
+    fn get_deserialize_size() -> usize {
+        8
+    }
+
+    fn deserialize(data: &[u8]) -> Self {
+        let buf_offset = u32::from_le_bytes(data[0..4].try_into().unwrap());
+        let buf_len = u32::from_le_bytes(data[4..8].try_into().unwrap());
+        Self {
+            buf_offset,
+            buf_len,
         }
     }
 }

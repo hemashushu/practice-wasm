@@ -23,9 +23,14 @@
 //
 // 注意，对于 C 的函数 strlen，其获得的是内容的长度，该值不包括 `\0` 字符，例如：
 // `strlen("abc")` 的值是 3，
-// 尽管字面量 "abc" 在编译时，会转为 "abc\0" 来储存，但函数 strlen 只统计 `\0` 之前的字符。
+// 但字符串字面量 "abc" 在编译时，会转为 "abc\0" 来储存，也就是说，在内存里，
+// 字符串字面量 "abc" 的实际长度（占用的空间）是 4。
 
-use std::io::{self, Read, Write};
+use std::{
+    cell::RefCell,
+    io::{self, Read, Write},
+    rc::Rc,
+};
 
 use anvm_engine::native_module::ModuleContext;
 
@@ -55,9 +60,9 @@ impl WASIModuleContext {
         // walltime,
         // nanotime,
         // rand_source,
-        stdin: Box<dyn Read>,
-        stdout: Box<dyn Write>,
-        stderr: Box<dyn Write>,
+        stdin: Rc<RefCell<dyn Read>>,
+        stdout: Rc<RefCell<dyn Write>>,
+        stderr: Rc<RefCell<dyn Write>>,
     ) -> Self {
         // 合并 arguments 到 app_path_name
         let mut arguments: Vec<String> = vec![];
@@ -75,9 +80,9 @@ impl WASIModuleContext {
 
     pub fn new_minimal() -> Self {
         let filesystem_context = FileSystemContext::new(
-            Box::new(io::empty()),
-            Box::new(io::sink()),
-            Box::new(io::sink()),
+            Rc::new(RefCell::new(io::empty())),
+            Rc::new(RefCell::new(io::sink())),
+            Rc::new(RefCell::new(io::sink())),
         );
 
         Self {

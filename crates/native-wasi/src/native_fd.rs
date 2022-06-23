@@ -22,11 +22,13 @@
 //! https://doc.rust-lang.org/std/io/struct.Empty.html
 //! https://doc.rust-lang.org/std/io/struct.Sink.html
 
-use std::io::{Seek, SeekFrom};
+use std::io::{Seek, SeekFrom, Write};
+
+use anvm_engine::vm_memory::VMMemory;
 
 use crate::{
     error::Errno,
-    types::{FdStat, Filetype, Whence},
+    types::{CIOVec, FdStat, Filetype, Whence},
     wasi_module_context::WASIModuleContext,
 };
 
@@ -38,10 +40,12 @@ use crate::filesystem_context::FileSource;
 /// Note: This returns similar flags to fsync(fd, F_GETFL) in POSIX, as well as additional fields.
 ///
 /// Params
-///      fd: the file descriptor to get the fdstat attributes data
+/// - fd: the file descriptor to get the fdstat attributes data
 /// Results
-///      error: errno
-///      stat: fdstat The buffer where the file descriptor's attributes are stored.
+/// - error: errno
+///   - Badf: if `fd` is invalid
+///   - Fault: if `resultFdstat` contains an invalid offset due to the memory constraint
+/// - stat: fdstat The buffer where the file descriptor's attributes are stored.
 ///
 /// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_fdstat_getfd-fd---errno-fdstat
 pub fn fd_fdstat_get(module_context: &mut WASIModuleContext, fd: u32) -> Result<FdStat, Errno> {
@@ -64,17 +68,21 @@ pub fn fd_fdstat_get(module_context: &mut WASIModuleContext, fd: u32) -> Result<
 }
 
 /// fd_seek(fd: fd, offset: filedelta, whence: whence) -> (errno, filesize)
+///
 /// Move the offset of a file descriptor. Note: This is similar to lseek in POSIX.
 ///
 /// Params
-/// fd: fd
-/// offset: filedelta The number of bytes to move.
-/// whence: whence The base from which the offset is relative.
+/// - fd: fd
+/// - offset: filedelta The number of bytes to move.
+/// - whence: whence The base from which the offset is relative.
 ///
 /// Results
-/// error: errno
-///
-/// newoffset: filesize The new offset of the file descriptor, relative to the start of the file.
+/// - error: errno
+///   - Badf: if `fd` is invalid
+///   - Fault: if `resultNewoffset` is an invalid offset of the memory
+///   - Inval: if `whence` is an invalid value
+///   - Io: if other error happens during the operation of the underying file system
+/// - newoffset: filesize The new offset of the file descriptor, relative to the start of the file.
 ///
 /// https://github.com/WebAssembly/WASI/blob/main/phases/snapshot/docs.md#-fd_seekfd-fd-offset-filedelta-whence-whence---resultfilesize-errno
 pub fn fd_seek(
@@ -101,6 +109,110 @@ pub fn fd_seek(
             }
             FileSource::Read(_) => Err(Errno::BadFile), // Read 不支持 seek
             FileSource::Write(_) => Err(Errno::BadFile), // Write 不支持 seek
+        }
+    } else {
+        Err(Errno::BadFile)
+    }
+}
+
+/// fd_write(fd: fd, iovs: ciovec_array) -> (errno, size)
+///
+/// Write to a file descriptor. Note: This is similar to writev in POSIX.
+///
+/// Params
+/// - fd: fd
+/// - iovs: ciovec_array List of scatter/gather vectors from which to retrieve data.
+/// Results
+/// - error: errno
+///   - Badf: if `fd` is invalid
+///   - Fault: if `iovs` or `resultSize` contain an invalid offset due to the memory constraint
+///   - Io: if an IO related error happens during the operation
+/// - nwritten: size The number of bytes written.
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_writefd-fd-iovs-ciovec_array---errno-size
+pub fn fd_write(
+    memory_block: &mut VMMemory,
+    module_context: &mut WASIModuleContext,
+    fd: u32,
+    ciovecs: &[CIOVec],
+) -> Result<u32, Errno> {
+    let option_file_entry = module_context.filesystem_context.get_file_mut(fd);
+    if let Some(file_entry) = option_file_entry {
+        // let writer: &mut dyn Write =
+        match &mut file_entry.file_source {
+            FileSource::File(file) => {
+                let mut wrote_bytes: usize = 0;
+                for ciovec in ciovecs {
+                    let data = memory_block
+                        .read_bytes(ciovec.buf_offset as usize, ciovec.buf_len as usize);
+                    match file.write(data) {
+                        Ok(n) => {
+                            wrote_bytes += n;
+                        }
+                        Err(_) => {
+                            return Err(Errno::Io);
+                        }
+                    }
+                }
+
+                Ok(wrote_bytes as u32)
+            }
+            FileSource::Write(w) => {
+                let mut writer = w.as_ref().borrow_mut();
+                let mut wrote_bytes: usize = 0;
+                for ciovec in ciovecs {
+                    let data = memory_block
+                        .read_bytes(ciovec.buf_offset as usize, ciovec.buf_len as usize);
+                    match writer.write(data) {
+                        Ok(n) => {
+                            wrote_bytes += n;
+                        }
+                        Err(_) => {
+                            return Err(Errno::Io);
+                        }
+                    }
+                }
+
+                Ok(wrote_bytes as u32)
+            }
+            FileSource::Read(_) => {
+                return Err(Errno::BadFile); // Read 不支持 seek
+            }
+        }
+    } else {
+        Err(Errno::BadFile)
+    }
+}
+
+/// fd_close(fd: fd) -> errno
+///
+/// Close a file descriptor. Note: This is similar to close in POSIX.
+///
+/// Params
+/// - fd: fd
+/// Results
+/// - error: errno
+///   - Badf: if `fd` is invalid
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_closefd-fd---errno
+pub fn fd_close(module_context: &mut WASIModuleContext, fd: u32) -> Result<(), Errno> {
+    let option_file_entry = module_context.filesystem_context.get_file_mut(fd);
+    if let Some(file_entry) = option_file_entry {
+        match &mut file_entry.file_source {
+            FileSource::File(_) => {
+                // 从 opened_files 当中移除目标文件
+                // 文件在引用移除之后应该自动关闭
+                module_context.filesystem_context.remove_opened_file(fd);
+
+                Ok(())
+            }
+            FileSource::Read(_) => {
+                println!("try to close a read stream: {}", fd);
+                Err(Errno::BadFile) // Read 不支持 close
+            }
+            FileSource::Write(_) => {
+                println!("try to close a write stream: {}", fd);
+                Err(Errno::BadFile) // Write 不支持 close
+            }
         }
     } else {
         Err(Errno::BadFile)

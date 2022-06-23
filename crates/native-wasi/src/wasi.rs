@@ -4,46 +4,56 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! # WASI 标准及说明
+//! # WASI API 标准
 //!
-//! WASI 标准的详细文档见：
+//! WASI API 标准的详细文档见：
 //! https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md
 //!
-//! 注意上面的链接是版本 snapshot-01
-//! 跟最新版本的文档是不同的：
+//! 注意上面的链接是版本 snapshot-01，跟当前最新版本的文档是不同的：
 //! https://github.com/WebAssembly/WASI/blob/main/phases/snapshot/docs.md
 
-//! # ABI 实现的顺序
+//! # ABI
 //!
-//! 为了方便调试，本模块从最简单的应用程序所需要的 ABI 开始实现，具体是：
+//! WASI API 标准文档里列出的是 API 的详细情况，至于 ABI 在哪里定义，hemashushu 暂时还没找到。
+//! 有关 ABI 的资料这里主要参考自项目 [wazero](https://github.com/tetratelabs/wazero)。
 //!
-//! 最简单的 C Hello World 程序（即写数据到文件 stdout），所需要的 ABI 有：
+//! 注：WASM VM 是栈式的虚拟机，这里说的 ABI 是指，当一个 WASM 应用程序调用一个 WASI 函数时，
+//! 应该传入（压入）怎样的参数（参数的个数和数据类型），应该传出（弹出）怎样的数据。
+
+//! # API 实现的顺序
+//!
+//! 为了方便调试，本模块从最简单的应用程序所需要的 API 开始实现，具体是：
+//!
+//! 最简单的 C Hello World 程序（即写数据到文件 stdout），所需要的 API 有：
+//!
+//! - fd_write
+//!
+//! 编译程序会同时导入下面 3 个 API：
 //!
 //! - fd_fdstat_get
 //! - fd_seek
-//! - fd_write
 //! - fd_close
 //!
-//! 在此基础上，要读取程序的 args，则需要 ABI：
+//! 在此基础上，要读取程序的 args，则需要 API：
 //!
 //! - args_get
 //! - args_sizes_get
 //!
-//! 要读取环境变量，则需要 ABI：
+//! 要读取环境变量，则需要 API：
 //!
 //! - environ_get
 //! - environ_sizes_get
 //!
 //! 通常 C 程序的 main 函数会返回一个整数，作为程序退出的代码（exit code），
-//! 通常 0 表示正常退出，非 0 表示非正常退出，为实现该功能，则需要 ABI：
+//! 通常 0 表示正常退出，非 0 表示非正常退出，为实现该功能，则需要 API：
 //!
 //! - proc_exit
 //!
-//! 涉及读文件时，需要 ABI：
+//! 涉及读文件时，需要 API：
 //!
 //! - fd_read
 //!
-//! 涉及打开文件系统的文件时，需要 ABI：
+//! 涉及打开文件系统的文件时，需要 API：
 //!
 //! - path_open
 //! - fd_close
@@ -54,7 +64,7 @@
 //! 的一个映射，即在 WASI 应用程序里，所有的文件路径都是相对于 host 某一个（或几个）目录，
 //! 无法直接通过一个绝对文件路径来打开一个存在 host 文件系统同样路径的文件。
 //!
-//! 其他 ABI 还有：
+//! 其他 API 还有：
 //!
 //! - clock_res_get
 //! - clock_time_get
@@ -93,37 +103,35 @@
 //! - sock_send
 //! - sock_shutdown
 
-use std::io;
-
 use anvm_ast::types::{Value, ValueType};
-use anvm_engine::{error::NativeError, native_module::NativeModule, vm::VM};
+use anvm_engine::{
+    error::NativeError,
+    native_module::{ModuleContext, NativeModule},
+    vm::VM,
+};
 
 use crate::{
     error::Errno,
     native_fd,
-    types::{Whence, MODULE_NAME},
+    types::{CIOVec, Deserialize, Serialize, Whence, MODULE_NAME},
     wasi_module_context::WASIModuleContext,
 };
 
 pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
-    // NOTE::
-    // ===============================================================
-    // 测试用的 module context ---------------------------------------\\
-    let module_context = WASIModuleContext::new(
-        "demo",
-        vec!["-l".to_string(), "123".to_string()],
-        vec![
-            ("USER".to_string(), "YANG".to_string()),
-            ("EDITOR".to_string(), "vim".to_string()),
-        ],
-        Box::new(io::stdin()),
-        Box::new(io::stdout()),
-        Box::new(io::stderr()),
-    );
-    // 测试用的 module context ---------------------------------------//
-    // ===============================================================
-
     let mut native_module = NativeModule::new(MODULE_NAME, Box::new(module_context));
+
+    native_module.add_native_function(
+        "fd_write",
+        vec![
+            ValueType::I32,
+            ValueType::I32,
+            ValueType::I32,
+            ValueType::I32,
+        ],
+        vec!["fd", "iovs", "iovs_len", "result.size"],
+        vec![ValueType::I32],
+        fd_write,
+    );
 
     native_module.add_native_function(
         "fd_fdstat_get",
@@ -146,15 +154,97 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
         fd_seek,
     );
 
+    native_module.add_native_function(
+        "fd_close",
+        vec![ValueType::I32],
+        vec!["fd"],
+        vec![ValueType::I32],
+        fd_close,
+    );
+
     native_module
 }
 
-/// fd_fdstat_get
-/// https://github.com/WebAssembly/WASI/blob/main/phases/snapshot/docs.md#-fd_fdstat_getfd-fd---resultfdstat-errno
+/// # fd_write
+///
+/// `(func $wasi.fd_write (param $fd i32) (param $iovs i32) (param $iovs_len i32) (param $result.size i32) (result (;errno;) i32)))`
+///
+/// - $fd：文件描述符
+/// - $iovs：IOVecs 结构体实例在内存中的开始位置
+/// - $iovs_len：IOVecs 实例的数量
+/// - $result.size：函数的结果，即 `size`，储存在内存的位置
+fn fd_write(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeError> {
+    let fd = if let Value::I32(fd) = args[0] {
+        fd as u32
+    } else {
+        unreachable!()
+    };
+
+    let iovecs_offset = if let Value::I32(iovecs_offset) = args[1] {
+        iovecs_offset as usize
+    } else {
+        unreachable!()
+    };
+
+    let iovecs_len = if let Value::I32(iovecs_len) = args[2] {
+        iovecs_len as usize
+    } else {
+        unreachable!()
+    };
+
+    let result_size_offset = if let Value::I32(result_size_offset) = args[3] {
+        result_size_offset as usize
+    } else {
+        unreachable!()
+    };
+
+    let mut ciovecs: Vec<CIOVec> = vec![];
+    let ciovec_data_size = CIOVec::get_deserialize_size();
+
+    {
+        let memory_block = &vm.resource.memory_blocks[0];
+        for idx in 0..iovecs_len {
+            let data = memory_block.read_bytes(
+                (idx * ciovec_data_size + iovecs_offset) as usize,
+                ciovec_data_size,
+            );
+
+            let ciovec = CIOVec::deserialize(data);
+            ciovecs.push(ciovec);
+        }
+    }
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    let memory_block = &mut vm.resource.memory_blocks[0];
+
+    match native_fd::fd_write(
+        memory_block,
+        get_wasi_module_context(any_module_context),
+        fd,
+        &ciovecs,
+    ) {
+        Ok(wrote_bytes) => {
+            memory_block.write_i32(result_size_offset, wrote_bytes as i32);
+            make_success_result()
+        }
+        Err(errno) => make_error_result(errno),
+    }
+}
+
+/// # fd_fdstat_get
 ///
 /// (func $wasi.fd_fdstat_get (param $fd i32) (param $result.fdstat i32) (result (;errno;) i32)))
 ///
-/// `$result.fdstat` 是指函数正确运行之后得到的结果 `fdstat` 储存在内存的位置（地址）
+/// - $fd：文件描述符（所谓文件描述符、文件句柄，可以理解为一个代表着某个已打开的文件的数字）
+/// - $result.fdstat：函数正确运行之后得到的结果，即 `fdstat`，储存在内存的位置（地址）
+///
+/// 注意，函数的运行结果，即 `fdstat` 在内存中所储存的位置，是由调用者指定的，而不是
+/// 由被调用的函数 “分配内存——写入数据——返回地址”，也就是说，WASI 的函数风格跟传统的 libc 函数类似，
+/// 由调用者负责分配内存（及指定存放结果的位置）。
 fn fd_fdstat_get(
     vm: &mut VM,
     native_module_index: usize,
@@ -170,16 +260,21 @@ fn fd_fdstat_get(
     };
 
     let result_fdstat_offset = if let Value::I32(result_fdstat_offset) = args[1] {
-        result_fdstat_offset
+        result_fdstat_offset as usize
     } else {
         unreachable!()
     };
 
-    match native_fd::fd_fdstat_get(get_wasi_module_context(vm, native_module_index), fd) {
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+
+    match native_fd::fd_fdstat_get(get_wasi_module_context(any_module_context), fd) {
         Ok(fd_stat) => {
-            // todo::
+            let mut data = Vec::<u8>::with_capacity(fd_stat.get_serialize_size());
+            fd_stat.write(&mut data);
+
             // 写 fdstat 到内存指定位置 `result_fdstat_offset`
-            //
+            let memory_block = &mut vm.resource.memory_blocks[0];
+            memory_block.write_bytes(result_fdstat_offset, &data);
 
             make_success_result()
         }
@@ -187,12 +282,14 @@ fn fd_fdstat_get(
     }
 }
 
-/// fd_seek
-/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_seekfd-fd-offset-filedelta-whence-whence---errno-filesize
+/// # fd_seek
 ///
 /// `(func $wasi.fd_seek (param $fd i32) (param $offset i64) (param $whence i32) (param $result.newoffset i32) (result (;errno;) i32)))`
 ///
-/// `$result.newoffset` 是指函数正确运行之后得到的结果 `newoffset` 储存在内存的位置（地址）
+/// - $fd：文件描述符
+/// - $offset：偏移量
+/// - $whence：偏移类型
+/// - $result.newoffset：函数正确运行之后得到的结果，即 `newoffset`，储存在内存的位置（地址）
 fn fd_seek(
     vm: &mut VM,
     native_module_index: usize,
@@ -216,24 +313,25 @@ fn fd_seek(
         unreachable!()
     };
 
-    let result_newoffset_offset = if let Value::I32(result_newoffset_offset) = args[1] {
-        result_newoffset_offset
+    let result_newoffset_offset = if let Value::I32(result_newoffset_offset) = args[3] {
+        result_newoffset_offset as usize
     } else {
         unreachable!()
     };
 
-    let result_whence = Whence::try_from(whence_i32 as u8);
+    if let Ok(whence) = Whence::try_from(whence_i32 as u8) {
+        let any_module_context =
+            &mut vm.resource.native_modules[native_module_index].module_context;
 
-    if let Ok(whence) = result_whence {
         match native_fd::fd_seek(
-            get_wasi_module_context(vm, native_module_index),
+            get_wasi_module_context(any_module_context),
             fd,
             offset,
             whence,
         ) {
             Ok(newoffset) => {
-                let mem = &mut vm.resource.memory_blocks[0];
-                mem.write_i64(result_newoffset_offset as usize, newoffset as i64);
+                let memory_block = &mut vm.resource.memory_blocks[0];
+                memory_block.write_i64(result_newoffset_offset, newoffset as i64);
 
                 make_success_result()
             }
@@ -244,8 +342,35 @@ fn fd_seek(
     }
 }
 
-fn get_wasi_module_context(vm: &mut VM, native_module_index: usize) -> &mut WASIModuleContext {
+/// # fd_close
+///
+/// `(func $wasi.fd_close (param $fd i32) (result (;errno;) i32)))`
+///
+/// - $fd：文件描述符
+fn fd_close(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeError> {
+    let fd = if let Value::I32(fd) = args[0] {
+        fd as u32
+    } else {
+        unreachable!()
+    };
+
     let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    match native_fd::fd_close(get_wasi_module_context(any_module_context), fd) {
+        Ok(_) => make_success_result(),
+        Err(errno) => make_error_result(errno),
+    }
+}
+
+fn get_wasi_module_context(
+    any_module_context: &mut Box<dyn ModuleContext>, /*vm: &mut VM, native_module_index: usize*/
+                                                     /* native_module: &mut NativeModule, */
+) -> &mut WASIModuleContext {
+    // let any_module_context = // &mut vm.resource.native_modules[native_module_index].
+    //     &mut native_module.module_context;
     any_module_context
         .as_any()
         .downcast_mut::<WASIModuleContext>()
@@ -258,4 +383,161 @@ fn make_success_result() -> Result<Vec<Value>, NativeError> {
 
 fn make_error_result(errno: Errno) -> Result<Vec<Value>, NativeError> {
     Ok(vec![Value::I32(u16::from(errno) as i32)])
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        cell::RefCell,
+        env, fs,
+        io::{self, Read, Write},
+        rc::Rc,
+    };
+
+    use anvm_ast::{ast, types::Value};
+    use anvm_binary_parser::parser;
+    use anvm_engine::{
+        error::EngineError,
+        instance::{create_instance, find_ast_module_export_function},
+        native_module::NativeModule,
+        object::NamedAstModule,
+    };
+
+    use crate::wasi_module_context::WASIModuleContext;
+
+    use super::new_wasi_module;
+    use pretty_assertions::assert_eq;
+
+    // 辅助方法
+    fn get_test_binary_resource(filename: &str) -> Vec<u8> {
+        let mut path_buf = env::current_dir().unwrap();
+
+        // 使用 `cargo test` 测试时，
+        // `env::current_dir()` 函数获得的当前目录为
+        // `./xiaoxuan-vm/crates/native-wasi`；
+        //
+        // 但如果使用 vscode 的源码编辑框里面的 `debug` 按钮开始调试，
+        // `env::current_dir()` 函数获得的当前目录为
+        // `./xiaoxuan-vm`。
+        //
+        // 下面语句用于处理这种情况。
+
+        if !path_buf.ends_with("native-wasi") {
+            path_buf.push("crates");
+            path_buf.push("native-wasi");
+        }
+        let fullname_buf = path_buf.join("resources").join(filename);
+        let fullname = fullname_buf.to_str().unwrap();
+        fs::read(fullname).expect(&format!(
+            "failed to read the specified binary file: {}",
+            fullname
+        ))
+    }
+
+    fn get_test_ast_module(filename: &str) -> ast::Module {
+        let bytes = get_test_binary_resource(filename);
+        parser::parse(&bytes).unwrap()
+    }
+
+    fn get_test_wasi_module_context(
+        stdin: Rc<RefCell<dyn Read>>,
+        stdout: Rc<RefCell<dyn Write>>,
+        stderr: Rc<RefCell<dyn Write>>,
+    ) -> WASIModuleContext {
+        WASIModuleContext::new(
+            "demo",
+            vec!["-l".to_string(), "123".to_string()],
+            vec![
+                ("USER".to_string(), "YANG".to_string()),
+                ("EDITOR".to_string(), "vim".to_string()),
+            ],
+            stdin,
+            stdout,
+            stderr,
+        )
+    }
+
+    fn get_test_native_module(
+        stdin: Rc<RefCell<dyn Read>>,
+        stdout: Rc<RefCell<dyn Write>>,
+        stderr: Rc<RefCell<dyn Write>>,
+    ) -> NativeModule {
+        let wasi_module_context = get_test_wasi_module_context(stdin, stdout, stderr);
+        new_wasi_module(wasi_module_context)
+    }
+
+    fn eval(
+        filename: &str,
+        export_function_name: &str,
+        args: &[Value],
+        stdin: Rc<RefCell<dyn Read>>,
+        stdout: Rc<RefCell<dyn Write>>,
+        stderr: Rc<RefCell<dyn Write>>,
+    ) -> Result<Vec<Value>, EngineError> {
+        let ast_module = get_test_ast_module(filename);
+
+        let function_index = find_ast_module_export_function(&ast_module, export_function_name)
+            .expect(&format!("function {} not found", export_function_name));
+
+        let named_ast_module = NamedAstModule::new("test", ast_module);
+        let wasi_native_module = get_test_native_module(stdin, stdout, stderr);
+        let mut vm = create_instance(vec![wasi_native_module], &vec![named_ast_module])?;
+        vm.eval_function_by_index(0, function_index as usize, args)
+    }
+
+    #[test]
+    fn test_stdout() {
+        let module_name = "test-stdout-write.wasm";
+
+        // 测试函数 `write_string`
+        let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout1 = Rc::clone(&stdout1);
+        let result1 = eval(
+            module_name,
+            "write_string",
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout1,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+        let output_data1 = &clone_stdout1.as_ref().borrow()[0..11];
+        let expected_data1 = "hello world".as_bytes();
+        assert_eq!(output_data1, expected_data1);
+        assert_eq!(result1, vec![Value::I32(0), Value::I32(11)]);
+
+        // 测试函数 `write_utf8`
+        let stdout2 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout2 = Rc::clone(&stdout2);
+        let result2 = eval(
+            module_name,
+            "write_utf8",
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout2,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+        let output_data2 = &clone_stdout2.as_ref().borrow()[0..15];
+        let expected_data2 = "你好，世界".as_bytes();
+        assert_eq!(output_data2, expected_data2);
+        assert_eq!(result2, vec![Value::I32(0), Value::I32(15)]);
+
+        // 测试函数 `write_multiple_parts`
+        let stdout3 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout3 = Rc::clone(&stdout3);
+        let result3 = eval(
+            module_name,
+            "write_multiple_parts",
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout3,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+        let output_data3 = &clone_stdout3.as_ref().borrow()[0..12];
+        let expected_data3 = "part1\npart2\n".as_bytes();
+        assert_eq!(output_data3, expected_data3);
+        assert_eq!(result3, vec![Value::I32(0), Value::I32(12)]);
+    }
 }

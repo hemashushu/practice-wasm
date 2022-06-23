@@ -5,9 +5,11 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fs::File,
     io::{Read, Write},
+    rc::Rc,
 };
 
 pub enum MapPath {
@@ -31,8 +33,8 @@ impl PreopenFile {
 
 pub enum FileSource {
     File(File),
-    Read(Box<dyn Read>),
-    Write(Box<dyn Write>),
+    Read(Rc<RefCell<dyn Read>>),
+    Write(Rc<RefCell<dyn Write>>),
 }
 
 pub struct FileEntry {
@@ -56,7 +58,11 @@ pub struct FileSystemContext {
 }
 
 impl FileSystemContext {
-    pub fn new(stdin: Box<dyn Read>, stdout: Box<dyn Write>, stderr: Box<dyn Write>) -> Self {
+    pub fn new(
+        stdin: Rc<RefCell<dyn Read>>,
+        stdout: Rc<RefCell<dyn Write>>,
+        stderr: Rc<RefCell<dyn Write>>,
+    ) -> Self {
         let mut preopen_files: Vec<PreopenFile> = vec![];
         let mut opened_files: HashMap<u32, FileEntry> = HashMap::new();
         let last_fd: u32 = 2;
@@ -78,5 +84,9 @@ impl FileSystemContext {
 
     pub fn get_file_mut(&mut self, fd: u32) -> Option<&mut FileEntry> {
         self.opened_files.get_mut(&fd)
+    }
+
+    pub fn remove_opened_file(&mut self, fd: u32) {
+        self.opened_files.remove(&fd);
     }
 }
