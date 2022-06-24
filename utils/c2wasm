@@ -28,6 +28,13 @@ if (!filePath.endsWith('.c')) {
 let pos = filePath.lastIndexOf('.');
 let outputFile = filePath.substring(0, pos) + '.wasm';
 
+// 参数 `-Wl,--export-all` 用于导出所有函数，以便于单元测试
+// 如果不希望导出全部函数，可以通过在函数前面
+// 添加 `__attribute__((export_name("...")))` 来
+// 标识该函数需要导出
+//
+// 更多参数请参阅
+// https://lld.llvm.org/WebAssembly.html
 await $`clang --target=wasm32 -O3 -flto --no-standard-libraries -Wl,--no-entry -Wl,--export-all -Wl,--lto-O3 "${filePath}" -o "${outputFile}"`
 
 console.log(`output: ${outputFile}`);

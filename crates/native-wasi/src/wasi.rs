@@ -167,7 +167,20 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
         vec![ValueType::I32],
         vec!["exit_code"],
         vec![],
-        fd_close,
+        proc_exit,
+    );
+
+    native_module.add_native_function(
+        "fd_read",
+        vec![
+            ValueType::I32,
+            ValueType::I32,
+            ValueType::I32,
+            ValueType::I32,
+        ],
+        vec!["fd", "iovs", "iovs_len", "result.size"],
+        vec![ValueType::I32],
+        fd_read,
     );
 
     native_module
@@ -400,12 +413,79 @@ fn proc_exit(
     })
 }
 
+/// # fd_read
+///
+/// `(func $wasi.fd_read (param $fd i32) (param $iovs i32) (param $iovs_len i32) (param $result.size i32) (result (;errno;) i32)))`
+
+/// - $fd：文件描述符
+/// - $iovs：IOVecs 结构体实例在内存中的开始位置
+/// - $iovs_len：IOVecs 实例的数量
+/// - $result.size：函数的结果，即 `size`，储存在内存的位置
+fn fd_read(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let fd = if let Value::I32(fd) = args[0] {
+        fd as u32
+    } else {
+        unreachable!()
+    };
+
+    let iovecs_offset = if let Value::I32(iovecs_offset) = args[1] {
+        iovecs_offset as usize
+    } else {
+        unreachable!()
+    };
+
+    let iovecs_len = if let Value::I32(iovecs_len) = args[2] {
+        iovecs_len as usize
+    } else {
+        unreachable!()
+    };
+
+    let result_size_offset = if let Value::I32(result_size_offset) = args[3] {
+        result_size_offset as usize
+    } else {
+        unreachable!()
+    };
+
+    let mut ciovecs: Vec<CIOVec> = vec![];
+    let ciovec_data_size = CIOVec::get_deserialize_size();
+
+    {
+        let memory_block = &vm.resource.memory_blocks[0];
+        for idx in 0..iovecs_len {
+            let data = memory_block.read_bytes(
+                (idx * ciovec_data_size + iovecs_offset) as usize,
+                ciovec_data_size,
+            );
+
+            let ciovec = CIOVec::deserialize(data);
+            ciovecs.push(ciovec);
+        }
+    }
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    let memory_block = &mut vm.resource.memory_blocks[0];
+
+    match native_fd::fd_read(
+        memory_block,
+        get_wasi_module_context(any_module_context),
+        fd,
+        &ciovecs,
+    ) {
+        Ok(read_bytes) => {
+            memory_block.write_i32(result_size_offset, read_bytes as i32);
+            make_success_result()
+        }
+        Err(errno) => make_error_result(errno),
+    }
+}
+
 fn get_wasi_module_context(
-    any_module_context: &mut Box<dyn ModuleContext>, /*vm: &mut VM, native_module_index: usize*/
-                                                     /* native_module: &mut NativeModule, */
+    any_module_context: &mut Box<dyn ModuleContext>,
 ) -> &mut WASIModuleContext {
-    // let any_module_context = // &mut vm.resource.native_modules[native_module_index].
-    //     &mut native_module.module_context;
     any_module_context
         .as_any()
         .downcast_mut::<WASIModuleContext>()
@@ -577,9 +657,9 @@ mod tests {
     }
 
     #[test]
-    fn test_stdout_write_c() {
+    fn test_stdout_c() {
         // 该模块是由 C 语言程序编译而来
-        let module_name = "test-stdout-write-c.wasm";
+        let module_name = "test-stdout-c.wasm";
 
         // 测试函数 `write_string`
         let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
@@ -596,16 +676,17 @@ mod tests {
         let output_data1 = &clone_stdout1.as_ref().borrow()[..];
         let output_str1 = std::str::from_utf8(output_data1).unwrap();
 
-        // C std 的 puts 函数在输出时会在末尾添加 '\n'
-        let expected1 = "Hello world!\n";
+        // 注意，如果使用 C 的 `puts` 函数在输出时会在末尾添加 '\n'
+        // 使用 `fputs` 函数则不会。
+        let expected1 = "Hello world!";
         assert_eq!(output_str1, expected1);
         assert_eq!(result1, vec![]);
     }
 
     #[test]
-    fn test_stderr() {
+    fn test_stderr_c() {
         // 该模块是由 C 语言程序编译而来
-        let module_name = "test-stderr.wasm";
+        let module_name = "test-stderr-c.wasm";
 
         // 测试函数 `write_string`
         let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
@@ -632,13 +713,111 @@ mod tests {
         assert_eq!(output_str1, "number: 123, string: foo\nend of stdout");
         assert_eq!(error_str1, "number: 456, string: bar\nend of stderr");
 
-        matches!(
+        assert!(matches!(
             result1,
             Err(EngineError::NativeTerminate(NativeTerminate {
                 module_name: _,
                 native_error: NativeError::Exit(66)
             }))
+        ));
+    }
+
+    #[test]
+    fn test_stdin_read() {
+        let module_name = "test-stdin-read.wasm";
+
+        // 测试函数 `read_string`
+        let stdin1 = Rc::new(RefCell::new("0123456789".as_bytes()));
+
+        let result1 = eval(
+            module_name,
+            "read_string",
+            &vec![],
+            stdin1,
+            Rc::new(RefCell::new(io::sink())),
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result1,
+            vec![
+                Value::I32(0),
+                Value::I32(4),
+                Value::I32('0' as i32),
+                Value::I32('1' as i32),
+                Value::I32('2' as i32),
+                Value::I32('3' as i32),
+            ]
         );
+
+        // 测试函数 `read_multiple_parts`
+        let stdin2 = Rc::new(RefCell::new("0123456789".as_bytes()));
+
+        let result2 = eval(
+            module_name,
+            "read_multiple_parts",
+            &vec![],
+            stdin2,
+            Rc::new(RefCell::new(io::sink())),
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        assert_eq!(result2[0..2], vec![Value::I32(0), Value::I32(3)]);
+        assert_eq!(result2[2], Value::I32('0' as i32));
+        assert_eq!(
+            result2[4..6],
+            vec![Value::I32('1' as i32), Value::I32('2' as i32),]
+        );
+    }
+
+    #[test]
+    fn test_stdin_c() {
+        // 该模块是由 C 语言程序编译而来
+        let module_name = "test-stdin-c.wasm";
+
+        // 测试函数 `echo_by_std`
+        let stdin1 = Rc::new(RefCell::new("hello\nworld".as_bytes()));
+        let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout1 = Rc::clone(&stdout1);
+
+        let result1 = eval(
+            module_name,
+            "echo_by_std",
+            &vec![],
+            stdin1,
+            stdout1,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        let output_data1 = &clone_stdout1.as_ref().borrow()[..];
+        let output_str1 = std::str::from_utf8(output_data1).unwrap();
+
+        assert_eq!(output_str1, "hello\nworld");
+        assert_eq!(result1, vec![Value::I32(0)]);
+
+        // 测试函数 `echo_by_syscall`
+        let stdin2 = Rc::new(RefCell::new("foo\nbar\n".as_bytes()));
+        let stdout2 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout2 = Rc::clone(&stdout2);
+
+        let result2 = eval(
+            module_name,
+            "echo_by_syscall",
+            &vec![],
+            stdin2,
+            stdout2,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        let output_data2 = &clone_stdout2.as_ref().borrow()[..];
+        let output_str2 = std::str::from_utf8(output_data2).unwrap();
+
+        assert_eq!(output_str2, "foo\nbar\n");
+        assert_eq!(result2, vec![Value::I32(0)]);
     }
 
     fn test_args() {

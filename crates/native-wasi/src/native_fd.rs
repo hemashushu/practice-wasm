@@ -22,7 +22,7 @@
 //! https://doc.rust-lang.org/std/io/struct.Empty.html
 //! https://doc.rust-lang.org/std/io/struct.Sink.html
 
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 
 use anvm_engine::vm_memory::VMMemory;
 
@@ -33,6 +33,74 @@ use crate::{
 };
 
 use crate::filesystem_context::FileSource;
+
+/// fd_write(fd: fd, iovs: ciovec_array) -> (errno, size)
+///
+/// Write to a file descriptor. Note: This is similar to writev in POSIX.
+///
+/// Params
+/// - fd: fd
+/// - iovs: ciovec_array List of scatter/gather vectors from which to retrieve data.
+/// Results
+/// - error: errno
+///   - Badf: if `fd` is invalid
+///   - Fault: if `iovs` or `resultSize` contain an invalid offset due to the memory constraint
+///   - Io: if an IO related error happens during the operation
+/// - nwritten: size The number of bytes written.
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_writefd-fd-iovs-ciovec_array---errno-size
+pub fn fd_write(
+    memory_block: &mut VMMemory,
+    module_context: &mut WASIModuleContext,
+    fd: u32,
+    ciovecs: &[CIOVec],
+) -> Result<u32, Errno> {
+    let option_file_entry = module_context.filesystem_context.get_file_mut(fd);
+    if let Some(file_entry) = option_file_entry {
+        match &mut file_entry.file_source {
+            FileSource::File(file) => {
+                let mut wrote_bytes: usize = 0;
+                for ciovec in ciovecs {
+                    let data = memory_block
+                        .read_bytes(ciovec.buf_offset as usize, ciovec.buf_len as usize);
+                    match file.write(data) {
+                        Ok(n) => {
+                            wrote_bytes += n;
+                        }
+                        Err(_) => {
+                            return Err(Errno::Io);
+                        }
+                    }
+                }
+
+                Ok(wrote_bytes as u32)
+            }
+            FileSource::Write(w) => {
+                let mut writer = w.as_ref().borrow_mut();
+                let mut wrote_bytes: usize = 0;
+                for ciovec in ciovecs {
+                    let data = memory_block
+                        .read_bytes(ciovec.buf_offset as usize, ciovec.buf_len as usize);
+                    match writer.write(data) {
+                        Ok(n) => {
+                            wrote_bytes += n;
+                        }
+                        Err(_) => {
+                            return Err(Errno::Io);
+                        }
+                    }
+                }
+
+                Ok(wrote_bytes as u32)
+            }
+            FileSource::Read(_) => {
+                return Err(Errno::BadFile); // Read 不支持 write
+            }
+        }
+    } else {
+        Err(Errno::BadFile)
+    }
+}
 
 /// fd_fdstat_get(fd: fd) -> (errno, fdstat)
 ///
@@ -115,75 +183,6 @@ pub fn fd_seek(
     }
 }
 
-/// fd_write(fd: fd, iovs: ciovec_array) -> (errno, size)
-///
-/// Write to a file descriptor. Note: This is similar to writev in POSIX.
-///
-/// Params
-/// - fd: fd
-/// - iovs: ciovec_array List of scatter/gather vectors from which to retrieve data.
-/// Results
-/// - error: errno
-///   - Badf: if `fd` is invalid
-///   - Fault: if `iovs` or `resultSize` contain an invalid offset due to the memory constraint
-///   - Io: if an IO related error happens during the operation
-/// - nwritten: size The number of bytes written.
-///
-/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_writefd-fd-iovs-ciovec_array---errno-size
-pub fn fd_write(
-    memory_block: &mut VMMemory,
-    module_context: &mut WASIModuleContext,
-    fd: u32,
-    ciovecs: &[CIOVec],
-) -> Result<u32, Errno> {
-    let option_file_entry = module_context.filesystem_context.get_file_mut(fd);
-    if let Some(file_entry) = option_file_entry {
-        // let writer: &mut dyn Write =
-        match &mut file_entry.file_source {
-            FileSource::File(file) => {
-                let mut wrote_bytes: usize = 0;
-                for ciovec in ciovecs {
-                    let data = memory_block
-                        .read_bytes(ciovec.buf_offset as usize, ciovec.buf_len as usize);
-                    match file.write(data) {
-                        Ok(n) => {
-                            wrote_bytes += n;
-                        }
-                        Err(_) => {
-                            return Err(Errno::Io);
-                        }
-                    }
-                }
-
-                Ok(wrote_bytes as u32)
-            }
-            FileSource::Write(w) => {
-                let mut writer = w.as_ref().borrow_mut();
-                let mut wrote_bytes: usize = 0;
-                for ciovec in ciovecs {
-                    let data = memory_block
-                        .read_bytes(ciovec.buf_offset as usize, ciovec.buf_len as usize);
-                    match writer.write(data) {
-                        Ok(n) => {
-                            wrote_bytes += n;
-                        }
-                        Err(_) => {
-                            return Err(Errno::Io);
-                        }
-                    }
-                }
-
-                Ok(wrote_bytes as u32)
-            }
-            FileSource::Read(_) => {
-                return Err(Errno::BadFile); // Read 不支持 seek
-            }
-        }
-    } else {
-        Err(Errno::BadFile)
-    }
-}
-
 /// fd_close(fd: fd) -> errno
 ///
 /// Close a file descriptor. Note: This is similar to close in POSIX.
@@ -212,6 +211,75 @@ pub fn fd_close(module_context: &mut WASIModuleContext, fd: u32) -> Result<(), E
             FileSource::Write(_) => {
                 println!("try to close a write stream: {}", fd);
                 Err(Errno::BadFile) // Write 不支持 close
+            }
+        }
+    } else {
+        Err(Errno::BadFile)
+    }
+}
+
+/// fd_read(fd: fd, iovs: iovec_array) -> (errno, size)
+///
+/// Read from a file descriptor. Note: This is similar to readv in POSIX.
+///
+/// Params
+/// - fd: fd
+/// - iovs: iovec_array List of scatter/gather vectors to which to store data.
+///
+/// Results
+/// - error: errno
+///   - Badf: if `fd` is invalid
+///   - Fault: if `iovs` or `resultSize` contain an invalid offset due to the memory constraint
+///   - Io: if an IO related error happens during the operation
+/// - nread: size The number of bytes read.
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_readfd-fd-iovs-iovec_array---errno-size
+pub fn fd_read(
+    memory_block: &mut VMMemory,
+    module_context: &mut WASIModuleContext,
+    fd: u32,
+    ciovecs: &[CIOVec],
+) -> Result<u32, Errno> {
+    let option_file_entry = module_context.filesystem_context.get_file_mut(fd);
+    if let Some(file_entry) = option_file_entry {
+        match &mut file_entry.file_source {
+            FileSource::File(file) => {
+                let mut read_bytes: usize = 0;
+                for ciovec in ciovecs {
+                    let buffer = memory_block
+                        .get_bytes_mut(ciovec.buf_offset as usize, ciovec.buf_len as usize);
+                    match file.read(buffer) {
+                        Ok(n) => {
+                            read_bytes += n;
+                        }
+                        Err(_) => {
+                            return Err(Errno::Io);
+                        }
+                    }
+                }
+
+                Ok(read_bytes as u32)
+            }
+            FileSource::Write(_) => {
+                return Err(Errno::BadFile); // Write 不支持 read
+            }
+            FileSource::Read(r) => {
+                let mut reader = r.as_ref().borrow_mut();
+                let mut read_bytes: usize = 0;
+                for ciovec in ciovecs {
+                    let buffer = memory_block
+                        .get_bytes_mut(ciovec.buf_offset as usize, ciovec.buf_len as usize);
+                    match reader.read(buffer) {
+                        Ok(n) => {
+                            read_bytes += n;
+                        }
+                        Err(_) => {
+                            return Err(Errno::Io);
+                        }
+                    }
+                }
+
+                Ok(read_bytes as u32)
             }
         }
     } else {

@@ -1,8 +1,8 @@
 # XiaoXuan VM
 
-A zero-dependency WebAssembly VM with a full-featured Web UI debugger implemented in Rust.
+A WebAssembly VM with a full-featured Web UI debugger implemented in Rust.
 
-一个用 Rust 实现的零依赖 WebAssembly 虚拟机，带有全功能的 Web UI 调试界面。
+一个用 Rust 实现的 WebAssembly 虚拟机，带有全功能的 Web UI 调试界面。
 
 Features
 

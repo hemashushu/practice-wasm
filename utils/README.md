@@ -108,13 +108,24 @@ crate-type = ["cdylib"]
 ```bash
 $ clang demo.c \
     --target=wasm32 \
-    -O3 \               # Agressive optimizations
+    -O3 \               # Aggressive optimizations
     -flto \             # Add metadata for link-time optimizations
     -nostdlib \         # --no-standard-libraries
     -Wl,--no-entry \
     -Wl,--export-all \
     -Wl,--lto-O3 \      # Aggressive link-time optimizations
     -o demo.wasm
+```
+
+参数 `-Wl,--export-all` 用于导出所有函数，以便于单元测试，更多的参数请参阅：
+https://lld.llvm.org/WebAssembly.html
+
+如果不希望导出全部函数，可以通过在函数前面添加 `__attribute__((export_name("...")))` 来标识该函数需要导出，例如：
+
+```c
+__attribute__((export_name("add"))) int add(int a, int b) {
+    return  a + b;
+}
 ```
 
 ## 编译 C 到 WASI

@@ -96,6 +96,10 @@ impl VMMemory {
         &self.data[address..(address + length)]
     }
 
+    pub fn get_bytes_mut(&mut self, address: usize, length: usize) -> &mut [u8] {
+        &mut self.data[address..(address + length)]
+    }
+
     pub fn write_bytes(&mut self, address: usize, data: &[u8]) {
         for index in 0..data.len() {
             self.data[address + index] = data[index]

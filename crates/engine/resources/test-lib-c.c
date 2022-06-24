@@ -6,6 +6,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+// 在函数前面添加 `__attribute__((export_name("mul")))` 可以表示
+// 该函数需要导出。
+
 int add(int a, int b)
 {
     return a + b;

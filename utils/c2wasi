@@ -31,6 +31,8 @@ if (!filePath.endsWith('.c')) {
 let pos = filePath.lastIndexOf('.');
 let outputFile = filePath.substring(0, pos) + '.wasm';
 
-await $`${wasiSdkPath}/bin/clang -O2 -o "${outputFile}" "${filePath}"`
+// 更多参数请参阅
+// https://lld.llvm.org/WebAssembly.html
+await $`${wasiSdkPath}/bin/clang -O3 -o "${outputFile}" "${filePath}"`
 
 console.log(`output: ${outputFile}`);
