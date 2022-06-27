@@ -34,13 +34,14 @@ use crate::{
 
 use crate::filesystem_context::FileSource;
 
-/// fd_write(fd: fd, iovs: ciovec_array) -> (errno, size)
+/// # fd_write(fd: fd, iovs: ciovec_array) -> (errno, size)
 ///
 /// Write to a file descriptor. Note: This is similar to writev in POSIX.
 ///
 /// Params
 /// - fd: fd
 /// - iovs: ciovec_array List of scatter/gather vectors from which to retrieve data.
+///
 /// Results
 /// - error: errno
 ///   - Badf: if `fd` is invalid
@@ -49,6 +50,13 @@ use crate::filesystem_context::FileSource;
 /// - nwritten: size The number of bytes written.
 ///
 /// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_writefd-fd-iovs-ciovec_array---errno-size
+///
+/// 把内存中的数据写入到指定的文件
+///
+/// - 其中数据来自内存，由 `CIOVec` 指定数据在内存当中的位置/地址，以及数据的长度。
+/// - 支持一次写入多个来自不同位置及长度的数据，位置及长度由参数 `ciovecs` 指定，
+///   多段数据写到文件之后都被合并形成一段连续的数据。
+/// - 如果需要写到文件的不同位置，需要使用 fd_seek 来改变写入位置。
 pub fn fd_write(
     memory_block: &mut VMMemory,
     module_context: &mut WASIModuleContext,
@@ -102,13 +110,14 @@ pub fn fd_write(
     }
 }
 
-/// fd_fdstat_get(fd: fd) -> (errno, fdstat)
+/// # fd_fdstat_get(fd: fd) -> (errno, fdstat)
 ///
 /// Get the attributes of a file descriptor.
 /// Note: This returns similar flags to fsync(fd, F_GETFL) in POSIX, as well as additional fields.
 ///
 /// Params
 /// - fd: the file descriptor to get the fdstat attributes data
+///
 /// Results
 /// - error: errno
 ///   - Badf: if `fd` is invalid
@@ -135,7 +144,7 @@ pub fn fd_fdstat_get(module_context: &mut WASIModuleContext, fd: u32) -> Result<
     }
 }
 
-/// fd_seek(fd: fd, offset: filedelta, whence: whence) -> (errno, filesize)
+/// # fd_seek(fd: fd, offset: filedelta, whence: whence) -> (errno, filesize)
 ///
 /// Move the offset of a file descriptor. Note: This is similar to lseek in POSIX.
 ///
@@ -183,12 +192,13 @@ pub fn fd_seek(
     }
 }
 
-/// fd_close(fd: fd) -> errno
+/// # fd_close(fd: fd) -> errno
 ///
 /// Close a file descriptor. Note: This is similar to close in POSIX.
 ///
 /// Params
 /// - fd: fd
+///
 /// Results
 /// - error: errno
 ///   - Badf: if `fd` is invalid
@@ -218,7 +228,7 @@ pub fn fd_close(module_context: &mut WASIModuleContext, fd: u32) -> Result<(), E
     }
 }
 
-/// fd_read(fd: fd, iovs: iovec_array) -> (errno, size)
+/// # fd_read(fd: fd, iovs: iovec_array) -> (errno, size)
 ///
 /// Read from a file descriptor. Note: This is similar to readv in POSIX.
 ///
@@ -234,6 +244,13 @@ pub fn fd_close(module_context: &mut WASIModuleContext, fd: u32) -> Result<(), E
 /// - nread: size The number of bytes read.
 ///
 /// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-fd_readfd-fd-iovs-iovec_array---errno-size
+///
+/// 读取指定文件的数据到内存
+///
+/// - 数据来自文件，由 `CIOVec` 指定数据写入到内存当中的位置/地址，以及数据的长度。
+/// - 支持连续读取几次数据然后写入到内存的不同位置，位置及长度由参数 `ciovecs` 指定，
+///   注意多次读取文件的数据，它们在文件里原本是连续的。
+/// - 如果需要读取文件的不同位置，需要使用 fd_seek 来改变读取位置。
 pub fn fd_read(
     memory_block: &mut VMMemory,
     module_context: &mut WASIModuleContext,

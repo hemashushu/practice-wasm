@@ -8,20 +8,32 @@
 // - [wasi-sdk](https://github.com/WebAssembly/wasi-sdk)
 
 
+let envs = process.env;
+
+let wasiSdkPath = envs['WASI_SDK'];
+
+if (wasiSdkPath === undefined ||
+    wasiSdkPath === '') {
+    console.log(`
+set environment variable WASI_SDK to the path of wasi sdk first, e.g.
+export WASI_SDK = /opt/wasi-sdk-16.0
+    `);
+    process.exit(1);
+}
+
 let args = process.argv;
 
-if (args.length != 5) {
+if (args.length != 4) {
     console.log(
 `Usage:
-    ./c2wasi path-to-wasi-sdk path-to-source.c
+    ./c2wasi path-to-source.c
 `);
     process.exit(1);
 }
 
 import 'path';
 
-let wasiSdkPath = path.resolve(args[3])
-let filePath = path.resolve(args[4]);
+let filePath = path.resolve(args[3]);
 
 if (!filePath.endsWith('.c')) {
     console.log('Only *.c file is supported.');

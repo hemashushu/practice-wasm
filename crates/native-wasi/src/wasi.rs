@@ -24,7 +24,7 @@
 //!
 //! 为了方便调试，本模块从最简单的应用程序所需要的 API 开始实现，具体是：
 //!
-//! 最简单的 C Hello World 程序（即写数据到文件 stdout），所需要的 API 有：
+//! 最简单的 C Hello World 程序（即写数据到 stdout），所需要的 API 有：
 //!
 //! - fd_write
 //!
@@ -34,35 +34,37 @@
 //! - fd_seek
 //! - fd_close
 //!
-//! 通常 C 程序的 main 函数会返回一个整数，作为程序退出的代码（exit code），
+//! 通常 C 程序的 main 函数会返回一个 i32 整数，作为程序退出的代码（exit code），
 //! 通常 0 表示正常退出，非 0 表示非正常退出，为实现该功能，需要 API：
 //!
 //! - proc_exit
 //!
-//! 涉及读文件时，需要 API：
+//! 读文件时，需要 API：
 //!
 //! - fd_read
 //!
-//! 要读取程序的 args，需要 API：
+//! 读取命令行参数，需要 API：
 //!
 //! - args_get
 //! - args_sizes_get
 //!
-//! 要读取环境变量，需要 API：
+//! 读取环境变量，需要 API：
 //!
 //! - environ_get
 //! - environ_sizes_get
 //!
-//! 涉及打开文件系统的文件时，需要 API：
+//! 打开文件系统的文件时，需要 API：
 //!
 //! - path_open
 //! - fd_close
 //! - fd_prestat_get
 //! - fd_prestat_dir_name
 //!
-//! 注意，WASM 应用程序运行在一个沙盘中，在此环境里看到的文件系统是 host 文件系统
+//! 注意，
+//! WASM 应用程序运行在一个沙盘中，在此环境里看到的文件系统是 host 文件系统
 //! 的一个映射，即在 WASI 应用程序里，所有的文件路径都是相对于 host 某一个（或几个）目录，
 //! 无法直接通过一个绝对文件路径来打开一个存在 host 文件系统同样路径的文件。
+//! 同样的，args 和 envs 跟 host 系统也是隔离的。
 //!
 //! 其他 API 还有：
 //!
@@ -112,7 +114,7 @@ use anvm_engine::{
 
 use crate::{
     error::Errno,
-    native_fd,
+    native_fd, native_misc,
     types::{CIOVec, Deserialize, Serialize, Whence, MODULE_NAME},
     wasi_module_context::WASIModuleContext,
 };
@@ -183,6 +185,22 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
         fd_read,
     );
 
+    native_module.add_native_function(
+        "args_sizes_get",
+        vec![ValueType::I32, ValueType::I32],
+        vec!["result.size", "result.argv_buf_size"],
+        vec![ValueType::I32],
+        args_sizes_get,
+    );
+
+    native_module.add_native_function(
+        "args_get",
+        vec![ValueType::I32, ValueType::I32],
+        vec!["argv", "argv_buf"],
+        vec![ValueType::I32],
+        args_get,
+    );
+
     native_module
 }
 
@@ -191,37 +209,25 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
 /// `(func $wasi.fd_write (param $fd i32) (param $iovs i32) (param $iovs_len i32) (param $result.size i32) (result (;errno;) i32)))`
 ///
 /// - $fd：文件描述符
-/// - $iovs：IOVecs 结构体实例在内存中的开始位置
-/// - $iovs_len：IOVecs 实例的数量
-/// - $result.size：函数的结果，即 `size`，储存在内存的位置
+/// - $iovs：CIOVec 实例数组在内存中的开始位置（即第一个 CIOVec 实例的位置）
+/// - $iovs_len：CIOVec 实例的数量
+/// - $result.size：函数的正确运行结果（即数值 `size`）储存在内存的位置
+///
+/// 注意，
+/// 函数的运行结果（即数值 `size`）在内存中所储存的位置是由调用者指定的，
+/// 而不是由被调用的函数 “分配内存——写入数据——返回地址”，也就是说，
+/// WASI 的函数风格跟传统的 libc 函数类似，由调用者负责分配内存（作为存放结果的位置）。
 fn fd_write(
     vm: &mut VM,
     native_module_index: usize,
     args: &[Value],
 ) -> Result<Vec<Value>, NativeTerminate> {
-    let fd = if let Value::I32(fd) = args[0] {
-        fd as u32
-    } else {
-        unreachable!()
-    };
-
-    let iovecs_offset = if let Value::I32(iovecs_offset) = args[1] {
-        iovecs_offset as usize
-    } else {
-        unreachable!()
-    };
-
-    let iovecs_len = if let Value::I32(iovecs_len) = args[2] {
-        iovecs_len as usize
-    } else {
-        unreachable!()
-    };
-
-    let result_size_offset = if let Value::I32(result_size_offset) = args[3] {
-        result_size_offset as usize
-    } else {
-        unreachable!()
-    };
+    // 这里不需要检查参数的数量和数据类型，因为 engine 在调用本地函数之前，
+    // 就已经检查过，下面的所有本地函数的情况均相同。
+    let fd = get_i32_unchecked(args[0]);
+    let iovecs_offset = get_i32_unchecked(args[1]);
+    let iovecs_len = get_i32_unchecked(args[2]);
+    let result_size_offset = get_i32_unchecked(args[3]);
 
     let mut ciovecs: Vec<CIOVec> = vec![];
     let ciovec_data_size = CIOVec::get_deserialize_size();
@@ -230,7 +236,7 @@ fn fd_write(
         let memory_block = &vm.resource.memory_blocks[0];
         for idx in 0..iovecs_len {
             let data = memory_block.read_bytes(
-                (idx * ciovec_data_size + iovecs_offset) as usize,
+                (idx * ciovec_data_size as i32 + iovecs_offset) as usize,
                 ciovec_data_size,
             );
 
@@ -245,11 +251,11 @@ fn fd_write(
     match native_fd::fd_write(
         memory_block,
         get_wasi_module_context(any_module_context),
-        fd,
+        fd as u32,
         &ciovecs,
     ) {
         Ok(wrote_bytes) => {
-            memory_block.write_i32(result_size_offset, wrote_bytes as i32);
+            memory_block.write_i32(result_size_offset as usize, wrote_bytes as i32);
             make_success_result()
         }
         Err(errno) => make_error_result(errno),
@@ -261,41 +267,25 @@ fn fd_write(
 /// (func $wasi.fd_fdstat_get (param $fd i32) (param $result.fdstat i32) (result (;errno;) i32)))
 ///
 /// - $fd：文件描述符（所谓文件描述符、文件句柄，可以理解为一个代表着某个已打开的文件的数字）
-/// - $result.fdstat：函数正确运行之后得到的结果，即 `fdstat`，储存在内存的位置（地址）
-///
-/// 注意，函数的运行结果，即 `fdstat` 在内存中所储存的位置，是由调用者指定的，而不是
-/// 由被调用的函数 “分配内存——写入数据——返回地址”，也就是说，WASI 的函数风格跟传统的 libc 函数类似，
-/// 由调用者负责分配内存（及指定存放结果的位置）。
+/// - $result.fdstat：函数的正确运行结果（即 `fdstat`）储存在内存的位置（地址）
 fn fd_fdstat_get(
     vm: &mut VM,
     native_module_index: usize,
     args: &[Value],
 ) -> Result<Vec<Value>, NativeTerminate> {
-    // 这里不需要检查参数的数量和数据类型，因为 engine 在调用本地函数时已经检查过，
-    // 下面的本地函数均相同。
-
-    let fd = if let Value::I32(fd) = args[0] {
-        fd as u32
-    } else {
-        unreachable!()
-    };
-
-    let result_fdstat_offset = if let Value::I32(result_fdstat_offset) = args[1] {
-        result_fdstat_offset as usize
-    } else {
-        unreachable!()
-    };
+    let fd = get_i32_unchecked(args[0]);
+    let result_fdstat_offset = get_i32_unchecked(args[1]);
 
     let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
 
-    match native_fd::fd_fdstat_get(get_wasi_module_context(any_module_context), fd) {
+    match native_fd::fd_fdstat_get(get_wasi_module_context(any_module_context), fd as u32) {
         Ok(fd_stat) => {
             let mut data = Vec::<u8>::with_capacity(fd_stat.get_serialize_size());
             fd_stat.write(&mut data);
 
             // 写 fdstat 到内存指定位置 `result_fdstat_offset`
             let memory_block = &mut vm.resource.memory_blocks[0];
-            memory_block.write_bytes(result_fdstat_offset, &data);
+            memory_block.write_bytes(result_fdstat_offset as usize, &data);
 
             make_success_result()
         }
@@ -310,35 +300,16 @@ fn fd_fdstat_get(
 /// - $fd：文件描述符
 /// - $offset：偏移量
 /// - $whence：偏移类型
-/// - $result.newoffset：函数正确运行之后得到的结果，即 `newoffset`，储存在内存的位置（地址）
+/// - $result.newoffset：函数的正确运行结果（即 `newoffset`）储存在内存的位置（地址）
 fn fd_seek(
     vm: &mut VM,
     native_module_index: usize,
     args: &[Value],
 ) -> Result<Vec<Value>, NativeTerminate> {
-    let fd = if let Value::I32(fd) = args[0] {
-        fd as u32
-    } else {
-        unreachable!()
-    };
-
-    let offset = if let Value::I64(offset) = args[1] {
-        offset
-    } else {
-        unreachable!()
-    };
-
-    let whence_i32 = if let Value::I32(whence) = args[2] {
-        whence
-    } else {
-        unreachable!()
-    };
-
-    let result_newoffset_offset = if let Value::I32(result_newoffset_offset) = args[3] {
-        result_newoffset_offset as usize
-    } else {
-        unreachable!()
-    };
+    let fd = get_i32_unchecked(args[0]);
+    let offset = get_i64_unchecked(args[1]);
+    let whence_i32 = get_i32_unchecked(args[2]);
+    let result_newoffset_offset = get_i32_unchecked(args[3]);
 
     if let Ok(whence) = Whence::try_from(whence_i32 as u8) {
         let any_module_context =
@@ -346,13 +317,13 @@ fn fd_seek(
 
         match native_fd::fd_seek(
             get_wasi_module_context(any_module_context),
-            fd,
+            fd as u32,
             offset,
             whence,
         ) {
             Ok(newoffset) => {
                 let memory_block = &mut vm.resource.memory_blocks[0];
-                memory_block.write_i64(result_newoffset_offset, newoffset as i64);
+                memory_block.write_i64(result_newoffset_offset as usize, newoffset as i64);
 
                 make_success_result()
             }
@@ -373,14 +344,10 @@ fn fd_close(
     native_module_index: usize,
     args: &[Value],
 ) -> Result<Vec<Value>, NativeTerminate> {
-    let fd = if let Value::I32(fd) = args[0] {
-        fd as u32
-    } else {
-        unreachable!()
-    };
+    let fd = get_i32_unchecked(args[0]);
 
     let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
-    match native_fd::fd_close(get_wasi_module_context(any_module_context), fd) {
+    match native_fd::fd_close(get_wasi_module_context(any_module_context), fd as u32) {
         Ok(_) => make_success_result(),
         Err(errno) => make_error_result(errno),
     }
@@ -398,11 +365,7 @@ fn proc_exit(
     _native_module_index: usize,
     args: &[Value],
 ) -> Result<Vec<Value>, NativeTerminate> {
-    let exit_code = if let Value::I32(exit_code) = args[0] {
-        exit_code
-    } else {
-        unreachable!()
-    };
+    let exit_code = get_i32_unchecked(args[0]);
 
     // todo
     // 关闭所有已打开的文件
@@ -416,39 +379,20 @@ fn proc_exit(
 /// # fd_read
 ///
 /// `(func $wasi.fd_read (param $fd i32) (param $iovs i32) (param $iovs_len i32) (param $result.size i32) (result (;errno;) i32)))`
-
+///
 /// - $fd：文件描述符
-/// - $iovs：IOVecs 结构体实例在内存中的开始位置
-/// - $iovs_len：IOVecs 实例的数量
-/// - $result.size：函数的结果，即 `size`，储存在内存的位置
+/// - $iovs：CIOVec 实例数组在内存中的开始位置
+/// - $iovs_len：CIOVec 实例的数量
+/// - $result.size：函数的正确运行结果（即 `size`）储存在内存的位置
 fn fd_read(
     vm: &mut VM,
     native_module_index: usize,
     args: &[Value],
 ) -> Result<Vec<Value>, NativeTerminate> {
-    let fd = if let Value::I32(fd) = args[0] {
-        fd as u32
-    } else {
-        unreachable!()
-    };
-
-    let iovecs_offset = if let Value::I32(iovecs_offset) = args[1] {
-        iovecs_offset as usize
-    } else {
-        unreachable!()
-    };
-
-    let iovecs_len = if let Value::I32(iovecs_len) = args[2] {
-        iovecs_len as usize
-    } else {
-        unreachable!()
-    };
-
-    let result_size_offset = if let Value::I32(result_size_offset) = args[3] {
-        result_size_offset as usize
-    } else {
-        unreachable!()
-    };
+    let fd = get_i32_unchecked(args[0]);
+    let iovecs_offset = get_i32_unchecked(args[1]);
+    let iovecs_len = get_i32_unchecked(args[2]);
+    let result_size_offset = get_i32_unchecked(args[3]);
 
     let mut ciovecs: Vec<CIOVec> = vec![];
     let ciovec_data_size = CIOVec::get_deserialize_size();
@@ -457,7 +401,7 @@ fn fd_read(
         let memory_block = &vm.resource.memory_blocks[0];
         for idx in 0..iovecs_len {
             let data = memory_block.read_bytes(
-                (idx * ciovec_data_size + iovecs_offset) as usize,
+                (idx * ciovec_data_size as i32 + iovecs_offset) as usize,
                 ciovec_data_size,
             );
 
@@ -472,14 +416,90 @@ fn fd_read(
     match native_fd::fd_read(
         memory_block,
         get_wasi_module_context(any_module_context),
-        fd,
+        fd as u32,
         &ciovecs,
     ) {
         Ok(read_bytes) => {
-            memory_block.write_i32(result_size_offset, read_bytes as i32);
+            memory_block.write_i32(result_size_offset as usize, read_bytes as i32);
             make_success_result()
         }
         Err(errno) => make_error_result(errno),
+    }
+}
+
+/// args_sizes_get
+///
+/// `(func $wasi.args_sizes_get (param $result.argc i32) (param $result.argv_buf_size i32) (result (;errno;) i32)))`
+///
+/// - $result.argc: 用于储存 u32 数值 `argc` 的内存位置
+/// - $result.argv_buf_size: 用于储存 u32 数值 `argv_buf_size` 的内存位置
+fn args_sizes_get(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let result_argc_offset = get_i32_unchecked(args[0]);
+    let result_argv_buffer_size_offset = get_i32_unchecked(args[1]);
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    match native_misc::args_sizes_get(get_wasi_module_context(any_module_context)) {
+        Ok((argc, argv_buffer_size)) => {
+            let memory_block = &mut vm.resource.memory_blocks[0];
+            memory_block.write_i32(result_argc_offset as usize, argc as i32);
+            memory_block.write_i32(
+                result_argv_buffer_size_offset as usize,
+                argv_buffer_size as i32,
+            );
+            make_success_result()
+        }
+        Err(errno) => make_error_result(errno),
+    }
+}
+
+/// args_get
+///
+/// `(func $wasi.args_get (param $argv i32) (param $argv_buf i32) (result (;errno;) i32)))`
+///
+/// - $argv: 一个 u32 列表在内存中的起始位置，该列表记录着每一个参数值在内存中的起始位置。
+/// - $argv_buf: 参数值内容的起始位置，`参数值内容` 是指所有参数的值（字符串）的紧密排列，
+///   注意每个参数值后面带有字符 `\0`，显然 `位置列表` 的第一个元素的值跟 `$argv_buf` 的值相同。
+fn args_get(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let argv_address_list_offset = get_i32_unchecked(args[0]);
+    let argv_buffer_offset = get_i32_unchecked(args[1]);
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    let memory_block = &mut vm.resource.memory_blocks[0];
+
+    match native_misc::args_get(
+        memory_block,
+        get_wasi_module_context(any_module_context),
+        argv_address_list_offset as usize,
+        argv_buffer_offset as usize,
+    ) {
+        Ok(_) => make_success_result(),
+        Err(errno) => make_error_result(errno),
+    }
+}
+
+// 辅助函数
+
+fn get_i32_unchecked(v: Value) -> i32 {
+    if let Value::I32(i) = v {
+        i
+    } else {
+        unreachable!()
+    }
+}
+
+fn get_i64_unchecked(v: Value) -> i64 {
+    if let Value::I64(i) = v {
+        i
+    } else {
+        unreachable!()
     }
 }
 
@@ -518,7 +538,7 @@ mod tests {
         object::NamedAstModule,
     };
 
-    use crate::{types::MODULE_NAME, wasi_module_context::WASIModuleContext};
+    use crate::wasi_module_context::WASIModuleContext;
 
     use super::new_wasi_module;
     use pretty_assertions::assert_eq;
@@ -555,49 +575,76 @@ mod tests {
     }
 
     fn get_test_wasi_module_context(
+        module_name: &str,
+        args: Vec<String>,
+        envs: Vec<(String, String)>,
         stdin: Rc<RefCell<dyn Read>>,
         stdout: Rc<RefCell<dyn Write>>,
         stderr: Rc<RefCell<dyn Write>>,
     ) -> WASIModuleContext {
-        WASIModuleContext::new(
-            "demo",
-            vec!["-l".to_string(), "123".to_string()],
-            vec![
-                ("USER".to_string(), "YANG".to_string()),
-                ("EDITOR".to_string(), "vim".to_string()),
-            ],
-            stdin,
-            stdout,
-            stderr,
-        )
+        WASIModuleContext::new(module_name, args, envs, stdin, stdout, stderr)
     }
 
     fn get_test_native_module(
+        module_name: &str,
+        args: Vec<String>,
+        envs: Vec<(String, String)>,
         stdin: Rc<RefCell<dyn Read>>,
         stdout: Rc<RefCell<dyn Write>>,
         stderr: Rc<RefCell<dyn Write>>,
     ) -> NativeModule {
-        let wasi_module_context = get_test_wasi_module_context(stdin, stdout, stderr);
+        let wasi_module_context =
+            get_test_wasi_module_context(module_name, args, envs, stdin, stdout, stderr);
         new_wasi_module(wasi_module_context)
     }
 
     fn eval(
         filename: &str,
-        export_function_name: &str,
-        args: &[Value],
+        function_name: &str, // export function name
+        function_args: &[Value],
         stdin: Rc<RefCell<dyn Read>>,
         stdout: Rc<RefCell<dyn Write>>,
         stderr: Rc<RefCell<dyn Write>>,
     ) -> Result<Vec<Value>, EngineError> {
         let ast_module = get_test_ast_module(filename);
 
-        let function_index = find_ast_module_export_function(&ast_module, export_function_name)
-            .expect(&format!("function {} not found", export_function_name));
+        let function_index = find_ast_module_export_function(&ast_module, function_name)
+            .expect(&format!("function {} not found", function_name));
 
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let wasi_native_module = get_test_native_module(stdin, stdout, stderr);
+        let wasi_native_module =
+            get_test_native_module("test", vec![], vec![], stdin, stdout, stderr);
         let mut vm = create_instance(vec![wasi_native_module], &vec![named_ast_module])?;
-        vm.eval_function_by_index(0, function_index as usize, args)
+        vm.eval_function_by_index(0, function_index as usize, function_args)
+    }
+
+    fn eval_with_args_and_envs(
+        filename: &str,
+        function_name: &str, // export function name
+        function_args: &[Value],
+        module_name: &str,
+        args: &[&str],
+        envs: &[(&str, &str)],
+        stdin: Rc<RefCell<dyn Read>>,
+        stdout: Rc<RefCell<dyn Write>>,
+        stderr: Rc<RefCell<dyn Write>>,
+    ) -> Result<Vec<Value>, EngineError> {
+        let ast_module = get_test_ast_module(filename);
+
+        let function_index = find_ast_module_export_function(&ast_module, function_name)
+            .expect(&format!("function {} not found", function_name));
+
+        let string_args = args.iter().map(|i| i.to_string()).collect::<Vec<String>>();
+        let string_envs = envs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect::<Vec<(String, String)>>();
+
+        let named_ast_module = NamedAstModule::new(module_name, ast_module);
+        let wasi_native_module =
+            get_test_native_module(module_name, string_args, string_envs, stdin, stdout, stderr);
+        let mut vm = create_instance(vec![wasi_native_module], &vec![named_ast_module])?;
+        vm.eval_function_by_index(0, function_index as usize, function_args)
     }
 
     #[test]
@@ -820,8 +867,35 @@ mod tests {
         assert_eq!(result2, vec![Value::I32(0)]);
     }
 
+    #[test]
     fn test_args() {
-        //
+        // 该模块是由 C 语言程序编译而来
+        let module_name = "test-args.wasm";
+
+        let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout1 = Rc::clone(&stdout1);
+
+        let result1 = eval_with_args_and_envs(
+            module_name,
+            "_start",
+            &vec![],
+            "args_app",
+            &vec!["one", "-t", "--three", "--", "-d=10", "--type=size"],
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout1,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        let output_data1 = &clone_stdout1.as_ref().borrow()[..];
+        let output_str1 = std::str::from_utf8(output_data1).unwrap();
+
+        println!("{:?}", output_str1);
+        println!("{:?}", result1);
+
+        assert_eq!(output_str1, "args_app|one|-t|--three|--|-d=10|--type=size|");
+        assert_eq!(result1, vec![]);
     }
 
     fn test_envs() {

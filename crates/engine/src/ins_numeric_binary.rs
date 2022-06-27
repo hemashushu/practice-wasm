@@ -489,14 +489,14 @@ pub fn i64_shl(vm: &mut VM) -> Result<(), EngineError> {
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
-        (Value::I64(left), Value::I32(right)) => {
-            // RHS 的类型必须是 i32
+        (Value::I64(left), Value::I64(right)) => {
+            // RHS 的类型是否应该是 i32？
             stack.push(Value::I64(left << right));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
             "i64.shl",
-            vec![ValueType::I64, ValueType::I32],
+            vec![ValueType::I64, ValueType::I64],
             vec![&lhs, &rhs],
         )),
     }
@@ -507,14 +507,14 @@ pub fn i64_shr_s(vm: &mut VM) -> Result<(), EngineError> {
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
-        (Value::I64(left), Value::I32(right)) => {
-            // RHS 的类型必须是 i32
+        (Value::I64(left), Value::I64(right)) => {
+            // RHS 的类型是否应该是 i32？
             stack.push(Value::I64(left >> right));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
             "i64.shr_s",
-            vec![ValueType::I64, ValueType::I32],
+            vec![ValueType::I64, ValueType::I64],
             vec![&lhs, &rhs],
         )),
     }
@@ -525,14 +525,14 @@ pub fn i64_shr_u(vm: &mut VM) -> Result<(), EngineError> {
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
-        (Value::I64(left), Value::I32(right)) => {
-            // RHS 的类型必须是 i32
+        (Value::I64(left), Value::I64(right)) => {
+            // RHS 的类型是否应该是 i32？
             stack.push(Value::I64(((left as u64) >> right) as i64));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
             "i64.shr_u",
-            vec![ValueType::I64, ValueType::I32],
+            vec![ValueType::I64, ValueType::I64],
             vec![&lhs, &rhs],
         )),
     }
@@ -543,14 +543,14 @@ pub fn i64_rotl(vm: &mut VM) -> Result<(), EngineError> {
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
-        (Value::I64(left), Value::I32(right)) => {
-            // RHS 的类型必须是 i32
+        (Value::I64(left), Value::I64(right)) => {
+            // RHS 的类型是否应该是 i32？
             stack.push(Value::I64(i64::rotate_left(left, right as u32)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
             "i64.rotl",
-            vec![ValueType::I64, ValueType::I32],
+            vec![ValueType::I64, ValueType::I64],
             vec![&lhs, &rhs],
         )),
     }
@@ -561,14 +561,14 @@ pub fn i64_rotr(vm: &mut VM) -> Result<(), EngineError> {
     let (rhs, lhs) = (stack.pop(), stack.pop());
 
     match (lhs, rhs) {
-        (Value::I64(left), Value::I32(right)) => {
-            // RHS 的类型必须是 i32
+        (Value::I64(left), Value::I64(right)) => {
+            // RHS 的类型是否应该是 i32？
             stack.push(Value::I64(i64::rotate_right(left, right as u32)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
             "i64.rotr",
-            vec![ValueType::I64, ValueType::I32],
+            vec![ValueType::I64, ValueType::I64],
             vec![&lhs, &rhs],
         )),
     }

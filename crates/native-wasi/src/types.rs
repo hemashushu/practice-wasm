@@ -28,6 +28,7 @@ use std::io::Write;
 /// 正式版的名称将会是 `wasi`
 pub const MODULE_NAME: &str = "wasi_snapshot_preview1";
 
+/// 序列化特质
 pub trait Serialize {
     fn get_serialize_size(&self) -> usize;
 
@@ -41,12 +42,14 @@ pub trait Serialize {
     fn write(&self, writer: &mut dyn Write);
 }
 
+/// 反序列化特质
 pub trait Deserialize {
     fn get_deserialize_size() -> usize;
     fn deserialize(data: &[u8]) -> Self;
 }
 
-/// clockid: Enum(u32)
+/// # clockid: Enum(u32)
+///
 /// Identifiers for clocks.
 pub enum ClockID {
     Realtime, // The clock measuring real time. Time value zero corresponds with 1970-01-01T00:00:00Z.
@@ -66,8 +69,10 @@ impl From<ClockID> for u32 {
     }
 }
 
-/// rights: Flags(u64)
+/// # rights: Flags(u64)
+///
 /// File descriptor rights, determining which actions may be performed.
+///
 /// Size: 8
 /// Alignment: 8
 /// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#rights
@@ -104,12 +109,14 @@ pub mod rights {
     pub const SOCK_ACCEPT: u64 = 1 << 29; // The right to invoke sock_accept.
 }
 
-#[derive(Debug, PartialEq, Clone)]
-/// filetype: Enum(u8)
+/// # filetype: Enum(u8)
+///
 /// The type of a file descriptor or file.
+///
 /// Size: 1
 /// Alignment: 1
 /// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#filetype
+#[derive(Debug, PartialEq, Clone)]
 pub enum Filetype {
     Unknown, // The type of the file descriptor or file is unknown or is different from any of the other types specified.
     BlockDevice, // The file descriptor or file refers to a block device inode.
@@ -148,8 +155,10 @@ impl Serialize for Filetype {
     }
 }
 
-/// fdstat: Struct
+/// # fdstat: Struct
+///
 /// File descriptor attributes.
+///
 /// Size: 24
 /// Alignment: 8
 /// Struct members
@@ -188,8 +197,10 @@ impl Serialize for FdStat {
     }
 }
 
-/// ### whence: Enum(u8)
+/// # whence: Enum(u8)
+///
 /// The position relative to which to set the offset of the file descriptor.
+///
 /// Size: 1
 /// Alignment: 1
 /// Variants
@@ -226,9 +237,8 @@ impl TryFrom<u8> for Whence {
     }
 }
 
-/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-ciovec-struct
+/// # ciovec: Struct
 ///
-/// ciovec: Struct
 /// A region of memory for scatter/gather writes.
 ///
 /// Size: 8
@@ -238,6 +248,11 @@ impl TryFrom<u8> for Whence {
 ///   Offset: 0
 /// - buf_len: size The length of the buffer to be written.
 ///   Offset: 4
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-ciovec-struct
+///
+/// 用于表示内存当中一段数据的结构体，成员包括数据在内存当中的位置/地址，以及数据的长度，
+/// 用于文件的读写。
 pub struct CIOVec {
     /// 数据在内存中的开始位置（地址）
     pub buf_offset: u32,

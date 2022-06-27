@@ -10,8 +10,9 @@
 
 int main()
 {
-    // puts 函数在输出时会在末尾添加 '\n'
-    // puts("Hello world!");
+    // 注意 puts 函数在输出时会在末尾添加 '\n'，比如：
+    // `puts("Hello");`
+    // 最后输出 "Hello\n"
     fputs("Hello world!", stdout);
     return 0;
 }

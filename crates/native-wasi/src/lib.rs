@@ -8,6 +8,7 @@ pub mod types;
 pub mod error;
 
 pub mod native_fd;
+pub mod native_misc;
 pub mod filesystem_context;
 pub mod wasi_module_context;
 pub mod wasi;
