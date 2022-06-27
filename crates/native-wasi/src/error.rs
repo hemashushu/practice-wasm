@@ -9,9 +9,7 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use anvm_engine::error::{InternalError, NativeTerminate};
-
-use crate::{types::MODULE_NAME};
+use anvm_engine::error::InternalError;
 
 /// WASI 模块程序自身的错误
 ///

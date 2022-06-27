@@ -12,17 +12,10 @@ extern char **environ;
 
 int main(int argc, char *argv[])
 {
-    puts("argv:");
-    for (int i = 0; argv[i] != 0; i++)
-    {
-        puts(argv[i]);
-    }
-
-    puts("env:");
     for (char **env = environ; *env != 0; env++)
     {
         char *t = *env;
-        puts(t);
+        printf("%s\n", t);
     }
 
     return 0;

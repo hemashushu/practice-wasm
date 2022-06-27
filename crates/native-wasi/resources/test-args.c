@@ -10,16 +10,9 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc == 0)
+    for (int i = 0; argv[i] != 0; i++)
     {
-        printf("no args");
-    }
-    else
-    {
-        for (int i = 0; argv[i] != 0; i++)
-        {
-            printf("%s|", argv[i]);
-        }
+        printf("%s|", argv[i]);
     }
 
     return 0;

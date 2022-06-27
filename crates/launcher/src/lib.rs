@@ -10,7 +10,7 @@ use std::path::Path;
 use anvm_ast::types::Value;
 use anvm_binary_parser::parser;
 use anvm_disassembly::disassembler::module_to_text;
-use anvm_engine::error::{EngineError, NativeTerminate, NativeError};
+use anvm_engine::error::{EngineError, NativeError};
 use anvm_engine::instance::{
     create_instance, find_ast_module_export_function, get_entry_module_and_function_index,
 };
@@ -43,6 +43,7 @@ pub fn execute_function(
     entry_module_function_name: Option<(String, String)>,
     function_arguments: &[Value],
     application_arguments: &[String],
+    environments: &[(String, String)]
 ) -> Result<(Vec<Value>, i32), String> {
     let named_ast_modules = load_ast_modules(module_filepaths)?;
     execute_function_by_modules(
@@ -50,6 +51,7 @@ pub fn execute_function(
         entry_module_function_name,
         function_arguments,
         application_arguments,
+        environments
     )
 }
 
@@ -59,6 +61,7 @@ pub fn execute_function_by_modules(
     entry_module_function_name: Option<(String, String)>,
     function_arguments: &[Value],
     application_arguments: &[String],
+    environments: &[(String, String)]
 ) -> Result<(Vec<Value>, i32), String> {
     let (vm_module_index, function_index) =
         // 用户指定了入口模块及函数

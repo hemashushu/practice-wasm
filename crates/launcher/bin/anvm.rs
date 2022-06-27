@@ -90,6 +90,7 @@ fn process_execute_function_command(fragments: &[String]) {
     let mut entry_module_function_name: Option<(String, String)> = None;
     let mut function_arguments: Vec<Value> = vec![];
     let mut application_arguments: Vec<String> = vec![];
+    let mut environments: Vec<(String, String)> = vec![];
 
     let mut remains = fragments;
     let mut found_arguments: bool = false;
@@ -153,6 +154,7 @@ Unexpected VM launcher argument: \"{}\"
         entry_module_function_name,
         &function_arguments,
         &application_arguments,
+        &environments,
     ) {
         Ok((results, exit_code)) => {
             if results.len() > 0 {
@@ -181,7 +183,6 @@ program exit normally with code: {}",
 
                 process::exit(exit_code);
             }
-
         }
         Err(e) => {
             println!(

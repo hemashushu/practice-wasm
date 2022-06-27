@@ -188,7 +188,7 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
     native_module.add_native_function(
         "args_sizes_get",
         vec![ValueType::I32, ValueType::I32],
-        vec!["result.size", "result.argv_buf_size"],
+        vec!["result.argc", "result.argv_buf_size"],
         vec![ValueType::I32],
         args_sizes_get,
     );
@@ -199,6 +199,22 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
         vec!["argv", "argv_buf"],
         vec![ValueType::I32],
         args_get,
+    );
+
+    native_module.add_native_function(
+        "environ_sizes_get",
+        vec![ValueType::I32, ValueType::I32],
+        vec!["result.environc", "result.environ_buf_size"],
+        vec![ValueType::I32],
+        environ_sizes_get,
+    );
+
+    native_module.add_native_function(
+        "environ_get",
+        vec![ValueType::I32, ValueType::I32],
+        vec!["environ", "environ_buf"],
+        vec![ValueType::I32],
+        environ_get,
     );
 
     native_module
@@ -461,8 +477,10 @@ fn args_sizes_get(
 /// `(func $wasi.args_get (param $argv i32) (param $argv_buf i32) (result (;errno;) i32)))`
 ///
 /// - $argv: 一个 u32 列表在内存中的起始位置，该列表记录着每一个参数值在内存中的起始位置。
-/// - $argv_buf: 参数值内容的起始位置，`参数值内容` 是指所有参数的值（字符串）的紧密排列，
-///   注意每个参数值后面带有字符 `\0`，显然 `位置列表` 的第一个元素的值跟 `$argv_buf` 的值相同。
+/// - $argv_buf: 参数值内容的起始位置，`参数值内容` 是指第一个参数值（字符串），
+///   显然 `位置列表` 的第一个元素的值跟 `$argv_buf` 的值相同。
+///   一般来说所有参数的值（字符串）将会在内存里紧密排列。
+///   注意每个参数值后面带有字符 `\0`，
 fn args_get(
     vm: &mut VM,
     native_module_index: usize,
@@ -479,6 +497,55 @@ fn args_get(
         get_wasi_module_context(any_module_context),
         argv_address_list_offset as usize,
         argv_buffer_offset as usize,
+    ) {
+        Ok(_) => make_success_result(),
+        Err(errno) => make_error_result(errno),
+    }
+}
+
+// "environ_sizes_get"
+// `(func $wasi.environ_sizes_get (param $result.environc i32) (param $result.environBufSize i32) (result (;errno;) i32)))`
+fn environ_sizes_get(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let result_environ_count_offset = get_i32_unchecked(args[0]);
+    let result_environ_buffer_size_offset = get_i32_unchecked(args[1]);
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    match native_misc::environ_sizes_get(get_wasi_module_context(any_module_context)) {
+        Ok((environc, environ_buffer_size)) => {
+            let memory_block = &mut vm.resource.memory_blocks[0];
+            memory_block.write_i32(result_environ_count_offset as usize, environc as i32);
+            memory_block.write_i32(
+                result_environ_buffer_size_offset as usize,
+                environ_buffer_size as i32,
+            );
+            make_success_result()
+        }
+        Err(errno) => make_error_result(errno),
+    }
+}
+
+// "environ_get"
+// `(func $wasi.environ_get (param $environ i32) (param $environ_buf i32) (result (;errno;) i32)))`
+fn environ_get(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let environ_address_list_offset = get_i32_unchecked(args[0]);
+    let environ_buffer_offset = get_i32_unchecked(args[1]);
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    let memory_block = &mut vm.resource.memory_blocks[0];
+
+    match native_misc::environ_get(
+        memory_block,
+        get_wasi_module_context(any_module_context),
+        environ_address_list_offset as usize,
+        environ_buffer_offset as usize,
     ) {
         Ok(_) => make_success_result(),
         Err(errno) => make_error_result(errno),
@@ -872,9 +939,10 @@ mod tests {
         // 该模块是由 C 语言程序编译而来
         let module_name = "test-args.wasm";
 
+        // 测试一组参数
+
         let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
         let clone_stdout1 = Rc::clone(&stdout1);
-
         let result1 = eval_with_args_and_envs(
             module_name,
             "_start",
@@ -891,14 +959,79 @@ mod tests {
         let output_data1 = &clone_stdout1.as_ref().borrow()[..];
         let output_str1 = std::str::from_utf8(output_data1).unwrap();
 
-        println!("{:?}", output_str1);
-        println!("{:?}", result1);
-
         assert_eq!(output_str1, "args_app|one|-t|--three|--|-d=10|--type=size|");
         assert_eq!(result1, vec![]);
+
+        // 测试无参数
+        let stdout2 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout2 = Rc::clone(&stdout2);
+        let result2 = eval_with_args_and_envs(
+            module_name,
+            "_start",
+            &vec![],
+            "args_app",
+            &vec![],
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout2,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        let output_data2 = &clone_stdout2.as_ref().borrow()[..];
+        let output_str2 = std::str::from_utf8(output_data2).unwrap();
+
+        assert_eq!(output_str2, "args_app|");
+        assert_eq!(result2, vec![]);
     }
 
+    #[test]
     fn test_envs() {
-        //
+        // 该模块是由 C 语言程序编译而来
+        let module_name = "test-envs.wasm";
+
+        // 测试一组环境变量
+        let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout1 = Rc::clone(&stdout1);
+        let result1 = eval_with_args_and_envs(
+            module_name,
+            "_start",
+            &vec![],
+            "envs_app",
+            &vec![],
+            &vec![("USER", "yang"), ("HOME", "/home/yang")],
+            Rc::new(RefCell::new(io::empty())),
+            stdout1,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        let output_data1 = &clone_stdout1.as_ref().borrow()[..];
+        let output_str1 = std::str::from_utf8(output_data1).unwrap();
+
+        assert_eq!(output_str1, "USER=yang\nHOME=/home/yang\n");
+        assert_eq!(result1, vec![]);
+
+        // 测试无环境变量
+        let stdout2 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout2 = Rc::clone(&stdout2);
+        let result2 = eval_with_args_and_envs(
+            module_name,
+            "_start",
+            &vec![],
+            "envs_app",
+            &vec![],
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout2,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        let output_data2 = &clone_stdout2.as_ref().borrow()[..];
+        let output_str2 = std::str::from_utf8(output_data2).unwrap();
+
+        assert_eq!(output_str2, "");
+        assert_eq!(result2, vec![]);
     }
 }
