@@ -48,6 +48,8 @@
 //!
 //! f64 有跟 f32 一样的二元运算指令
 
+use std::ops::Shl;
+
 use anvm_ast::types::{Value, ValueType};
 
 use crate::{
@@ -63,7 +65,7 @@ pub fn i32_add(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(left + right));
+            stack.push(Value::I32(left.wrapping_add(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -80,7 +82,7 @@ pub fn i32_sub(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(left - right));
+            stack.push(Value::I32(left.wrapping_sub(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -97,7 +99,7 @@ pub fn i32_mul(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(left * right));
+            stack.push(Value::I32(left.wrapping_mul(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -114,7 +116,7 @@ pub fn i32_div_s(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(left / right));
+            stack.push(Value::I32(left.wrapping_div(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -131,7 +133,7 @@ pub fn i32_div_u(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(((left as u32) / (right as u32)) as i32));
+            stack.push(Value::I32((left as u32).wrapping_div(right as u32) as i32));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -148,7 +150,7 @@ pub fn i32_rem_s(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(left % right));
+            stack.push(Value::I32(left.wrapping_rem(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -165,7 +167,7 @@ pub fn i32_rem_u(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(((left as u32) % (right as u32)) as i32));
+            stack.push(Value::I32((left as u32).wrapping_rem(right as u32) as i32));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -233,7 +235,7 @@ pub fn i32_shl(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(left << right));
+            stack.push(Value::I32(left.wrapping_shl(right as u32)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -250,7 +252,7 @@ pub fn i32_shr_s(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(left >> right));
+            stack.push(Value::I32(left.wrapping_shr(right as u32)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -267,7 +269,7 @@ pub fn i32_shr_u(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I32(left), Value::I32(right)) => {
-            stack.push(Value::I32(((left as u32) >> right) as i32));
+            stack.push(Value::I32((left as u32).wrapping_shr(right as u32) as i32));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -320,7 +322,7 @@ pub fn i64_add(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            stack.push(Value::I64(left + right));
+            stack.push(Value::I64(left.wrapping_add(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -337,7 +339,7 @@ pub fn i64_sub(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            stack.push(Value::I64(left - right));
+            stack.push(Value::I64(left.wrapping_sub(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -354,7 +356,7 @@ pub fn i64_mul(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            stack.push(Value::I64(left * right));
+            stack.push(Value::I64(left.wrapping_mul(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -371,7 +373,7 @@ pub fn i64_div_s(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            stack.push(Value::I64(left / right));
+            stack.push(Value::I64(left.wrapping_div(right))); // 注意 （MIN / -1）会导致溢出
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -388,7 +390,7 @@ pub fn i64_div_u(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            stack.push(Value::I64(((left as u64) / (right as u64)) as i64));
+            stack.push(Value::I64((left as u64).wrapping_div(right as u64) as i64));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -405,7 +407,7 @@ pub fn i64_rem_s(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            stack.push(Value::I64(left % right));
+            stack.push(Value::I64(left.wrapping_rem(right)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -422,7 +424,7 @@ pub fn i64_rem_u(vm: &mut VM) -> Result<(), EngineError> {
 
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
-            stack.push(Value::I64(((left as u64) % (right as u64)) as i64));
+            stack.push(Value::I64((left as u64).wrapping_rem(right as u64) as i64));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -491,7 +493,7 @@ pub fn i64_shl(vm: &mut VM) -> Result<(), EngineError> {
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
             // RHS 的类型是否应该是 i32？
-            stack.push(Value::I64(left << right));
+            stack.push(Value::I64(left.wrapping_shl(right as u32)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -509,7 +511,7 @@ pub fn i64_shr_s(vm: &mut VM) -> Result<(), EngineError> {
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
             // RHS 的类型是否应该是 i32？
-            stack.push(Value::I64(left >> right));
+            stack.push(Value::I64(left.wrapping_shr(right as u32)));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(
@@ -527,7 +529,7 @@ pub fn i64_shr_u(vm: &mut VM) -> Result<(), EngineError> {
     match (lhs, rhs) {
         (Value::I64(left), Value::I64(right)) => {
             // RHS 的类型是否应该是 i32？
-            stack.push(Value::I64(((left as u64) >> right) as i64));
+            stack.push(Value::I64((left as u64).wrapping_shr(right as u32) as i64));
             Ok(())
         }
         _ => Err(make_operand_data_types_mismatch_engine_error(

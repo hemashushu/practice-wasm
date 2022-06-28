@@ -262,3 +262,24 @@ pub fn clock_res_get(
         ClockId::ThreadCputimeId => Err(Errno::Nosys),
     }
 }
+
+/// # random_get(buf: Pointer<u8>, buf_len: size) -> errno
+///
+/// Write high-quality random data into a buffer. This function blocks when the implementation is unable to immediately provide sufficient high-quality random data. This function may execute slowly, so when large mounts of random data are required, it's advisable to use this function to seed a pseudo-random number generator, rather than to provide the random data directly.
+///
+/// Params
+/// - buf: Pointer<u8> The buffer to fill with random data.
+/// - buf_len: size
+///
+/// Results
+/// - error: errno
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-random_getbuf-pointeru8-buf_len-size---errno
+pub fn random_get(
+    module_context: &mut WASIModuleContext,
+    data: &mut [u8],
+) -> Result<usize, Errno> {
+    // let mut data: Vec<u8> = vec![0; size as usize];
+    module_context.random_source.read(data).unwrap();
+    Ok(data.len())
+}

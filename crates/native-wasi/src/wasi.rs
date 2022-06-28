@@ -56,7 +56,6 @@
 //! 打开文件系统的文件时，需要 API：
 //!
 //! - path_open
-//! - fd_close
 //! - fd_prestat_get
 //! - fd_prestat_dir_name
 //!
@@ -70,6 +69,9 @@
 //!
 //! - clock_res_get
 //! - clock_time_get
+//! - random_get
+//!
+//! 尚未实现的 API 有：
 //!
 //! - fd_advise
 //! - fd_allocate
@@ -99,7 +101,6 @@
 //!
 //! - proc_raise
 //! - sched_yield
-//! - random_get
 //!
 //! - sock_recv
 //! - sock_send
@@ -231,6 +232,14 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
         vec!["clock_id", "precision", "result.timestamp"],
         vec![ValueType::I32],
         clock_time_get,
+    );
+
+    native_module.add_native_function(
+        "random_get",
+        vec![ValueType::I32, ValueType::I32],
+        vec!["buf", "buf_len"],
+        vec![ValueType::I32],
+        random_get,
     );
 
     native_module
@@ -622,6 +631,27 @@ fn clock_time_get(
         }
     } else {
         make_error_result(Errno::Invalid)
+    }
+}
+
+// "random_get"
+// `(func $wasi.random_get (param $buf i32) (param $buf_len i32) (result (;errno;) i32)))`
+fn random_get(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let buf_offset = get_i32_unchecked(args[0]);
+    let buf_len = get_i32_unchecked(args[1]);
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    let memory_block = &mut vm.resource.memory_blocks[0];
+
+    let buf = memory_block.get_bytes_mut(buf_offset as usize, buf_len as usize);
+
+    match native_misc::random_get(get_wasi_module_context(any_module_context), buf) {
+        Ok(_) => make_success_result(),
+        Err(errno) => make_error_result(errno),
     }
 }
 
@@ -1262,5 +1292,57 @@ mod tests {
                 native_error: NativeError::Exit(0)
             }))
         ));
+    }
+
+    #[test]
+    fn test_random_get() {
+        let module_name = "test-rand.wasm";
+
+        let result1 = eval(
+            module_name,
+            "get_two_rand",
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            Rc::new(RefCell::new(io::sink())),
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        assert_eq!(result1.len(), 3);
+        assert_eq!(result1[0], Value::I32(0)); // errno
+
+        // 暂时无法检查结果是否随机数
+    }
+
+    #[test]
+    fn test_random_get_c() {
+        // 该模块是由 C 语言程序编译而来
+        // 注，wasi_sdk 编译 rand() 函数时，并不会调用 WASI 的 random_get API，
+        // 而是自带了一个随机产生器。
+        let module_name = "test-rand-c.wasm";
+
+        let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout1 = Rc::clone(&stdout1);
+        let result1 = eval(
+            module_name,
+            "_start",
+            &vec![],
+            Rc::new(RefCell::new(io::empty())),
+            stdout1,
+            Rc::new(RefCell::new(io::sink())),
+        )
+        .unwrap();
+
+        let output_data1 = &clone_stdout1.as_ref().borrow()[..];
+        let output_str1 = std::str::from_utf8(output_data1).unwrap();
+
+        // 暂时无法检查结果是否随机数
+        let lines1 = output_str1
+            .split('\n')
+            .map(|i| i.to_owned())
+            .collect::<Vec<String>>();
+        assert_eq!(lines1.len(), 5);
+
+        assert_eq!(result1, vec![]);
     }
 }

@@ -12,6 +12,7 @@ use std::{
 };
 
 use anvm_engine::native_module::ModuleContext;
+use rand::RngCore;
 
 use crate::filesystem_context::FileSystemContext;
 
@@ -22,7 +23,7 @@ pub struct WASIModuleContext {
     pub monotonic_clock: Box<dyn Clock>,
     pub realtime_clock: Box<dyn Clock>,
 
-    // rand_source
+    pub random_source: Box<dyn Read>,
     pub filesystem_context: FileSystemContext,
 }
 
@@ -39,7 +40,6 @@ impl WASIModuleContext {
         environments: Vec<(String, String)>,
         monotonic_clock: Box<dyn Clock>,
         realtime_clock: Box<dyn Clock>,
-        // rand_source,
         stdin: Rc<RefCell<dyn Read>>,
         stdout: Rc<RefCell<dyn Write>>,
         stderr: Rc<RefCell<dyn Write>>,
@@ -49,15 +49,15 @@ impl WASIModuleContext {
         arguments.push(app_path_name.to_owned());
         arguments.extend(app_arguments);
 
+        let default_random_source = DefaultRandomSource::new();
         let filesystem_context = FileSystemContext::new(stdin, stdout, stderr);
 
         Self {
             arguments,
             environments,
-
             monotonic_clock,
             realtime_clock,
-
+            random_source: Box::new(default_random_source),
             filesystem_context,
         }
     }
@@ -74,6 +74,7 @@ impl WASIModuleContext {
             environments: vec![],
             monotonic_clock: Box::new(SandboxClock::new()),
             realtime_clock: Box::new(SandboxClock::new()),
+            random_source: Box::new(io::repeat(0)),
             filesystem_context,
         }
     }
@@ -149,6 +150,23 @@ impl Clock for SandboxClock {
 }
 
 impl SandboxClock {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+pub struct DefaultRandomSource {
+    //
+}
+
+impl Read for DefaultRandomSource {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        rand::thread_rng().fill_bytes(buf);
+        io::Result::Ok(buf.len())
+    }
+}
+
+impl DefaultRandomSource {
     pub fn new() -> Self {
         Self {}
     }

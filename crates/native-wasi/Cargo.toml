@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anvm-ast = { path = "../ast" }
 anvm-engine = { path = "../engine" }
+rand = "0.8.5"
 
 [dev-dependencies]
 anvm-binary-parser = { path = "../binary-parser" }
