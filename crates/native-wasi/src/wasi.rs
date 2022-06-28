@@ -115,7 +115,7 @@ use anvm_engine::{
 use crate::{
     error::Errno,
     native_fd, native_misc,
-    types::{CIOVec, Deserialize, Serialize, Whence, MODULE_NAME},
+    types::{CIOVec, ClockId, Deserialize, Serialize, Whence, MODULE_NAME},
     wasi_module_context::WASIModuleContext,
 };
 
@@ -215,6 +215,22 @@ pub fn new_wasi_module(module_context: WASIModuleContext) -> NativeModule {
         vec!["environ", "environ_buf"],
         vec![ValueType::I32],
         environ_get,
+    );
+
+    native_module.add_native_function(
+        "clock_res_get",
+        vec![ValueType::I32, ValueType::I32],
+        vec!["clock_id", "result.resolution"],
+        vec![ValueType::I32],
+        clock_res_get,
+    );
+
+    native_module.add_native_function(
+        "clock_time_get",
+        vec![ValueType::I32, ValueType::I64, ValueType::I32],
+        vec!["clock_id", "precision", "result.timestamp"],
+        vec![ValueType::I32],
+        clock_time_get,
     );
 
     native_module
@@ -552,6 +568,63 @@ fn environ_get(
     }
 }
 
+// "clock_res_get"
+// `(func $wasi.clock_res_get (param $id i32) (param $result.resolution i32) (result (;errno;) i32)))`
+fn clock_res_get(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let clock_id_i32 = get_i32_unchecked(args[0]);
+    let result_resolution = get_i32_unchecked(args[1]);
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    let memory_block = &mut vm.resource.memory_blocks[0];
+
+    if let Ok(clock_id) = ClockId::try_from(clock_id_i32 as u32) {
+        match native_misc::clock_res_get(get_wasi_module_context(any_module_context), clock_id) {
+            Ok(ns) => {
+                memory_block.write_i64(result_resolution as usize, ns as i64);
+                make_success_result()
+            }
+            Err(errno) => make_error_result(errno),
+        }
+    } else {
+        make_error_result(Errno::Invalid)
+    }
+}
+
+// "clock_time_get"
+// `(func $wasi.clock_time_get (param $id i32) (param $precision i64) (param $result.timestamp i32) (result (;errno;) i32)))`
+fn clock_time_get(
+    vm: &mut VM,
+    native_module_index: usize,
+    args: &[Value],
+) -> Result<Vec<Value>, NativeTerminate> {
+    let clock_id_i32 = get_i32_unchecked(args[0]);
+    let precision = get_i64_unchecked(args[1]);
+    let result_timestamp = get_i32_unchecked(args[2]);
+
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    let memory_block = &mut vm.resource.memory_blocks[0];
+
+    if let Ok(clock_id) = ClockId::try_from(clock_id_i32 as u32) {
+        match native_misc::clock_time_get(
+            get_wasi_module_context(any_module_context),
+            clock_id,
+            precision as u64,
+        ) {
+            Ok(ns) => {
+                memory_block.write_i64(result_timestamp as usize, ns as i64);
+                make_success_result()
+            }
+            Err(errno) => make_error_result(errno),
+        }
+    } else {
+        make_error_result(Errno::Invalid)
+    }
+}
+
 // 辅助函数
 
 fn get_i32_unchecked(v: Value) -> i32 {
@@ -594,6 +667,7 @@ mod tests {
         env, fs,
         io::{self, Read, Write},
         rc::Rc,
+        time::SystemTime,
     };
 
     use anvm_ast::{ast, types::Value};
@@ -605,7 +679,7 @@ mod tests {
         object::NamedAstModule,
     };
 
-    use crate::wasi_module_context::WASIModuleContext;
+    use crate::wasi_module_context::{Clock, RealtimeClock, SandboxClock, WASIModuleContext};
 
     use super::new_wasi_module;
     use pretty_assertions::assert_eq;
@@ -645,23 +719,44 @@ mod tests {
         module_name: &str,
         args: Vec<String>,
         envs: Vec<(String, String)>,
+        monotonic_clock: Box<dyn Clock>,
+        realtime_clock: Box<dyn Clock>,
         stdin: Rc<RefCell<dyn Read>>,
         stdout: Rc<RefCell<dyn Write>>,
         stderr: Rc<RefCell<dyn Write>>,
     ) -> WASIModuleContext {
-        WASIModuleContext::new(module_name, args, envs, stdin, stdout, stderr)
+        WASIModuleContext::new(
+            module_name,
+            args,
+            envs,
+            monotonic_clock,
+            realtime_clock,
+            stdin,
+            stdout,
+            stderr,
+        )
     }
 
     fn get_test_native_module(
         module_name: &str,
         args: Vec<String>,
         envs: Vec<(String, String)>,
+        monotonic_clock: Box<dyn Clock>,
+        realtime_clock: Box<dyn Clock>,
         stdin: Rc<RefCell<dyn Read>>,
         stdout: Rc<RefCell<dyn Write>>,
         stderr: Rc<RefCell<dyn Write>>,
     ) -> NativeModule {
-        let wasi_module_context =
-            get_test_wasi_module_context(module_name, args, envs, stdin, stdout, stderr);
+        let wasi_module_context = get_test_wasi_module_context(
+            module_name,
+            args,
+            envs,
+            monotonic_clock,
+            realtime_clock,
+            stdin,
+            stdout,
+            stderr,
+        );
         new_wasi_module(wasi_module_context)
     }
 
@@ -679,8 +774,16 @@ mod tests {
             .expect(&format!("function {} not found", function_name));
 
         let named_ast_module = NamedAstModule::new("test", ast_module);
-        let wasi_native_module =
-            get_test_native_module("test", vec![], vec![], stdin, stdout, stderr);
+        let wasi_native_module = get_test_native_module(
+            "test",
+            vec![],
+            vec![],
+            Box::new(SandboxClock::new()),
+            Box::new(RealtimeClock::new()),
+            stdin,
+            stdout,
+            stderr,
+        );
         let mut vm = create_instance(vec![wasi_native_module], &vec![named_ast_module])?;
         vm.eval_function_by_index(0, function_index as usize, function_args)
     }
@@ -708,8 +811,46 @@ mod tests {
             .collect::<Vec<(String, String)>>();
 
         let named_ast_module = NamedAstModule::new(module_name, ast_module);
-        let wasi_native_module =
-            get_test_native_module(module_name, string_args, string_envs, stdin, stdout, stderr);
+        let wasi_native_module = get_test_native_module(
+            module_name,
+            string_args,
+            string_envs,
+            Box::new(SandboxClock::new()),
+            Box::new(RealtimeClock::new()),
+            stdin,
+            stdout,
+            stderr,
+        );
+        let mut vm = create_instance(vec![wasi_native_module], &vec![named_ast_module])?;
+        vm.eval_function_by_index(0, function_index as usize, function_args)
+    }
+
+    fn eval_with_clocks(
+        filename: &str,
+        function_name: &str, // export function name
+        function_args: &[Value],
+        monotonic_clock: Box<dyn Clock>,
+        realtime_clock: Box<dyn Clock>,
+        stdin: Rc<RefCell<dyn Read>>,
+        stdout: Rc<RefCell<dyn Write>>,
+        stderr: Rc<RefCell<dyn Write>>,
+    ) -> Result<Vec<Value>, EngineError> {
+        let ast_module = get_test_ast_module(filename);
+
+        let function_index = find_ast_module_export_function(&ast_module, function_name)
+            .expect(&format!("function {} not found", function_name));
+
+        let named_ast_module = NamedAstModule::new("test", ast_module);
+        let wasi_native_module = get_test_native_module(
+            "test",
+            vec![],
+            vec![],
+            monotonic_clock,
+            realtime_clock,
+            stdin,
+            stdout,
+            stderr,
+        );
         let mut vm = create_instance(vec![wasi_native_module], &vec![named_ast_module])?;
         vm.eval_function_by_index(0, function_index as usize, function_args)
     }
@@ -1033,5 +1174,93 @@ mod tests {
 
         assert_eq!(output_str2, "");
         assert_eq!(result2, vec![]);
+    }
+
+    #[test]
+    fn test_clocks() {
+        // 该模块是由 C 语言程序编译而来
+        let module_name = "test-clocks.wasm";
+
+        // 测试 Realtime Clock
+        let stdout1 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout1 = Rc::clone(&stdout1);
+        let result1 = eval_with_clocks(
+            module_name,
+            "_start",
+            &vec![],
+            Box::new(SandboxClock::new()),
+            Box::new(RealtimeClock::new()),
+            Rc::new(RefCell::new(io::empty())),
+            stdout1,
+            Rc::new(RefCell::new(io::sink())),
+        );
+
+        let output_data1 = &clone_stdout1.as_ref().borrow()[..];
+        let output_str1 = std::str::from_utf8(output_data1).unwrap();
+
+        let lines1 = output_str1
+            .split('\n')
+            .map(|i| i.to_owned())
+            .collect::<Vec<String>>();
+
+        // 检测第 1 行
+        // 第 1 行的内容大致如："tv_sec: 1656393631"
+        let second_str = &lines1[0][8..];
+        let seconds = second_str.parse::<u64>().unwrap();
+
+        let now = SystemTime::now();
+        let duration = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
+        let span = duration.as_secs() - seconds;
+
+        assert!(span < 10); // 容纳 10 秒的误差（延迟）
+
+        // 第 2 行是时间的纳秒部分，因为时间太短无法获得一个可比较的数值，所以不检测
+
+        // 检测第 3、4 行
+        assert_eq!(lines1[2], "tv_sec: 0");
+        assert_eq!(lines1[3], "tv_nsec: 1");
+
+        assert!(matches!(
+            result1,
+            Err(EngineError::NativeTerminate(NativeTerminate {
+                module_name: _,
+                native_error: NativeError::Exit(0)
+            }))
+        ));
+
+        // 测试 Sandbox Clock
+        let stdout2 = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let clone_stdout2 = Rc::clone(&stdout2);
+        let result2 = eval_with_clocks(
+            module_name,
+            "_start",
+            &vec![],
+            Box::new(SandboxClock::new()),
+            Box::new(SandboxClock::new()),
+            Rc::new(RefCell::new(io::empty())),
+            stdout2,
+            Rc::new(RefCell::new(io::sink())),
+        );
+
+        let output_data2 = &clone_stdout2.as_ref().borrow()[..];
+        let output_str2 = std::str::from_utf8(output_data2).unwrap();
+
+        let lines2 = output_str2
+            .split('\n')
+            .map(|i| i.to_owned())
+            .collect::<Vec<String>>();
+
+        assert_eq!(lines2[0], "tv_sec: 0");
+        assert_eq!(lines2[1], "tv_nsec: 0");
+        assert_eq!(lines2[2], "tv_sec: 0");
+        assert_eq!(lines2[3], "tv_nsec: 1");
+
+        assert!(matches!(
+            result2,
+            Err(EngineError::NativeTerminate(NativeTerminate {
+                module_name: _,
+                native_error: NativeError::Exit(0)
+            }))
+        ));
     }
 }

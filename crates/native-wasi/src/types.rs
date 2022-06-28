@@ -48,27 +48,6 @@ pub trait Deserialize {
     fn deserialize(data: &[u8]) -> Self;
 }
 
-/// # clockid: Enum(u32)
-///
-/// Identifiers for clocks.
-pub enum ClockID {
-    Realtime, // The clock measuring real time. Time value zero corresponds with 1970-01-01T00:00:00Z.
-    Monotonic, // The store-wide monotonic clock, which is defined as a clock measuring real time, whose value cannot be adjusted and which cannot have negative clock jumps. The epoch of this clock is undefined. The absolute time value of this clock therefore has no meaning.
-    ProcessCputimeId, // The CPU-time clock associated with the current process.
-    ThreadCputimeId, // The CPU-time clock associated with the current thread.
-}
-
-impl From<ClockID> for u32 {
-    fn from(clock_id: ClockID) -> Self {
-        match clock_id {
-            ClockID::Realtime => 0,
-            ClockID::Monotonic => 1,
-            ClockID::ProcessCputimeId => 2,
-            ClockID::ThreadCputimeId => 3,
-        }
-    }
-}
-
 /// # rights: Flags(u64)
 ///
 /// File descriptor rights, determining which actions may be performed.
@@ -275,3 +254,53 @@ impl Deserialize for CIOVec {
         }
     }
 }
+
+/// # clockid: Enum(u32)
+///
+/// Identifiers for clocks.
+///
+/// Size: 4
+/// Alignment: 4
+/// Variants
+/// - realtime: The clock measuring real time. Time value zero corresponds with 1970-01-01T00:00:00Z.
+/// - monotonic: The store-wide monotonic clock, which is defined as a clock measuring real time, whose value cannot be adjusted and which cannot have negative clock jumps. The epoch of this clock is undefined. The absolute time value of this clock therefore has no meaning.
+/// - process_cputime_id: The CPU-time clock associated with the current process.
+/// - thread_cputime_id: The CPU-time clock associated with the current thread.
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-clockid-enumu32
+pub enum ClockId {
+    /// 真实时间，即从 1970-01-01T00:00:00Z 开始，所流逝过的时间
+    Realtime,
+
+    /// 开机时间，即从机器当次开机以来，所流逝过的时间
+    /// 跟 CLOCK_BOOTTIME 不一样的是，CLOCK_MONOTONIC 在计算机休眠时不计时
+    Monotonic,
+
+    ProcessCputimeId,
+    ThreadCputimeId,
+}
+
+impl TryFrom<u32> for ClockId {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ClockId::Realtime),
+            1 => Ok(ClockId::Monotonic),
+            2 => Ok(ClockId::ProcessCputimeId),
+            3 => Ok(ClockId::ThreadCputimeId),
+            _ => Err(()),
+        }
+    }
+}
+
+// impl From<ClockId> for u32 {
+//     fn from(clock_id: ClockId) -> Self {
+//         match clock_id {
+//             ClockId::Realtime => 0,
+//             ClockId::Monotonic => 1,
+//             ClockId::ProcessCputimeId => 2,
+//             ClockId::ThreadCputimeId => 3,
+//         }
+//     }
+// }

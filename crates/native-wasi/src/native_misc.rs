@@ -6,7 +6,7 @@
 
 use anvm_engine::vm_memory::VMMemory;
 
-use crate::{error::Errno, wasi_module_context::WASIModuleContext};
+use crate::{error::Errno, types::ClockId, wasi_module_context::WASIModuleContext};
 
 /// # args_sizes_get() -> (errno, size, size)
 ///
@@ -203,4 +203,62 @@ pub fn environ_get(
     }
 
     Ok(())
+}
+
+/// # clock_time_get(id: clockid, precision: timestamp) -> (errno, timestamp)
+///
+/// Return the time value of a clock. Note: This is similar to clock_gettime in POSIX.
+///
+/// Params
+/// - id: clockid The clock for which to return the time.
+/// - precision: timestamp The maximum lag (exclusive) that the returned time value may have, compared to its actual value.
+///
+/// Results
+/// - error: errno
+/// - time: timestamp The time value of the clock.
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-clock_time_getid-clockid-precision-timestamp---errno-timestamp
+pub fn clock_time_get(
+    module_context: &mut WASIModuleContext,
+    clock_id: ClockId,
+    _precision: u64,
+) -> Result<u64, Errno> {
+    // `precision`（精度）目前用不着
+
+    // 返回纳秒
+    match clock_id {
+        ClockId::Realtime => {
+            let (seconds, nanoseconds) = module_context.realtime_clock.get_clock();
+            let ns: u64 = seconds * 1000 * 1000 * 1000 + nanoseconds as u64;
+            Ok(ns)
+        }
+        ClockId::Monotonic => Err(Errno::Nosys),
+        ClockId::ProcessCputimeId => Err(Errno::Nosys),
+        ClockId::ThreadCputimeId => Err(Errno::Nosys),
+    }
+}
+
+/// # clock_res_get(id: clockid) -> (errno, timestamp)
+///
+/// Return the resolution of a clock. Implementations are required to provide a non-zero value for supported clocks. For unsupported clocks, return errno::inval. Note: This is similar to clock_getres in POSIX.
+///
+/// Params
+/// - id: clockid The clock for which to return the resolution.
+///
+/// Results
+/// - error: errno
+/// - resolution: timestamp The resolution of the clock.
+///
+/// https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md#-clock_res_getid-clockid---errno-timestamp
+pub fn clock_res_get(
+    module_context: &mut WASIModuleContext,
+    clock_id: ClockId,
+) -> Result<u64, Errno> {
+    // 返回纳秒
+    match clock_id {
+        ClockId::Realtime => Ok(module_context.realtime_clock.get_resolution()),
+        ClockId::Monotonic => Err(Errno::Nosys),
+        ClockId::ProcessCputimeId => Err(Errno::Nosys),
+        ClockId::ThreadCputimeId => Err(Errno::Nosys),
+    }
 }

@@ -21,4 +21,8 @@ int main()
     // https://doc.rust-lang.org/stable/std/process/fn.exit.html
     exit(66);
     printf("unreachable!");
+
+    // 注意 `exit(0)` 跟 `return 0` 不完全一样，`exit(0)` 会中断 VM 并返回值，
+    // 而 `return 0` 是程序正常退出。
+    // 但 `return N` (N != 0) 则跟 `exit(N)`（N != 0） 行为一致。
 }
