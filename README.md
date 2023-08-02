@@ -8,6 +8,7 @@ Features
 
 - [x] Run multi-module WASM applications.
 - [x] Disassemble WASM applications.
+- [ ] Translate the WebAssembly text format to binary.
 - [ ] Web UI debugging interface, support step-by-step tracing, set breakpoints, and view memory and call stack data.
 - [x] Supports WASI interface, can run applications compiled from C/C++ and Rust.
 - [ ] Support for loading application images, providing Docker-like container features.
@@ -40,8 +41,9 @@ Features
 
 - [x] 运行多模块 WASM 应用程序；
 - [x] 反汇编 WASM 应用程序；
+- [ ] 转译 WAT 文本格式到二进制格式；
 - [ ] Web UI 调试界面，支持逐步跟踪、设置断点，能直观地查看内存、调用栈的数据；
-- [ ] 支持 WASI 接口，能运行 C/C++ 和 Rust 编译的程序；
+- [x] 支持 WASI 接口，能运行 C/C++ 和 Rust 编译的程序；
 - [ ] 支持加载应用程序映像，实现类似 Docker 的容器功能；
 - [ ] 支持状态持久化，支持 0 时间冷启动，实现 Serverless 和 Function-as-a-Service (FaaS) 功能；
 
@@ -153,9 +155,9 @@ XiaoXuam VM 也提供了反汇编的功能，用于将 WASM 应用程序的二�
 
 `$ anvm --disassembly input.wasm output.wat`
 
-但每次只能反汇编一个模块，其中的命令参数 `--disassembly` 可以使用 `-d` 来代替，比如：
+但每次只能反汇编一个模块，其中的命令参数 `--disassembly` 可以使用 `-i` 来代替，比如：
 
-`$ anvm -d input.wasm output.wat`
+`$ anvm -i input.wasm output.wat`
 
 ## 构建 WASM 应用程序
 

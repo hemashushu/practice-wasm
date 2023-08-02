@@ -44,7 +44,7 @@ pub struct Status {
     /// 的工作方式非常类似，所以无论是函数调用调用还是进入一个结构块，
     /// 当前的解析器都会创建一个新的栈帧。
     ///
-    /// 但结构块没有自己的局部变量，它的局部变量来自最近一次函数调用所创建的帧，
+    /// 结构块没有自己的局部变量，它的局部变量来自最近一次函数调用所创建的帧，
     /// - 当新的栈帧是因为函数调用而创建时，local_pointer 和 frame_pointer
     ///   的值是相等的，
     /// - 当新的栈帧是由进入结构块而创建时，则 local_pointer
@@ -450,9 +450,9 @@ impl VM {
         let status = &mut self.status;
 
         // 读取旧的 status
+        let previous_base_pointer = status.base_pointer;
         let previous_frame_pointer = status.frame_pointer;
         let previous_local_pointer = status.local_pointer;
-        let previous_base_pointer = status.base_pointer;
         let return_vm_module_index = status.vm_module_index;
         let return_function_index = status.function_index;
         let previous_frame_type = status.frame_type.clone();
@@ -486,22 +486,23 @@ impl VM {
             }
         }
 
-        let (frame_type_class, frame_type_value) = convert_from_frame_type(&previous_frame_type);
+        let (prev_frame_type_class, prev_frame_type_value) =
+            convert_from_frame_type(&previous_frame_type);
 
         // 写信息段
+        stack.push(previous_base_pointer.into());
         stack.push(previous_frame_pointer.into());
         stack.push(previous_local_pointer.into());
-        stack.push(previous_base_pointer.into());
         stack.push(return_vm_module_index.into());
         stack.push(return_function_index.into());
-        stack.push(frame_type_class.into()); // 使用两个 Value::I64 来记录 frame_type
-        stack.push(frame_type_value.into());
+        stack.push(prev_frame_type_class.into()); // 使用两个 Value::I64 来记录 frame_type
+        stack.push(prev_frame_type_value.into());
         stack.push(return_address.into());
 
         // 更新跟栈帧位置信息相关的部分 status
+        status.base_pointer = base_pointer;
         status.frame_pointer = frame_pointer;
         status.local_pointer = local_pointer;
-        status.base_pointer = base_pointer;
     }
 
     /// 压入控制块帧
@@ -512,9 +513,9 @@ impl VM {
         let status = &mut self.status;
 
         // 读取旧的 status
+        let previous_base_pointer = status.base_pointer;
         let previous_frame_pointer = status.frame_pointer;
         let previous_local_pointer = status.local_pointer;
-        let previous_base_pointer = status.base_pointer;
         let return_vm_module_index = status.vm_module_index;
         let return_function_index = status.function_index;
         let previous_frame_type = status.frame_type.clone();
@@ -537,22 +538,23 @@ impl VM {
         // 两个数值是一样的
         let base_pointer = previous_stack_pointer;
 
-        let (frame_type_class, frame_type_value) = convert_from_frame_type(&previous_frame_type);
+        let (prev_frame_type_class, prev_frame_type_value) =
+            convert_from_frame_type(&previous_frame_type);
 
         // 写信息段
+        stack.push(previous_base_pointer.into());
         stack.push(previous_frame_pointer.into());
         stack.push(previous_local_pointer.into());
-        stack.push(previous_base_pointer.into());
         stack.push(return_vm_module_index.into());
         stack.push(return_function_index.into());
-        stack.push(frame_type_class.into()); // 使用两个 Value::I64 来记录 frame_type
-        stack.push(frame_type_value.into());
+        stack.push(prev_frame_type_class.into()); // 使用两个 Value::I64 来记录 frame_type
+        stack.push(prev_frame_type_value.into());
         stack.push(return_address.into());
 
         // 更新跟栈帧位置信息相关的部分 status
+        status.base_pointer = base_pointer;
         status.frame_pointer = frame_pointer;
         status.local_pointer = local_pointer;
-        status.base_pointer = base_pointer;
     }
 
     /// 弹出栈帧
@@ -576,17 +578,17 @@ impl VM {
         let stack = &mut self.stack;
 
         // 读取当前的 status
-        let frame_pointer = status.frame_pointer;
         let base_pointer = status.base_pointer;
+        let frame_pointer = status.frame_pointer;
 
         // 读取信息段
-        let previous_frame_pointer: usize = stack.get_value(base_pointer).into();
-        let previous_local_pointer: usize = stack.get_value(base_pointer + 1).into();
-        let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
+        let previous_base_pointer: usize = stack.get_value(base_pointer + 0).into();
+        let previous_frame_pointer: usize = stack.get_value(base_pointer + 1).into();
+        let previous_local_pointer: usize = stack.get_value(base_pointer + 2).into();
         let return_vm_module_index: usize = stack.get_value(base_pointer + 3).into();
         let return_function_index: usize = stack.get_value(base_pointer + 4).into();
-        let frame_type_class: usize = stack.get_value(base_pointer + 5).into(); // 使用两个 Value::I64 来还原 frame_type
-        let frame_type_value: usize = stack.get_value(base_pointer + 6).into();
+        let prev_frame_type_class: usize = stack.get_value(base_pointer + 5).into(); // 使用两个 Value::I64 来还原 frame_type
+        let prev_frame_type_value: usize = stack.get_value(base_pointer + 6).into();
         let return_address: usize = stack.get_value(base_pointer + 7).into();
 
         // 先保存一份返回值
@@ -599,16 +601,17 @@ impl VM {
         stack.push_values(&results);
 
         // 更新跟栈帧位置信息相关的部分 status
+        status.base_pointer = previous_base_pointer;
         status.frame_pointer = previous_frame_pointer;
         status.local_pointer = previous_local_pointer;
-        status.base_pointer = previous_base_pointer;
 
-        let frame_type = convert_to_frame_type(frame_type_class, frame_type_value);
+        let previous_frame_type =
+            convert_to_frame_type(prev_frame_type_class, prev_frame_type_value);
 
         (
             return_vm_module_index,
             return_function_index,
-            frame_type,
+            previous_frame_type,
             return_address,
         )
     }
@@ -642,25 +645,25 @@ impl VM {
             let stack = &mut self.stack;
 
             // 读取当前的 status
-            let mut frame_pointer = status.frame_pointer; // frame_pointer 为将要丢弃的栈帧的位置
             let mut base_pointer = status.base_pointer;
+            let mut frame_pointer = status.frame_pointer; // frame_pointer 为将要丢弃的栈帧的位置
 
             // 从栈回溯，找到指定层级的状态
             for _ in 0..(relative_depth - 1) {
-                let previous_frame_pointer: usize = stack.get_value(base_pointer).into();
-                let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
-                frame_pointer = previous_frame_pointer;
+                let previous_base_pointer: usize = stack.get_value(base_pointer + 0).into();
+                let previous_frame_pointer: usize = stack.get_value(base_pointer + 1).into();
                 base_pointer = previous_base_pointer;
+                frame_pointer = previous_frame_pointer;
             }
 
-            let previous_frame_pointer: usize = stack.get_value(base_pointer).into();
-            let previous_local_pointer: usize = stack.get_value(base_pointer + 1).into();
-            let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
+            let previous_base_pointer: usize = stack.get_value(base_pointer + 0).into();
+            let previous_frame_pointer: usize = stack.get_value(base_pointer + 1).into();
+            let previous_local_pointer: usize = stack.get_value(base_pointer + 2).into();
             let return_vm_module_index: usize = stack.get_value(base_pointer + 3).into();
             let return_function_index: usize = stack.get_value(base_pointer + 4).into();
             // 使用两个 Value::I64 来还原 frame_type
-            let frame_type_class: usize = stack.get_value(base_pointer + 5).into();
-            let frame_type_value: usize = stack.get_value(base_pointer + 6).into();
+            let prev_frame_type_class: usize = stack.get_value(base_pointer + 5).into();
+            let prev_frame_type_value: usize = stack.get_value(base_pointer + 6).into();
             let return_address: usize = stack.get_value(base_pointer + 7).into();
 
             // 先保存一份返回值
@@ -673,11 +676,11 @@ impl VM {
             stack.push_values(&results);
 
             // 更新跟栈帧位置信息相关的部分 status
+            status.base_pointer = previous_base_pointer;
             status.frame_pointer = previous_frame_pointer;
             status.local_pointer = previous_local_pointer;
-            status.base_pointer = previous_base_pointer;
 
-            let frame_type = convert_to_frame_type(frame_type_class, frame_type_value);
+            let frame_type = convert_to_frame_type(prev_frame_type_class, prev_frame_type_value);
 
             (
                 return_vm_module_index,
@@ -701,27 +704,27 @@ impl VM {
 
             // 从栈回溯，找到指定层级的状态
             for _ in 0..(relative_depth - 1) {
-                let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
+                let previous_base_pointer: usize = stack.get_value(base_pointer).into();
                 base_pointer = previous_base_pointer;
             }
 
             // 读取信息段
-            let previous_frame_pointer: usize = stack.get_value(base_pointer).into();
-            let previous_local_pointer: usize = stack.get_value(base_pointer + 1).into();
-            let previous_base_pointer: usize = stack.get_value(base_pointer + 2).into();
+            let previous_base_pointer: usize = stack.get_value(base_pointer + 0).into();
+            let previous_frame_pointer: usize = stack.get_value(base_pointer + 1).into();
+            let previous_local_pointer: usize = stack.get_value(base_pointer + 2).into();
             let return_vm_module_index: usize = stack.get_value(base_pointer + 3).into();
             let return_function_index: usize = stack.get_value(base_pointer + 4).into();
             // 使用两个 Value::I64 来还原 frame_type
-            let frame_type_class: usize = stack.get_value(base_pointer + 5).into();
-            let frame_type_value: usize = stack.get_value(base_pointer + 6).into();
+            let prev_frame_type_class: usize = stack.get_value(base_pointer + 5).into();
+            let prev_frame_type_value: usize = stack.get_value(base_pointer + 6).into();
             let return_address: usize = stack.get_value(base_pointer + 7).into();
 
-            let frame_type = convert_to_frame_type(frame_type_class, frame_type_value);
+            let frame_type = convert_to_frame_type(prev_frame_type_class, prev_frame_type_value);
 
             Status {
+                base_pointer: previous_base_pointer,
                 frame_pointer: previous_frame_pointer,
                 local_pointer: previous_local_pointer,
-                base_pointer: previous_base_pointer,
 
                 vm_module_index: return_vm_module_index,
                 function_index: return_function_index,

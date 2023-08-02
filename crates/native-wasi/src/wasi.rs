@@ -17,8 +17,13 @@
 //! WASI API 标准文档里列出的是 API 的详细情况，至于 ABI 在哪里定义，hemashushu 暂时还没找到。
 //! 有关 ABI 的资料这里主要参考自项目 [wazero](https://github.com/tetratelabs/wazero)。
 //!
-//! 注：WASM VM 是栈式的虚拟机，这里说的 ABI 是指，当一个 WASM 应用程序调用一个 WASI 函数时，
+//! 注：
+//! WASM VM 是栈式的虚拟机，这里说的 ABI 是指，当一个 WASM 应用程序调用一个 WASI 函数时，
 //! 应该传入（压入）怎样的参数（参数的个数和数据类型），应该传出（弹出）怎样的数据。
+//! 而传统的 ABI （比如 x86 Linux 函数调用约定）因为大多基于寄存器式 CPU，此时 ABI
+//! 主要描述各个寄存器传递的数据的作用，跟 WASM WASI 的 ABI 不太一样。
+//! x86 Linux 的 ABI 可以参阅
+//! 《使用 Linux 汇编语言》（《Programming from the Ground Up - Jonathan Bartlett》）
 
 //! # API 实现的顺序
 //!
@@ -71,33 +76,38 @@
 //! - clock_time_get
 //! - random_get
 //!
+//! 准备实现的 API 有：
+//!
+//! - poll_oneoff
+//!
+//! - fd_readdir
+//! - fd_fdstat_set_flags
+//!
+//! - path_filestat_get
+//! - path_create_directory
+//! - path_symlink
+//! - path_rename
+//! - path_remove_directory
+//! - path_unlink_file
+//!
 //! 尚未实现的 API 有：
 //!
 //! - fd_advise
 //! - fd_allocate
 //! - fd_datasync
-//! - fd_fdstat_set_flags
 //! - fd_fdstat_set_rights
 //! - fd_filestat_get
 //! - fd_filestat_set_size
 //! - fd_filestat_set_times
 //! - fd_pread
 //! - fd_pwrite
-//! - fd_readdir
 //! - fd_renumber
 //! - fd_sync
 //! - fd_tell
 //!
-//! - path_create_directory
-//! - path_filestat_get
 //! - path_filestat_set_times
 //! - path_link
 //! - path_readlink
-//! - path_remove_directory
-//! - path_rename
-//! - path_symlink
-//! - path_unlink_file
-//! - poll_oneoff
 //!
 //! - proc_raise
 //! - sched_yield
@@ -402,14 +412,16 @@ fn fd_close(
 ///   linux shell 得到的是 (exit_code % 256)，比如 exit(456)，实际得到的返回码是：456 % 256 = 200。
 ///   https://doc.rust-lang.org/stable/std/process/fn.exit.html
 fn proc_exit(
-    _vm: &mut VM,
-    _native_module_index: usize,
+    vm: &mut VM,
+    native_module_index: usize,
     args: &[Value],
 ) -> Result<Vec<Value>, NativeTerminate> {
     let exit_code = get_i32_unchecked(args[0]);
 
-    // todo
     // 关闭所有已打开的文件
+    let any_module_context = &mut vm.resource.native_modules[native_module_index].module_context;
+    let wasi_module_context = get_wasi_module_context(any_module_context);
+    wasi_module_context.filesystem_context.remove_all_opened_files();
 
     Err(NativeTerminate {
         module_name: MODULE_NAME.to_owned(),

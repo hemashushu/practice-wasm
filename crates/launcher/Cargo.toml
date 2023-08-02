@@ -3,15 +3,16 @@ name = "anvm-launcher"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "anvm"
-path = "bin/anvm.rs"
+# [[bin]]
+# name = "anvm"
+# path = "bin/anvm.rs"
 
 [dependencies]
 anvm-ast = { path = "../ast" }
 anvm-binary-parser = { path = "../binary-parser" }
 anvm-disassembly = { path = "../disassembly" }
 anvm-engine = { path = "../engine" }
+anvm-native-wasi = { path = "../native-wasi" }
 
 [dev-dependencies]
 pretty_assertions = "1.2.1"

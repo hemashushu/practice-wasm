@@ -4,8 +4,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::fs;
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
+use std::{fs, io};
 
 use anvm_ast::types::Value;
 use anvm_binary_parser::parser;
@@ -15,35 +17,15 @@ use anvm_engine::instance::{
     create_instance, find_ast_module_export_function, get_entry_module_and_function_index,
 };
 use anvm_engine::object::NamedAstModule;
-
-pub fn disassembly(input_filepath: &str, output_filepath: &str) {
-    println!(
-        "disassembly \"{}\" into \"{}\"",
-        input_filepath, output_filepath
-    );
-
-    let bytes: Vec<u8> = fs::read(input_filepath).expect(&format!(
-        "failed to read the specified file: {}",
-        input_filepath
-    ));
-
-    let module = parser::parse(&bytes).unwrap();
-    let text = module_to_text(&module);
-
-    fs::write(output_filepath, text).expect(&format!(
-        "failed to write the specified file: {}",
-        output_filepath
-    ));
-
-    println!("ok");
-}
+use anvm_native_wasi::wasi::new_wasi_module;
+use anvm_native_wasi::wasi_module_context::{RealtimeClock, SandboxClock, WASIModuleContext};
 
 pub fn execute_function(
     module_filepaths: &[String],
     entry_module_function_name: Option<(String, String)>,
     function_arguments: &[Value],
     application_arguments: &[String],
-    environments: &[(String, String)]
+    environments: &[(String, String)],
 ) -> Result<(Vec<Value>, i32), String> {
     let named_ast_modules = load_ast_modules(module_filepaths)?;
     execute_function_by_modules(
@@ -51,7 +33,7 @@ pub fn execute_function(
         entry_module_function_name,
         function_arguments,
         application_arguments,
-        environments
+        environments,
     )
 }
 
@@ -61,7 +43,7 @@ pub fn execute_function_by_modules(
     entry_module_function_name: Option<(String, String)>,
     function_arguments: &[Value],
     application_arguments: &[String],
-    environments: &[(String, String)]
+    environments: &[(String, String)],
 ) -> Result<(Vec<Value>, i32), String> {
     let (vm_module_index, function_index) =
         // 用户指定了入口模块及函数
@@ -115,7 +97,27 @@ function index is also supported, e.g.
         named_ast_modules[vm_module_index].name, function_index
     );
 
-    let mut vm = create_instance(vec![], &named_ast_modules).map_err(|e| e.to_string())?;
+    let wasi_module_context = WASIModuleContext::new(
+        &named_ast_modules[vm_module_index].name,
+        application_arguments
+            .iter()
+            .map(|i| i.to_owned())
+            .collect::<Vec<String>>(),
+        environments
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect::<Vec<(String, String)>>(),
+        Box::new(SandboxClock::new()),
+        Box::new(RealtimeClock::new()),
+        Rc::new(RefCell::new(io::stdin())),
+        Rc::new(RefCell::new(io::stdout())),
+        Rc::new(RefCell::new(io::stderr())),
+    );
+
+    let wasi_native_module = new_wasi_module(wasi_module_context);
+
+    let mut vm =
+        create_instance(vec![wasi_native_module], &named_ast_modules).map_err(|e| e.to_string())?;
     match vm.eval_function_by_index(vm_module_index, function_index, function_arguments) {
         Ok(results) => Ok((results, 0)),
         Err(e) => {

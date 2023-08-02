@@ -11,8 +11,6 @@
     - [查看 WASM 二进制的全部信息](#查看-wasm-二进制的全部信息)
     - [查看 WASM 二进制的段信息](#查看-wasm-二进制的段信息)
   - [编译 Rust 到 WASM](#编译-rust-到-wasm)
-    - [编译单独一个 Rust 源代码文件](#编译单独一个-rust-源代码文件)
-    - [编译一个 Cargo 项目](#编译一个-cargo-项目)
   - [编译 Rust 到 WASI](#编译-rust-到-wasi)
   - [编译 C 到 WASM](#编译-c-到-wasm)
   - [编译 C 到 WASI](#编译-c-到-wasi)
@@ -64,7 +62,7 @@
 
 `$ rustup target add wasm32-unknown-unknown`
 
-### 编译单独一个 Rust 源代码文件
+编译单独一个 Rust 源代码文件：
 
 导出的函数需要加上 `#[no_mangle]` 标注，例如：
 
@@ -77,19 +75,19 @@ pub extern "C" fn add(a: i32, b: i32) -> i32 {
 
 `$ rustc demo.rs --target wasm32-unknown-unknown -C lto -O --crate-type=cdylib -o demo.wasm`
 
-### 编译一个 Cargo 项目
+编译一个 Cargo 项目：
 
-在 `Cargo.toml` 里面指定了 crate 的类型为 `cdylib`：
+在 `cargo` 命令后面加上 `--target wasm32-unknown-unknown` 即可，例如：
+
+`$ cargo build --release --target wasm32-unknown-unknown`
+
+对于库类型的项目，可能需要在 `Cargo.toml` 里面指定了 crate 的类型为 `cdylib`：
 
 ```toml
 [lib]
 path = "src/lib.rs"
 crate-type = ["cdylib"]
 ```
-
-然后开始编译：
-
-`$ cargo build --target wasm32-unknown-unknown --release`
 
 ## 编译 Rust 到 WASI
 
@@ -100,6 +98,10 @@ crate-type = ["cdylib"]
 然后开始编译：
 
 `$ rustc demo.rs --target wasm32-wasi -C lto -O -o demo.wasm`
+
+或者使用 `cargo` 编译整个项目：
+
+`$ cargo build --release --target wasm32-wasi`
 
 ## 编译 C 到 WASM
 
@@ -117,7 +119,7 @@ $ clang demo.c \
     -o demo.wasm
 ```
 
-参数 `-Wl,--export-all` 用于导出所有函数，以便于单元测试，更多的参数请参阅：
+参数 `-Wl,--export-all` 用于导出所有函数，以便于单元测试，更多的参数请参阅 LLVM linker 的说明：
 https://lld.llvm.org/WebAssembly.html
 
 如果不希望导出全部函数，可以通过在函数前面添加 `__attribute__((export_name("...")))` 来标识该函数需要导出，例如：

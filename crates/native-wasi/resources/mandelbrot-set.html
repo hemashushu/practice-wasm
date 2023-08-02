@@ -1,0 +1,34 @@
+<html>
+
+<body>
+    <canvas id="myCanvas" width="800" height="800"></canvas>
+    <script>
+        var canvas = document.getElementById('myCanvas');
+        var context = canvas.getContext('2d');
+
+        for (var x = 0; x < 200; x++) {
+            for (var y = 0; y < 200; y++) {
+                var i = 0;
+                var cx = x / 50 - 2.0; // cx, cy 的范围在 -2 和 2 之间
+                var cy = y / 50 - 2.0; // 50 是放大倍数，50 表示 1 倍，200 则表示 4 倍， 另外 -2.0 是原点的偏移值
+                var zx = 0;
+                var zy = 0;
+
+                do {
+                    zx = zx * zx - zy * zy + cx; // 注 i^2 = -1
+                    zy = 2 * zx * zy + cy;
+                    i++;
+                } while (i < 255 && (zx * zx + zy * zy) < 4); // 最多迭代 255，如果有一次 z 的数值超出 2 则表示无穷发散
+
+                var color = i.toString(16); // 迭代满 255 次的点可以上白色，其它上彩色。
+
+                context.beginPath();
+                context.rect(x * 4, y * 4, 4, 4);
+                context.fillStyle = '#' + color + color + color;
+                context.fill();
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -7,7 +7,7 @@
 use std::{env, process};
 
 use anvm_ast::types::Value;
-use anvm_launcher::{disassembly, execute_function};
+use anvm_launcher::execute_function;
 
 /// 编译之后将会得到程序 `./target/debug/anvm`
 /// 然后通过诸如 `$ anvm fib.wasm` （其中的 `fib.wasm` 是 WebAssembly
@@ -23,26 +23,35 @@ use anvm_launcher::{disassembly, execute_function};
 fn main() {
     print_version();
 
-    let args: Vec<String> = env::args().collect();
+    let original_args: Vec<String> = env::args().collect();
 
-    if args.len() == 1 {
+    if original_args.len() == 1 {
         print_usage();
     } else {
-        match args[1].as_str() {
-            "-d" | "--disassembly" => {
-                process_disassembly_command(&args[2..]);
-            }
-            _ => {
-                process_execute_function_command(&args[1..]);
-            }
-        }
+        let args = &original_args[1..];
+        let (vm_options, app_args) = if let Some(pos) = args.iter().position(|s| s == "--") {
+            (&args[0..pos], &args[pos + 1..])
+        } else {
+            (&args[..], &args[..0])
+        };
+
+        todo!()
+        // if vm_options.contains(&"-t".to_string()) ||
+        //     vm_options.contains(&"--disassembly".to_string()){
+        //     process_disassembly_command(vm_options);
+        // }else if vm_options.contains(&"-b".to_string()) ||
+        //     vm_options.contains(&"--binary".to_string()) {
+        //     process_assembly_command(vm_options);
+        // }else {
+        //     process_execute_function_command(vm_options, app_args);
+        // }
     }
 }
 
 fn print_version() {
     println!(
         "\
-XiaoXuan VM 0.1.0-beta
+XiaoXuan WebAssembly VM 0.1.0-beta
 "
     );
 }
@@ -50,39 +59,39 @@ XiaoXuan VM 0.1.0-beta
 fn print_usage() {
     println!(
         "\
-Usage:
+USAGE:
 
-    $ anvm module_names
-       [-f module_name::function_name arg0 ... argN]
-       [-- command -o --option -arg0 val0 -arg1=val1 --argumentN valueN]
+    $ anvm module_name0 ... module_nameN
+        [-d]
+        [-e KEY=VALUE -e FOO=BAR ...]
+        [-m .=/path/to/cwd -m /guest/path=/host/path ...]
+        [-f module_name::function_name arg0 ... argN]
+        [-- command -s --option -arg0 val0 -arg1=val1 --argumentN valueN ...]
 
-e.g.
+OPTIONS:
 
-    $ anvm fib.wasm
-    $ anvm lib.wasm app.wasm
-    $ anvm lib.wasm --function lib::pow 2 10
-    $ anvm console.wasm -- help
-    $ anvm console.wasm -- convert -d 123 --format hex
-    $ anvm --disassembly input.wasm output.wat
+    -d, --debug         Enter debug mode
+    -e, --env           Specify the parameters of the program
+    -m, --map           Mapping the host's file path to the program
+    -f, --function      Specify the name of the module and function to run
+    --                  Specify the arguments of the program
+    -t, --text          Translate the WebAssembly binary format to text
+    -b, --binary        Translate the WebAssembly text format to binary
+
+EXAMPLES:
+
+    $ anvm app.wasm
+    $ anvm lib.wasm bin.wasm
+    $ anvm app.wasm -d
+    $ anvm app.wasm -e KEY=VALUE -e FOO=BAR
+    $ anvm app.wasm -m .=/path/to/cwd -m /guest/path=/host/path
+    $ anvm app.wasm -f app::fib 2 10
+    $ anvm app.wasm -- command -s 123 --option hex
+
+    $ anvm input.wasm -t output.wat
+    $ anvm input.wat -b output.wasm
 "
     );
-}
-
-fn process_disassembly_command(fragments: &[String]) {
-    if fragments.len() != 2 {
-        println!(
-            "\
-Please specify both the input and output file names, e.g.
-
-    $ anvm --disassembly input.wasm output.wat
-    $ anvm -d input.wasm output.wat
-"
-        )
-    } else {
-        let input_filepath = &fragments[0];
-        let output_filepath = &fragments[1];
-        disassembly(input_filepath, output_filepath);
-    }
 }
 
 fn process_execute_function_command(fragments: &[String]) {
@@ -207,7 +216,7 @@ fn continue_parse_entry_module_function_name(
         if parts.len() != 2 {
             Err(format!(
                 "\
-Wrong format of function name: {}
+Incorrect format of function name: {}
 
 please specify the name of entry module and function as \"module_name::function_name\", e.g.
 

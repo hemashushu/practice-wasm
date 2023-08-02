@@ -89,4 +89,8 @@ impl FileSystemContext {
     pub fn remove_opened_file(&mut self, fd: u32) {
         self.opened_files.remove(&fd);
     }
+
+    pub fn remove_all_opened_files(&mut self) {
+        self.opened_files.clear();
+    }
 }
