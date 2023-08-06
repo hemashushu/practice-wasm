@@ -70,7 +70,9 @@ pub struct Module {
 
     /// 表格列表，（section id 4）
     /// 表格用于储存 `元素`，`表格` 和 `元素` 合在一起通常用于实现
-    /// 函数的间接调用，目前只支持声明或导入 1 个表格
+    /// 函数的间接调用（即，将一个函数的指针作为参数传递给另一个函数，且
+    /// 在另一个函数里调用），
+    /// 目前只支持声明或导入 1 个表格
     pub tables: Vec<TableType>,
 
     /// 内存块描述列表，（section id 5）
@@ -263,7 +265,7 @@ pub enum ImportDescriptor {
 
 /// # 补充 A：函数（列表）段
 ///
-/// 函数列表列出所有的函数所对应的类型，至于函数的主体（指令列表）部分则位于代码列表
+/// 函数列表列出所有的"内部"函数所对应的类型，至于函数的主体（指令列表）部分则位于代码列表
 ///
 /// ## 二进制格式
 ///
@@ -316,7 +318,15 @@ pub enum ImportDescriptor {
 /// `表` 和 `元素项` 用于列出一组函数的索引，然后在执行 `call_indirect` 指令时，
 /// 根据栈顶的操作数获取该列表中的一个函数，从而实现 `动态` 选择被调用的函数。
 ///
-/// `动态函数调用` 相当于高级语言里的 `函数指针`（或者数据类型为 `函数` 的参数）
+/// `动态函数调用` 相当于高级语言里的 `函数指针`。即，将 `函数指针` 作为参数传递给另一个
+/// 函数，并在其中被调用，示例：
+///
+/// ```c
+/// typedef func int(int,int)
+/// int process(func f, int a, int b){
+///     return f(a,b);
+/// }
+/// ```
 ///
 /// ## 二进制格式
 ///
@@ -646,6 +656,12 @@ pub struct ElementItem {
 ///
 /// 下面一则来自官方文档的示例：
 /// <https://webassembly.github.io/spec/core/text/instructions.html#folded-instructions>
+///
+/// (plain_instr folded_instr*) => folded_instr* plain_instr
+/// (block label blocktype instr*) => block label blocktype instr* end
+/// (loop label blocktype instr*) => loop label blocktype  instr* end
+/// (if label blocktype folded_instr* (then instr1*) (else instr2*)? )) =>
+///  folded_instr* if label blocktype instr1* (else instr2*)? end
 ///
 /// ```wat
 /// ...

@@ -104,6 +104,7 @@
 //!   3. 恢复保存的寄存器的值
 //!
 //! x86 的函数调用约定可参阅《使用 Linux 汇编语言》（《Programming from the Ground Up - Jonathan Bartlett》）P.37
+//! Note:: 这是 32bit 的调用规范，比较“旧”
 //!
 //! ## 控制帧
 //!
