@@ -97,13 +97,13 @@
 //! 指令列表
 //!
 //! - i32.store
-//! - i32.store_16
-//! - i32.store_8
+//! - i32.store16
+//! - i32.store8
 //!
 //! - i64.store
-//! - i64.store_32
-//! - i64.store_16
-//! - i64.store_8
+//! - i64.store32
+//! - i64.store16
+//! - i64.store8
 //!
 //! - f32.store
 //! - f64.store
@@ -491,7 +491,7 @@ pub fn i32_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Engine
     }
 }
 
-pub fn i32_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+pub fn i32_store16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
     match get_memory_store_access_meterial(vm, memory_args) {
         Ok((memory_block, address, data_value)) => {
             if let Value::I32(value) = data_value {
@@ -499,7 +499,7 @@ pub fn i32_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
                 Ok(())
             } else {
                 Err(make_memory_store_operand_data_type_mismatch_engine_error(
-                    "i32.store_16",
+                    "i32.store16",
                     ValueType::I32,
                     &data_value,
                 ))
@@ -507,7 +507,7 @@ pub fn i32_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
         }
         Err((data_value, address_value)) => {
             Err(make_memory_store_operand_data_types_mismatch_engine_error(
-                "i32.store_16",
+                "i32.store16",
                 ValueType::I32,
                 &data_value,
                 &address_value,
@@ -516,7 +516,7 @@ pub fn i32_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
     }
 }
 
-pub fn i32_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+pub fn i32_store8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
     match get_memory_store_access_meterial(vm, memory_args) {
         Ok((memory_block, address, data_value)) => {
             if let Value::I32(value) = data_value {
@@ -524,7 +524,7 @@ pub fn i32_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Engi
                 Ok(())
             } else {
                 Err(make_memory_store_operand_data_type_mismatch_engine_error(
-                    "i32.store_8",
+                    "i32.store8",
                     ValueType::I32,
                     &data_value,
                 ))
@@ -532,7 +532,7 @@ pub fn i32_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Engi
         }
         Err((data_value, address_value)) => {
             Err(make_memory_store_operand_data_types_mismatch_engine_error(
-                "i32.store_8",
+                "i32.store8",
                 ValueType::I32,
                 &data_value,
                 &address_value,
@@ -566,7 +566,7 @@ pub fn i64_store(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Engine
     }
 }
 
-pub fn i64_store_32(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+pub fn i64_store32(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
     match get_memory_store_access_meterial(vm, memory_args) {
         Ok((memory_block, address, data_value)) => {
             if let Value::I64(value) = data_value {
@@ -574,7 +574,7 @@ pub fn i64_store_32(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
                 Ok(())
             } else {
                 Err(make_memory_store_operand_data_type_mismatch_engine_error(
-                    "i64.store_32",
+                    "i64.store32",
                     ValueType::I64,
                     &data_value,
                 ))
@@ -582,7 +582,7 @@ pub fn i64_store_32(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
         }
         Err((data_value, address_value)) => {
             Err(make_memory_store_operand_data_types_mismatch_engine_error(
-                "i64.store_32",
+                "i64.store32",
                 ValueType::I64,
                 &data_value,
                 &address_value,
@@ -591,7 +591,7 @@ pub fn i64_store_32(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
     }
 }
 
-pub fn i64_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+pub fn i64_store16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
     match get_memory_store_access_meterial(vm, memory_args) {
         Ok((memory_block, address, data_value)) => {
             if let Value::I64(value) = data_value {
@@ -599,7 +599,7 @@ pub fn i64_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
                 Ok(())
             } else {
                 Err(make_memory_store_operand_data_type_mismatch_engine_error(
-                    "i64.store_16",
+                    "i64.store16",
                     ValueType::I64,
                     &data_value,
                 ))
@@ -607,7 +607,7 @@ pub fn i64_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
         }
         Err((data_value, address_value)) => {
             Err(make_memory_store_operand_data_types_mismatch_engine_error(
-                "i64.store_16",
+                "i64.store16",
                 ValueType::I64,
                 &data_value,
                 &address_value,
@@ -616,7 +616,7 @@ pub fn i64_store_16(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Eng
     }
 }
 
-pub fn i64_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
+pub fn i64_store8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), EngineError> {
     match get_memory_store_access_meterial(vm, memory_args) {
         Ok((memory_block, address, data_value)) => {
             if let Value::I64(value) = data_value {
@@ -624,7 +624,7 @@ pub fn i64_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Engi
                 Ok(())
             } else {
                 Err(make_memory_store_operand_data_type_mismatch_engine_error(
-                    "i64.store_8",
+                    "i64.store8",
                     ValueType::I64,
                     &data_value,
                 ))
@@ -632,7 +632,7 @@ pub fn i64_store_8(vm: &mut VM, memory_args: &MemoryArgument) -> Result<(), Engi
         }
         Err((data_value, address_value)) => {
             Err(make_memory_store_operand_data_types_mismatch_engine_error(
-                "i64.store_8",
+                "i64.store8",
                 ValueType::I64,
                 &data_value,
                 &address_value,

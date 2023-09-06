@@ -10,7 +10,7 @@
 //!
 //! - local.get local_idx:uint32    ;; 读取指定索引的局部变量的值，压入操作数栈
 //! - local.set local_idx:uint32    ;; 从操作数栈弹出一个数，写入到指定索引的局部变量；弹出的数的类型必须跟局部变量的一致
-//! - local.tee local_idx:uint32    ;; 读取栈顶的值，写入到指定索引的局部变量
+//! - local.tee local_idx:uint32    ;; 读取栈顶的值，写入到指定索引的局部变量 = local.set_without_pop_operand
 //!
 //! 读写全局变量
 //!

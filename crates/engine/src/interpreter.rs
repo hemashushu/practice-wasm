@@ -188,7 +188,7 @@ pub fn exec_instruction(
                 Instruction::F64ConvertI64S => ins_numeric_convert::f64_convert_i64_s(vm),
                 Instruction::F64ConvertI64U => ins_numeric_convert::f64_convert_i64_u(vm),
 
-                Instruction::F32DemoteF64 => ins_numeric_convert::f32_demote_f64_s(vm),
+                Instruction::F32DemoteF64 => ins_numeric_convert::f32_demote_f64(vm),
                 Instruction::F64PromoteF32 => ins_numeric_convert::f64_promote_f32(vm),
 
                 Instruction::I32ReinterpretF32 => ins_numeric_convert::i32_reinterpret_f32(vm),
@@ -236,12 +236,12 @@ pub fn exec_instruction(
                 Instruction::F64Load(memory_args) => ins_memory::f64_load(vm, memory_args),
 
                 Instruction::I32Store(memory_args) => ins_memory::i32_store(vm, memory_args),
-                Instruction::I32Store16(memory_args) => ins_memory::i32_store_16(vm, memory_args),
-                Instruction::I32Store8(memory_args) => ins_memory::i32_store_8(vm, memory_args),
+                Instruction::I32Store16(memory_args) => ins_memory::i32_store16(vm, memory_args),
+                Instruction::I32Store8(memory_args) => ins_memory::i32_store8(vm, memory_args),
                 Instruction::I64Store(memory_args) => ins_memory::i64_store(vm, memory_args),
-                Instruction::I64Store32(memory_args) => ins_memory::i64_store_32(vm, memory_args),
-                Instruction::I64Store16(memory_args) => ins_memory::i64_store_16(vm, memory_args),
-                Instruction::I64Store8(memory_args) => ins_memory::i64_store_8(vm, memory_args),
+                Instruction::I64Store32(memory_args) => ins_memory::i64_store32(vm, memory_args),
+                Instruction::I64Store16(memory_args) => ins_memory::i64_store16(vm, memory_args),
+                Instruction::I64Store8(memory_args) => ins_memory::i64_store8(vm, memory_args),
 
                 Instruction::F32Store(memory_args) => ins_memory::f32_store(vm, memory_args),
                 Instruction::F64Store(memory_args) => ins_memory::f64_store(vm, memory_args),

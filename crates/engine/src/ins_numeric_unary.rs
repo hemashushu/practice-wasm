@@ -36,7 +36,16 @@
 //! https://en.wikipedia.org/wiki/Rounding#Round_half_to_even
 //! https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Numeric/Nearest
 //!
+//! 即
+//! 对于 x.5，结果将会是偶数，比如 23.5 -> 24, -23.5 -> -24, 24.5 -> 24, -24.5 -> -24，
+//! 简而言之，即 4 舍 6 入，5 奇进偶不进
+//! This is the default rounding mode used in IEEE 754 operations for results in binary floating-point formats
+//!
 //! Rust 的 f32::round() 函数是 4 舍 5 入，并不一样。
+//! 4 舍 5 入也就是：Round half up
+//!
+//! 这两种都是常用的取整方式，不建议直接使用 round 或者 nearest 这个名称，而使用：
+//! round_half_to_up, round_half_to_even
 
 use anvm_ast::types::{Value, ValueType};
 

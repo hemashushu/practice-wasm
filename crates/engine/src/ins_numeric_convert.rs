@@ -6,32 +6,36 @@
 
 //! # 类型转换指令
 //!
-//! ## 整数截断
+//! ## 整数截断（i32 <--> i64类型转换）
 //!
-//! 将 64 位的整数直接截断为 32 位（即只保留低端信息）
+//! 将 64 位的整数直接截断（shrink/cut）为 32 位（即只保留低端信息）
 //!
+//! 源 i64，目标 i32
 //! - i32.wrap_i64
 //!
-//! ## 整数提升
+//! ## 整数提升（i32 <--> i64类型转换）
 //!
-//! 将位宽较窄的整数提升为位宽较广的整数，比如将 32 位整数提升为 64 位
-//!
-//! 源 i32，目标 i32
-//! - i32.extend8_s
-//! - i32.extend16_s
+//! 将位宽较窄的整数提升为位宽较广的整数，即将 32 位整数提升为 64 位
 //!
 //! 源 i32，目标 i64
 //! - i64.extend_i32_s
-//! - i64.extend_i32_u
+//! - i64.extend_i32_u （实际上不需要这个，可能是为了完整指令列表）
+//!
+//! ## 符号扩展
+//! 注，符号扩展是同种类型（i32或i64）的符号扩展，扩展后数据类型不变
+//!
+//! 源 i32，目标 i32
+//! - i32.extend8_s （将使用 i32 表示的 i8_s 扩展为 i32）
+//! - i32.extend16_s（将使用 i32 表示的 i16_s 扩展为 i32）
 //!
 //! 源 i64，目标 i64
-//! - i64.extend8_s
-//! - i64.extend16_s
+//! - i64.extend8_s （可以视为 i8_s -> i32 -> i64 这两步的合并）
+//! - i64.extend16_s （可以视为 i16_s -> i32 -> i64 这两步的合并）
 //! - i64.extend32_s
 //!
 //! ## 浮点数转整数（截断运算）
 //!
-//! 把浮点数截断为整数
+//! 把浮点数截断为整数（注：浮点数总有符号，所以不明这里为什么需要区分 i32.*_s 和 i32.*_u）
 //!
 //! 源 f32，目标 i32
 //!
@@ -97,12 +101,16 @@
 //!
 //! ## 浮点数精度调整
 //!
-//! - f32.demote_f64_s
+//! - f32.demote_f64
 //! - f64.promote_f32
 //!
 //! ## 比特位重新解释
 //!
 //! 不改变操作数的比特位，仅重新解释成其他类型
+//! i32_reinterpret_f32
+//! i64_reinterpret_f64
+//! f32_reinterpret_i32
+//! f64_reinterpret_i64
 
 use anvm_ast::types::{Value, ValueType};
 
@@ -533,7 +541,7 @@ pub fn f64_convert_i64_u(vm: &mut VM) -> Result<(), EngineError> {
 
 // 浮点数精度调整
 
-pub fn f32_demote_f64_s(vm: &mut VM) -> Result<(), EngineError> {
+pub fn f32_demote_f64(vm: &mut VM) -> Result<(), EngineError> {
     let stack = &mut vm.stack;
     let operand = stack.pop();
 
@@ -543,7 +551,7 @@ pub fn f32_demote_f64_s(vm: &mut VM) -> Result<(), EngineError> {
         Ok(())
     } else {
         Err(make_operand_data_types_mismatch_engine_error(
-            "f32.demote_f64_s",
+            "f32.demote_f64",
             vec![ValueType::F64],
             vec![&operand],
         ))
